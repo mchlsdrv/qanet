@@ -1,0 +1,60 @@
+import pathlib
+import cv2
+from matplotlib import pyplot as plt
+
+DEBUG = False
+DATA_DIR_PATH = pathlib.Path('../Data')
+TRAIN_DATA_DIR = str(DATA_DIR_PATH / 'antrax_strep_small_med_large/S1/medium/train')
+TEST_DATA_DIR = str(DATA_DIR_PATH / 'antrax_strep_small_med_large/S1/medium/test')
+OUTPUT_DIR = '../Output/antrax_strep_medium'
+CONFIGS_DIR_PATH = pathlib.Path('C:/Users/mchls/Desktop/University/PhD/projects/QANet/qanet/configs')
+RIBCAGE_CONFIGS_FILE_PATH = CONFIGS_DIR_PATH / 'ribcage_configs.yml'
+
+# CONSTANTS
+EPSILON = 1e-7
+
+# DATA
+VAL_PROP = .2
+
+# PREPROCESSING CONFIGS
+
+# AUGMENTATION CONFIGS
+BRIGHTNESS_DELTA = 0.1
+CONTRAST = (0.4, 0.6)
+
+# CALLBACKS
+# - Early Stopping
+EARLY_STOPPING_MONITOR = 'val_loss'
+EARLY_STOPPING_PATIENCE = 10
+EARLY_STOPPING_MIN_DELTA = 0
+EARLY_STOPPING_MODE = 'auto'
+EARLY_STOPPING_RESTORE_BEST_WEIGHTS = True
+EARLY_STOPPING_VERBOSE = 1
+
+# - Tensor Board
+TENSOR_BOARD_WRITE_GRAPH = True
+TENSOR_BOARD_WRITE_IMAGES = True
+TENSOR_BOARD_WRITE_STEPS_PER_SECOND = True
+TENSOR_BOARD_UPDATE_FREQ = 'epoch'
+TENSOR_BOARD_LOG_INTERVAL = 1
+
+# - LR Reduce
+LR_REDUCE_MONITOR = 'val_loss'
+LR_REDUCE_FACTOR = 0.1
+LR_REDUCE_PATIENCE = 100
+LR_REDUCE_MIN_DELTA = 0.0001
+LR_REDUCE_COOLDOWN = 0
+LR_REDUCE_MIN_LR = 0.0
+LR_REDUCE_MODE = 'auto'
+LR_REDUCE_VERBOSE = 1
+
+# - Layer Visualization
+CONV_VIS_LAYER_FIG_SIZE = (25, 25)
+CONV_VIS_LAYER_CMAP = 'gray'
+CONV_VIS_LAYER_LOG_INTERVAL = 2
+
+# - Model Checkpoint
+MODEL_CHECKPOINT_VERBOSE = 1
+MODEL_CHECKPOINT_CHECKPOINT_FREQUENCY = 1000
+MODEL_CHECKPOINT_SAVE_WEIGHTS_ONLY = True
+
