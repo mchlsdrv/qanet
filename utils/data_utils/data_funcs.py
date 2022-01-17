@@ -4,121 +4,86 @@ import copy
 import pandas as pd
 import pathlib
 import tensorflow as tf
+from collections.abc import Callable as function
 from functools import partial
+os.chdir('C:/Users/mchls/Desktop/University/PhD/Projects/QANet/qanet')
 from utils.general_utils import aux_funcs
 from utils.train_utils import train_funcs
-from utils.image_utils import image_funcs
+from utils.image_utils import (
+    image_funcs,
+    augmentation_funcs,
+    preprocessing_funcs
+)
 from configs.general_configs import (
     VAL_PROP
 )
 
-def configure_shapes(images, labels, shape):
-    images.set_shape(shape)
-    labels.set_shape([])
-    return images, labels
-
-
-def get_val_ds(dataset, validation_split):
-    dataset = dataset.shuffle(buffer_size=1024)
-    ds_size = dataset.cardinality().numpy()
-    n_val = int(validation_split * ds_size)
-
-    return dataset.take(n_val)
-
-
-def rename_files(files_dir_path: pathlib.Path):
-    # 1) Rename the files to have consequent name
-    idx = 1
-    for root, folders, files in os.walk(files_dir_path):
-        for file in files:
-            file_type = file.split('.')[-1]
-            os.rename(f'{root}/{file}', f'{root}/{idx}.{file_type}')
-            idx += 1
-
-
-def get_dataset_from_tiff(data_dir_path, input_image_shape, batch_size):
-    # 1) Create the global dataset
-    # - Rename the fies to have running index as the name
-    rename_files(files_dir_path=data_dir_path)
-
-    # 2) Split the dataset into train and validation
-    # 2.1) Create the train dataset
-    train_ds = tf.data.Dataset.list_files(str(data_dir_path / '*.tiff'))
-    train_ds = train_ds.map(lambda x: tf.numpy_function(partial(image_funcs.get_crop, image_shape=input_image_shape, get_label=True), [x], (tf.float32, tf.float32)))
-    train_ds = train_ds.map(partial(configure_shapes, shape=input_image_shape))
-    train_ds = train_ds.batch(batch_size)
-    train_ds = train_ds.shuffle(buffer_size=10*n_samples, reshuffle_each_iteration=True)
-    train_ds = train_ds.prefetch(tf.data.AUTOTUNE)
-    train_ds = train_ds.repeat()
-    n_samples = train_ds.cardinality().numpy()
-    print(f'- Number of train samples: {n_samples}')
-
-    # 2.2) Create the validation dataset
-    val_ds = get_val_ds(dataset=train_ds, validation_split=VAL_PROP)
-    val_ds = val_ds.map(lambda x: tf.numpy_function(partial(image_funcs.get_crop, image_shape=input_image_shape, get_label=True), [x], (tf.float32, tf.float32)))
-    val_ds = val_ds.map(partial(configure_shapes, shape=input_image_shape))
-    val_ds = val_ds.batch(4)
-    val_ds = val_ds.shuffle(buffer_size=1000)
-    val_ds = val_ds.prefetch(tf.data.AUTOTUNE)
-    val_ds = val_ds.repeat()
-    n_val = val_ds.cardinality().numpy()
-
-    print(f'- Number of validation samples ({100*validation_split:.2f}%): {n_val}')
-    return train_ds, val_ds
-
 
 class DataLoader(tf.keras.utils.Sequence):
-    def __init__(self, image_dir: dict, image_shape: tuple, batch_size: int, preprocessing_func, shuffle: bool = True):
-        self.image_dir = data_dir.get('image')
-        self.ground_truth_dir = data_dir.get('ground_truth')
-        self.segmentations_dir = data_dir.get('segmentations')
-        self.img_gt_seg_files = self._get_files()
-        self.n_files = len(self.img_gt_seg_files)
-        self.image_shape = image_shape
+    def __init__(self, data: dict, crop_shape: tuple, batch_size: int, preprocessings: function, augmentations: function, shuffle: bool = True):
+        # FILES
+        self.img_dir = data.get('images_dir')
+        self.seg_dir = data.get('segmentations_dir')
+        self.img_seg_fls = self._get_img_seg_files()
+        self.n_files = len(self.img_seg_files)
+        # SHAPE
+        self.image_shape = crop_shape
+        # BATCH
         self.batch_size = batch_size
-        self.preproc_func = preprocessing_func
+        # FUNCTIONS
+        self.preproc = preprocessings
+        self.augs = augmentations
+        # TRAINING
         self.shuffle = shuffle
 
-    def _get_files(self):
+    def _get_img_seg_files(self):
         '''
+        > This private method pairs between the image files and their corresponding segmentations.
         The files in the folders are asummed to have last three characters of their name
-        an index which should match for all the triplets of (img, gt, seg)
+        an index which should match for all the triplets of (img, seg)
         '''
 
+        # - All the image files
         img_fls = list()
-        for root, _, image_files in os.walk(self.image_dir):
+        for root, _, image_files in os.walk(self.img_dir):
             for image_file in image_files:
                 file_name = image_file[:image_file.index('.')].split('/')[-1]
                 img_fls.append(f'{root}/{image_file}')
 
-        gt_fls = list()
-        for root, _, gt_files in os.walk(self.ground_truth_dir):
-            for gt_file in gt_files:
-                file_name = gt_file[:gt_file.index('.')].split('/')[-1]
-                gt_fls.append(f'{root}/{gt_file}')
+        # - All the segmentation files
+        seg_fls = list()
+        for root, _, seg_files in os.walk(self.seg_dir):
+            for seg_file in seg_files:
+                file_name = seg_file[:seg_file.index('.')].split('/')[-1]
+                seg_fls.append(f'{root}/{seg_file}')
 
-        img_gt_seg_files = list()
-        for root, _, seg_files in os.walk(self.segmentations_dir):
-            for img_fl, gt_fl, seg_file in zip(img_fls, gt_fls, seg_files):
+        # - Pair the image files to their segmentation files
+        img_seg_fls = list()
+        for img_fl, seg_fl in zip(img_fls, seg_fls):
 
-                img_name = img_fl[:img_fl.index('.')].split('/')[-1]
-                img_idx = img_name[-3:]
+            img_name = img_fl[:img_fl.index('.')].split('/')[-1]
+            img_idx = img_name[-3:]  # => The last 3 characters are the image index
 
-                gt_file_name = gt_fl[:gt_fl.index('.')].split('/')[-1]
-                gt_idx = gt_file_name[-3:]
+            seg_name = seg_fl[:seg_fl.index('.')].split('/')[-1]
+            seg_idx = seg_name[-3:]  # => The last 3 characters are the image index
 
-                seg_name = seg_file[:seg_file.index('.')].split('/')[-1]
-                seg_idx = seg_name[-3:]
+            # -1- If the file indices match
+            if img_idx == seg_idx:
+                img_gt_seg_fls.append((img_fl, seg_fl))
 
-                # -1- If the files match
-                if img_idx == gt_idx == seg_idx:
-                    img_gt_seg_files.append((img_fl, gt_fl, f'{root}/{seg_file}'))
-        return img_gt_seg_files
+        return img_seg_fls
 
     def __len__(self):
+        '''
+        > Returns the number of batches
+        '''
         return int(np.floor(self.n_files / self.batch_size))
 
     def __getitem__(self, index):
+        '''
+        > Returns a batch of in a form of tuple:
+            (image crops, segmentation crops, augmented segmentation crops, target seg measure of the crops)
+        '''
         if index + self.batch_size <= self.n_files:
             # -1- If there are enough files to fit in the batch
             btch_fls = self.img_gt_seg_files[index:index+self.batch_size]
@@ -128,11 +93,10 @@ class DataLoader(tf.keras.utils.Sequence):
         return self._get_batch(batch_files=btch_fls)
 
     def _get_batch(self, batch_files: list):
-        crop_btch = []
+        img_btch = []
         seg_btch = []
         mod_seg_btch = []
-        trgt_jaccards = []
-        file_names = []
+        trgt_j= []
 
         # I) For each file in the files chosen for it
         batch_files = list(map(aux_funcs.decode_file, batch_files))
@@ -188,4 +152,22 @@ class DataLoader(tf.keras.utils.Sequence):
             N_btch = N_btch[random_idxs]
         return tf.convert_to_tensor(D_btch, dtype=tf.float32), tf.convert_to_tensor(N_btch, dtype=tf.float32)
 
+
+DATA_DIR = pathlib.Path('C:/Users/mchls/Desktop/University/PhD/Projects/QANet/Data/Silver_GT/Fluo-N2DH-GOWT1-ST')
+IMAGE_DIR = DATA_DIR / '01'
+GT_DIR = DATA_DIR / '01_ST/SEG'
+
+if __name__=='__main__':
+    data = dict(
+        images_dir=IMAGE_DIR,
+        segmentations_dir=GT_DIR
+    )
+    dl = DataLoader(
+        data=data,
+        image_shape=(254, 254, 1),
+        batch_size=32,
+        preprocessings=preprocessing_funcs.preprocessings,
+        augmentations=augmentation_funcs.augmentations,
+        shuffle=True
+    )
 

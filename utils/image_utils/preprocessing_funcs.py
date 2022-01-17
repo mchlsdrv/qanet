@@ -7,7 +7,7 @@ CLAHE_TILE_GRID_SIZE = (8, 8)
 BAR_HEIGHT = 70
 
 
-def clahe_filter(image):
+def preprocessings(image):
     # - Remove the information bar from the image
     img = image[:-BAR_HEIGHT]
 

@@ -16,7 +16,6 @@ from configs.general_configs import (
     OUTPUT_DIR,
     CONFIGS_DIR_PATH,
     EPSILON,
-    DETECTION_TH
 )
 
 

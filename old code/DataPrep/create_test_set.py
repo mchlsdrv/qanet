@@ -3,6 +3,7 @@ import os
 import utils
 import cv2
 import numpy as np
+import pathlib
 
 
 def run_main():
@@ -31,11 +32,11 @@ def run_main():
     for i in range(100):
         utils.log_print(i)
         image_batch, seg_batch, modified_seg_batch, jaccard, fnames = data.get_batch()
-        np.save(os.path.join(save_path, f'image_batch{i}.npy'), image_batch.numpy())
-        np.save(os.path.join(save_path, f'seg_batch{i}.npy'), seg_batch.numpy())
-        np.save(os.path.join(save_path, f'modified_seg_batch{i}.npy'), modified_seg_batch.numpy())
-        np.save(os.path.join(save_path, f'jaccard{i}.npy'), jaccard.numpy())
-        np.save(os.path.join(save_path, f'fnames{i}.npy'), fnames.numpy())
+        np.save(f'{save_path}/image_batch{i}.npy', image_batch.numpy())
+        np.save(f'{save_path}/seg_batch{i}.npy', seg_batch.numpy())
+        np.save(f'{save_path}/modified_seg_batch{i}.npy', modified_seg_batch.numpy())
+        np.save(f'{save_path}/jaccard{i}.npy', jaccard.numpy())
+        np.save(f'{save_path}/fnames{i}.npy', fnames.numpy())
         utils.log_print(i, image_batch.shape, seg_batch.shape, jaccard)
         all_jaccard.append(jaccard)
         pass
