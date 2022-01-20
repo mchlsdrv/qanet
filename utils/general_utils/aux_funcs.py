@@ -248,51 +248,51 @@ def get_seg_measure(ground_truth_segmentations, predicted_segmentations):
 
     return seg_measure
 
-def get_seg_measure(gt_batch, seg_batch):
-    btch_seg_measures = np.array([])
-    for idx, (gt, seg) in enumerate(zip(gt_batch, seg_batch)):
-        labels = np.where(np.unique(gt) > 0)  # Exclude the background
-        number_of_classes = labels.shape[0]
-        gt_areas = np.array([])
-        intersect_areas = np.array([])
-        jaccards = np.array([])
-        for lbl in labels:
-            # - Prepare the ground truth label
-            gt_lbl = np.zeros_like(gt)
-            gt_lbl_px = np.argwhere(gt_lbl == lbl)
-            gt_x, gt_y = gt_lbl_px[:, 0], gt_lbl_px[:, 1]
-            gt_lbl[(gt_x, gt_y)] = 1
-            gt_areas = np.append(gt_areas, gt_lbl.sum())
-
-            # - Prepare the ground truth label
-            seg_lbl = np.zeros_like(seg)
-            seg_lbl_px = np.argwhere(seg_lbl == lbl)
-            seg_x, seg_y = seg_lbl_px[:, 0], seg_lbl_px[:, 1]
-            seg_lbl[(seg_x, seg_y)] = 1
-
-            # - Calculate the intersection of the ground truth segmentation with
-            # the predicted segmentation
-            I = np.logical_and(gt_lbl, seg_lbl)
-            intersect_areas = np.append(intersect_areas, I.sum())
-
-            # - Calculate the union of the ground truth segmentation with
-            # the predicted segmentation
-            U = np.logical_or(gt_lbl, seg_lbl)
-
-            # - Calculate the Jaccard coefficient of the current label
-            J = I / (U + EPSILON)
-            jaccards = np.append(jaccards, J)
-
-        # - The detection counts only if the intersection is greater then INTERSECTION_TH
-        dets = intersect_areas / (gt_areas + EPSILON) > DETECTION_TH
-
-        # - The seg measure is the sum of the jaccards of the detected objects to
-        # the number of different objects in the image
-        seg_measure = jaccards[dets].sum() / (number_of_classes + EPSILON)
-
-        btch_seg_measures = np.append(btch_seg_measures, seg_measure)
-
-    return seg_measure
-
-
-
+# def get_seg_measure(gt_batch, seg_batch):
+#     btch_seg_measures = np.array([])
+#     for idx, (gt, seg) in enumerate(zip(gt_batch, seg_batch)):
+#         labels = np.where(np.unique(gt) > 0)  # Exclude the background
+#         number_of_classes = labels.shape[0]
+#         gt_areas = np.array([])
+#         intersect_areas = np.array([])
+#         jaccards = np.array([])
+#         for lbl in labels:
+#             # - Prepare the ground truth label
+#             gt_lbl = np.zeros_like(gt)
+#             gt_lbl_px = np.argwhere(gt_lbl == lbl)
+#             gt_x, gt_y = gt_lbl_px[:, 0], gt_lbl_px[:, 1]
+#             gt_lbl[(gt_x, gt_y)] = 1
+#             gt_areas = np.append(gt_areas, gt_lbl.sum())
+#
+#             # - Prepare the ground truth label
+#             seg_lbl = np.zeros_like(seg)
+#             seg_lbl_px = np.argwhere(seg_lbl == lbl)
+#             seg_x, seg_y = seg_lbl_px[:, 0], seg_lbl_px[:, 1]
+#             seg_lbl[(seg_x, seg_y)] = 1
+#
+#             # - Calculate the intersection of the ground truth segmentation with
+#             # the predicted segmentation
+#             I = np.logical_and(gt_lbl, seg_lbl)
+#             intersect_areas = np.append(intersect_areas, I.sum())
+#
+#             # - Calculate the union of the ground truth segmentation with
+#             # the predicted segmentation
+#             U = np.logical_or(gt_lbl, seg_lbl)
+#
+#             # - Calculate the Jaccard coefficient of the current label
+#             J = I / (U + EPSILON)
+#             jaccards = np.append(jaccards, J)
+#
+#         # - The detection counts only if the intersection is greater then INTERSECTION_TH
+#         dets = intersect_areas / (gt_areas + EPSILON) > DETECTION_TH
+#
+#         # - The seg measure is the sum of the jaccards of the detected objects to
+#         # the number of different objects in the image
+#         seg_measure = jaccards[dets].sum() / (number_of_classes + EPSILON)
+#
+#         btch_seg_measures = np.append(btch_seg_measures, seg_measure)
+#
+#     return seg_measure
+#
+#
+#

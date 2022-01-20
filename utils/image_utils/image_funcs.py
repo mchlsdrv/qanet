@@ -9,17 +9,32 @@ from utils.image_utils import preprocessing_funcs
 import matplotlib.pyplot as plt
 
 
-def get_random_crop(images, crop_shape):
-    # 4) Randomly crop the image
-    rnd_pt = tf.random.uniform(shape=(1, 2))
-    img = tf.image.crop_and_resize(
-        img,
-        boxes=[[rnd_pt[1], rnd_pt[0], rnd_pt[1] + crop_size[1], rnd_pt[0] + crop_size[0]]]
-    )
+def load_image(image_file):
+    img = cv2.imread(image_file, cv2.IMREAD_UNCHANGED)
+    if len(img.shape) < 3:
+        img = np.expand_dims(img, 2)
+    return img
+
+
+def get_random_crop(image, segmentation, crop_shape):
+    # 1) Produce random x, y coordinates with size of crop_shape
+    # - x
+    h = crop_shape[0]
+    x1 = np.random.randint(0, image.shape[0] - h)
+    x2 = x1 + h
+    # - y
+    w = crop_shape[1]
+    y1 = np.random.randint(0, image.shape[1] - w)
+    y2 = y1 + w
+
+    # 2) Randomly crop the image and the label
+    img = image[x1:x2, y1:y2]
+    seg = segmentation[x1:x2, y1:y2]
+
     img = tf.cast(img, tf.float32)
+    seg = tf.cast(seg, tf.float32)
 
-
-    return img, label
+    return img, seg
 
 
 def get_patch_df(image_file, preprocessing_func,  patch_height, patch_width):

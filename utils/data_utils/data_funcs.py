@@ -1,4 +1,5 @@
 import os
+import cv2
 import numpy as np
 import copy
 import pandas as pd
@@ -6,7 +7,8 @@ import pathlib
 import tensorflow as tf
 from collections.abc import Callable as function
 from functools import partial
-os.chdir('C:/Users/mchls/Desktop/University/PhD/Projects/QANet/qanet')
+from importlib import reload
+os.chdir('D:/University/PhD/QANET/qanet')
 from utils.general_utils import aux_funcs
 from utils.train_utils import train_funcs
 from utils.image_utils import (
@@ -14,29 +16,33 @@ from utils.image_utils import (
     augmentation_funcs,
     preprocessing_funcs
 )
+from utils.general_utils import (
+    aux_funcs,
+)
 from configs.general_configs import (
     VAL_PROP
 )
 
 
 class DataLoader(tf.keras.utils.Sequence):
-    def __init__(self, data: dict, crop_shape: tuple, batch_size: int, preprocessings: function, augmentations: function, shuffle: bool = True):
+    def __init__(self, data: dict, crop_shape: tuple, batch_size: int, shuffle: bool = True):
+
         # FILES
         self.img_dir = data.get('images_dir')
         self.seg_dir = data.get('segmentations_dir')
-        self.img_seg_fls = self._get_img_seg_files()
-        self.n_files = len(self.img_seg_files)
-        # SHAPE
-        self.image_shape = crop_shape
-        # BATCH
-        self.batch_size = batch_size
-        # FUNCTIONS
-        self.preproc = preprocessings
-        self.augs = augmentations
-        # TRAINING
-        self.shuffle = shuffle
+        self.img_seg_fls = self._get_img_seg_fls()
+        self.n_fls = len(self.img_seg_fls)
 
-    def _get_img_seg_files(self):
+        # CROP SHAPE
+        self.crp_shp = crop_shape
+
+        # BATCH
+        self.btch_sz = batch_size
+
+        # TRAINING
+        self.shuff = shuffle
+
+    def _get_img_seg_fls(self):
         '''
         > This private method pairs between the image files and their corresponding segmentations.
         The files in the folders are asummed to have last three characters of their name
@@ -69,7 +75,7 @@ class DataLoader(tf.keras.utils.Sequence):
 
             # -1- If the file indices match
             if img_idx == seg_idx:
-                img_gt_seg_fls.append((img_fl, seg_fl))
+                img_seg_fls.append((img_fl, seg_fl))
 
         return img_seg_fls
 
@@ -77,97 +83,92 @@ class DataLoader(tf.keras.utils.Sequence):
         '''
         > Returns the number of batches
         '''
-        return int(np.floor(self.n_files / self.batch_size))
+        return int(np.floor(self.n_fls / self.btch_sz))
 
     def __getitem__(self, index):
         '''
         > Returns a batch of in a form of tuple:
             (image crops, segmentation crops, augmented segmentation crops, target seg measure of the crops)
         '''
-        if index + self.batch_size <= self.n_files:
+        if index + self.btch_sz <= self.n_fls:
             # -1- If there are enough files to fit in the batch
-            btch_fls = self.img_gt_seg_files[index:index+self.batch_size]
+            btch_fls = self.img_seg_fls[index:index+self.btch_sz]
         else:
-            # -2- If there are no batch_size files left
-            btch_fls = self.img_gt_seg_files[index:]
+            # -2- If there are no btch_sz files left
+            btch_fls = self.img_seg_fls[index:]
         return self._get_batch(batch_files=btch_fls)
 
     def _get_batch(self, batch_files: list):
-        img_btch = []
-        seg_btch = []
-        mod_seg_btch = []
-        trgt_j= []
+        img_crps_btch = np.array([], dtype=np.float32)
+        seg_crps_btch = np.array([], dtype=np.float32)
+        mod_seg_crps_btch = np.array([], dtype=np.float32)
+        trgt_seg_msrs_btch = np.array([], dtype=np.float32)
 
-        # I) For each file in the files chosen for it
-        batch_files = list(map(aux_funcs.decode_file, batch_files))
-        for idx, (img_fl, gt_fl, seg_fl) in enumerate(batch_files):
+        # 1) For each file in the batch files
+        btch_fls = list(map(aux_funcs.decode_file, batch_files))
+        for idx, (img_fl, seg_fl) in enumerate(btch_fls):
             # 2) Read the image
-            img = self.preproc_fun(cv2.imread(img_fl, cv2.IMREAD_UNCHANGED))
-            gt = self.preproc_fun(cv2.imread(gt_fl, cv2.IMREAD_UNCHANGED))
-            seg = self.preproc_fun(cv2.imread(seg_fl, cv2.IMREAD_UNCHANGED))
+            img = image_funcs.load_image(img_fl)  #cv2.imread(img_fl, cv2.IMREAD_UNCHANGED)
+            print(img.shape)
+            seg = image_funcs.load_image(seg_fl)  #cv2.imread(seg_fl, cv2.IMREAD_UNCHANGED)
+            print(seg.shape)
 
             # 3) Apply the preprocessing function
-            img = preprocessing_funcs.clahe_filter(image=img)
-            img_crp, gt_crp, seg_crp = image_funcs.get_random_crop(
-                image_files=[img_fl, gt_fl, seg_fl],
-                image_shape=self.image_shape,
+            img = preprocessing_funcs.preprocessings(image=img)
+
+            # 4) Randomly crop the image together with the label
+            img_crp, seg_crp = image_funcs.get_random_crop(
+                image=img,
+                segmentation=seg,
+                crop_shape=self.crp_shp
             )
-            # - Add the original file to the batch
-            D_btch.append(X)
+            mod_seg_crp = augmentation_funcs.augmentations(seg_crp)
+            trgt_seg_msr = aux_funcs.get_seg_measure(
+                ground_truth_segmentations=seg_crp,
+                predicted_segmentations=mod_seg_crp
+            )
 
-            # II) Add each of the neighbors of the original image (first ne)
-            # - If the number of the neighbors is greater than 1
-            if self.k > 1:
-                N_X_files = list(copy.deepcopy(knn_batch_df.loc[X_file_idx, 'neighbors'])[0])
-                # - The  image at index 0 is the original image
-                N_X_files.pop(0)
-                N_X = []
-                for N_X_file in N_X_files:
-                    ngbr, _ = image_funcs.get_crop(
-                        image_file=N_X_file,
-                        image_shape=self.image_shape,
-                        get_label=False
-                    )
-                    # - Collect the neighbors of the original image
-                    N_X.append(ngbr)
-                # - Add the collected neighbors to the neighbors batch
-                N_btch.append(N_X)
-            else:
-                # - If we are interensted only in the closest neighbor
-                ngbr, _ = image_funcs.get_crop(
-                    image_file=knn_batch_df.loc[X_file_idx, 'neighbors'][0][1],
-                    image_shape=self.image_shape,
-                    get_label=False
-                )
-                # - Add the closest neighbor to the neighbors batch
-                N_btch.append(ngbr)
-
-        D_btch = np.array(D_btch, dtype=np.float32)
-        N_btch = np.array(N_btch, dtype=np.float32)
+            img_crps_btch = np.append(img_crps_btch, img_crp)
+            seg_crps_btch = np.append(seg_crps_btch, seg_crp)
+            mod_seg_crps_btch = np.append(mod_seg_crps_btch, mod_seg_crp)
+            trgt_seg_msrs_btch = np.append(trgt_seg_msrs_btch, trgt_seg_msr)
 
         if self.shuffle:
-            random_idxs = np.arange(D_btch.shape[0])
-            np.random.shuffle(random_idxs)
-            D_btch = D_btch[random_idxs]
-            N_btch = N_btch[random_idxs]
-        return tf.convert_to_tensor(D_btch, dtype=tf.float32), tf.convert_to_tensor(N_btch, dtype=tf.float32)
+            rand_idxs = np.arange(img_btch.shape[0])
+            np.random.shuffle(rand_idxs)
+
+            img_crps_btch = img_crps_btch[random_idxs]
+            seg_crps_btch = seg_crps_btch[random_idxs]
+            mod_seg_crps_btch = mod_seg_crps_btch[random_idxs]
+            trgt_seg_msrs_btch = trgt_seg_msrs_btch[random_idxs]
+
+        return (
+            tf.convert_to_tensor(img_crps_btch, dtype=tf.float32),
+            tf.convert_to_tensor(seg_crps_btch, dtype=tf.float32),
+            tf.convert_to_tensor(mod_seg_crps_btch, dtype=tf.float32),
+            tf.convert_to_tensor(trgt_seg_msrs_btch, dtype=tf.float32)
+        )
 
 
-DATA_DIR = pathlib.Path('C:/Users/mchls/Desktop/University/PhD/Projects/QANet/Data/Silver_GT/Fluo-N2DH-GOWT1-ST')
+DATA_DIR = pathlib.Path('D:/University/PhD/QANET/Data/Fluo-N2DH-GOWT1-ST')
 IMAGE_DIR = DATA_DIR / '01'
+IMAGE_DIR.is_dir()
 GT_DIR = DATA_DIR / '01_ST/SEG'
+GT_DIR.is_dir()
 
 if __name__=='__main__':
     data = dict(
         images_dir=IMAGE_DIR,
         segmentations_dir=GT_DIR
     )
+    reload(preprocessing_funcs)
+    reload(image_funcs)
     dl = DataLoader(
         data=data,
-        image_shape=(254, 254, 1),
+        crop_shape=(254, 254, 1),
         batch_size=32,
-        preprocessings=preprocessing_funcs.preprocessings,
-        augmentations=augmentation_funcs.augmentations,
         shuffle=True
     )
 
+    for btch in dl:
+        print(btch.shape)

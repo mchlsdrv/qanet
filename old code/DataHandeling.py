@@ -466,9 +466,11 @@ class CTCRAMReaderQANet2D(object):
         labled = labled.astype(np.uint16)
         orig_shape = labled.shape
         flat_lables = labled.ravel()  # => flattens the lables
-        unique_vals, flat_lables = np.unique(flat_lables, return_inverse=True)  # => return_inverse return the indices of the values in the unique array where they should be placed to construct the original array
+        unique_vals, flat_lables = np.unique(flat_lables, return_inverse=True)  # => return_inverse return the
+        # indices of the values in the unique array where they should be placed to construct the original array
 
-        # (!) This condition will throw a  "IndexError: index 0 is out of bounds for axis 0 with size 0" in case len(unique_vals) == 0
+        # (!) This condition will throw a "IndexError: index 0 is out of bounds for axis 0 with size 0" in case
+        # len(unique_vals) == 0
         if len(unique_vals) == 0 and unique_vals[0] > 0:
             flat_lables[:] = 1  # => Places 1 in all the entries
 
@@ -479,7 +481,7 @@ class CTCRAMReaderQANet2D(object):
         return out, out_flat
 
     def calc_jaccard(self, gt, seg):
-        # - Extracts the foreground, i.e., the segmentations
+        # - Extracts the conture of the segmentations, i.e., the segmentations
         no_bg = np.greater(np.maximum(gt,seg),0)  # no_bg = np.maximum(gt, seg) > 0
 
         # - Ground truth label
@@ -551,4 +553,3 @@ class CTCRAMReaderQANet2D(object):
         plt.cla()
         plt.hist(all_jac, 20, (0, 1))
         plt.show()
-
