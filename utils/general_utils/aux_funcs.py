@@ -1,20 +1,17 @@
 import os
 import yaml
 import logging
+import logging.config
 import threading
 import argparse
 import pathlib
 import tensorflow as tf
 import numpy as np
-import pandas as pd
-from sklearn.neighbors import NearestNeighbors
 from models import cnn
-from utils.image_utils import image_funcs
 from configs.general_configs import (
     TRAIN_DATA_DIR,
     TEST_DATA_DIR,
     OUTPUT_DIR,
-    CONFIGS_DIR_PATH,
     EPSILON,
 )
 
@@ -79,7 +76,7 @@ def get_model(checkpoint_dir: pathlib.Path = None, logger: logging.Logger = None
                 logger.exception(err)
         else:
             if isinstance(logger, logging.Logger):
-                logger.info(f'Weights from \'checkpoint_dir\' were loaded successfully to the \'{model_name}\' model!')
+                logger.info(f'Weights from \'checkpoint_dir\' were loaded successfully to the \'RibCage\' model!')
 
     if isinstance(logger, logging.Logger):
         logger.info(model.summary())
@@ -131,7 +128,7 @@ def get_logger(configs_file, save_file):
     return logger
 
 
-def get_arg_parcer():
+def get_arg_parser():
     parser = argparse.ArgumentParser()
 
     # FLAGS
@@ -146,7 +143,7 @@ def get_arg_parcer():
 
     # c) Network
     parser.add_argument('--train_epochs', type=int, default=100, help='Number of epochs to train the feature extractor network')
-    parser.add_argument('--train_steps_per_epoch', type=int, default=1000, help='Number of iterations that will be performed on each epoch for the featrue extractor network')
+    parser.add_argument('--train_steps_per_epoch', type=int, default=1000, help='Number of iterations that will be performed on each epoch for the feature extractor network')
     parser.add_argument('--batch_size', type=int, default=32, help='The number of samples in each batch')
     parser.add_argument('--validation_split', type=float, default=0.1, help='The proportion of the data to be used for validation in the train process of the feature extractor model ((should be in range [0.0, 1.0])')
     parser.add_argument('--validation_steps_proportion', type=float, default=0.5, help='The proportion of validation steps in regards to the training steps in the train process of the feature extractor model ((should be in range [0.0, 1.0])')
@@ -159,17 +156,17 @@ def get_arg_parcer():
 
 
 def get_jaccard(gt_batch, seg_batch):
-    '''
+    """
     Receives two batches one of the predicted segmentations and the other of the
     ground truth segmentations, and returns the Jaccard measure i.e., the intersection
     over union (J = I / U)
     :gt_batch: The ground truth segmentation batch in format NHWC
     :seg_batch: The predicted segmentation batch in format NHWC
     :return:
-        1) J - np.array of jaccard measurs
+        1) J - np.array of jaccard measures
         2) I - np.array of the intersection quantities
         3) U - np.array of the union quantities
-    '''
+    """
     # - Transform the gt_batch image into a binary format
     if np.max(gt_batch) > 1:
         gt_batch = np.array(gt_batch > 0, dtype=np.int16)
@@ -184,115 +181,68 @@ def get_jaccard(gt_batch, seg_batch):
     # - Calculate the union of the images
     U = np.logical_or(gt_batch, seg_batch).sum(axis=(1, 2))
 
-    # - Calculat the Jaccard coefficient
+    # - Calculate the Jaccard coefficient
     J = I / (U + EPSILON)
 
     return J, I, U
 
 
-def get_seg_measure(ground_truth_segmentations, predicted_segmentations):
-    labels = np.where(np.unique(ground_truth_segmentations) > 0)[0]  # Exclude the background
-    print('labels:', labels)
+def get_seg_measure(ground_truth, segmentations):
+    labels = np.unique(ground_truth)[1:]  # Exclude the background (the '0')
+
     number_of_classes = labels.shape[0]
+
     gt_areas = np.array([])
-    intersect_areas = np.array([])
+    I_areas = np.array([])
     obj_jaccards = np.array([])
+
     for gt_cls in labels:
-        print('gt_cls:', gt_cls)
         # - Prepare the ground truth label
-        gt_lbl = np.zeros_like(ground_truth_segmentations)
-        gt_lbl_px = np.argwhere(ground_truth_segmentations == gt_cls)
-        print('gt:', ground_truth_segmentations[ground_truth_segmentations==gt_cls])
-        print('gt_lbl_px', gt_lbl_px)
-        gt_x, gt_y = gt_lbl_px[:, 0], gt_lbl_px[:, 1]
-        gt_lbl[(gt_x, gt_y)] = 1
-        gt_areas = np.append(gt_areas, gt_lbl.sum())
+        gt_lbl = np.zeros_like(ground_truth)
+        gt_lbl_px = np.argwhere(ground_truth == gt_cls)
+        if gt_lbl_px.shape[0]:
+            gt_x, gt_y = gt_lbl_px[:, 0], gt_lbl_px[:, 1]
+            gt_lbl[(gt_x, gt_y)] = 1  # => mark the entries at the indices as '1', to produce a binary label
+            gt_areas = np.append(gt_areas, gt_lbl.sum())
 
-        # - Prepare the ground truth label
-        # (*) As the predicted segmentations' class may differ, we need to infere it
-        # from the ground truth, by looking at the most abundant label in the vacinity
-        # of the ground truth label
-        I = gt_lbl * predicted_segmentations  # => provides the labels which correspond to the ground truth label
-        I = I[I > 0]  # => as '0' will be there, we need to dispose of it, as it is the background
-        seg_lbls, cnts = np.unique(I, return_counts=True)  # => counting the labels
-        seg_cls = seg_lbls[np.argmax(cnts)]  # => here we choose the most abundant label as the class we are looking for in the predictions
+            # - Prepare the ground truth label
+            # (*) As the predicted segmentations' class may differ, we need to infer it
+            # from the ground truth, by looking at the most abundant label in the vicinity
+            # of the ground truth label
+            I = gt_lbl * segmentations  # => provides the labels which correspond to the ground truth label
+            I = I[I > 0]  # => as '0' will be there, we need to dispose of it, as it is the background
 
-        seg_lbl = np.zeros_like(predicted_segmentations)
-        seg_lbl_px = np.argwhere(predicted_segmentations == seg_cls)
-        print('seg:', predicted_segmentations[predicted_segmentations==seg_cls])
-        seg_x, seg_y = seg_lbl_px[:, 0], seg_lbl_px[:, 1]
-        seg_lbl[(seg_x, seg_y)] = 1
+            seg_lbls, cnts = np.unique(I, return_counts=True)  # => counting the labels
 
-        # - Calculate the intersection of the ground truth segmentation with
-        # the predicted segmentation
-        I_area = np.logical_and(gt_lbl, seg_lbl).sum()
-        print('I:', I_area)
-        intersect_areas = np.append(intersect_areas, I_area)
+            # - If the predicted label does not contain the class - skip it
+            if not cnts.any():
+                I_areas = np.append(I_areas, 0.)  # => add the intersection area, which in this case is 0
+                obj_jaccards = np.append(obj_jaccards, 0.)  # => add the jaccard coefficient, which in this case is also 0
+                continue
 
-        # - Calculate the union of the ground truth segmentation with
-        # the predicted segmentation
-        U_area = np.logical_or(gt_lbl, seg_lbl).sum()
-        print('U:', U_area)
+            seg_cls = seg_lbls[np.argmax(cnts)]  # => here we choose the most abundant label as the class we are looking for in the predictions
 
-        # - Calculate the Jaccard coefficient of the current label
-        J = I_area / (U_area + EPSILON)
-        obj_jaccards = np.append(obj_jaccards, J)
-    print('obj_jacc:', obj_jaccards)
-    print('gt_areas:', gt_areas)
+            seg_lbl = np.zeros_like(segmentations)
+            seg_lbl_px = np.argwhere(segmentations == seg_cls)
+            seg_x, seg_y = seg_lbl_px[:, 0], seg_lbl_px[:, 1]
+            seg_lbl[(seg_x, seg_y)] = 1
+            I_area = np.logical_and(gt_lbl, seg_lbl).sum()  # => calculate the intersection of the ground truth with the segmentation
+            I_areas = np.append(I_areas, I_area)
+
+            # - Calculate the union of the ground truth segmentation with
+            # the predicted segmentation
+            U_area = np.logical_or(gt_lbl, seg_lbl).sum()
+
+            # - Calculate the Jaccard coefficient of the current label
+            J = I_area / (U_area + EPSILON)
+            obj_jaccards = np.append(obj_jaccards, J)
+
     # - The detection counts only if the intersection is greater then INTERSECTION_TH
-    dets = intersect_areas / (gt_areas + EPSILON) > DETECTION_TH
-    print('dets:', dets)
+    dets = I_areas / (gt_areas + EPSILON) > .5
+
     # - The seg measure is the sum of the jaccards of the detected objects to
     # the number of different objects in the image
+
     seg_measure = obj_jaccards[dets].sum() / (number_of_classes + EPSILON)
 
     return seg_measure
-
-# def get_seg_measure(gt_batch, seg_batch):
-#     btch_seg_measures = np.array([])
-#     for idx, (gt, seg) in enumerate(zip(gt_batch, seg_batch)):
-#         labels = np.where(np.unique(gt) > 0)  # Exclude the background
-#         number_of_classes = labels.shape[0]
-#         gt_areas = np.array([])
-#         intersect_areas = np.array([])
-#         jaccards = np.array([])
-#         for lbl in labels:
-#             # - Prepare the ground truth label
-#             gt_lbl = np.zeros_like(gt)
-#             gt_lbl_px = np.argwhere(gt_lbl == lbl)
-#             gt_x, gt_y = gt_lbl_px[:, 0], gt_lbl_px[:, 1]
-#             gt_lbl[(gt_x, gt_y)] = 1
-#             gt_areas = np.append(gt_areas, gt_lbl.sum())
-#
-#             # - Prepare the ground truth label
-#             seg_lbl = np.zeros_like(seg)
-#             seg_lbl_px = np.argwhere(seg_lbl == lbl)
-#             seg_x, seg_y = seg_lbl_px[:, 0], seg_lbl_px[:, 1]
-#             seg_lbl[(seg_x, seg_y)] = 1
-#
-#             # - Calculate the intersection of the ground truth segmentation with
-#             # the predicted segmentation
-#             I = np.logical_and(gt_lbl, seg_lbl)
-#             intersect_areas = np.append(intersect_areas, I.sum())
-#
-#             # - Calculate the union of the ground truth segmentation with
-#             # the predicted segmentation
-#             U = np.logical_or(gt_lbl, seg_lbl)
-#
-#             # - Calculate the Jaccard coefficient of the current label
-#             J = I / (U + EPSILON)
-#             jaccards = np.append(jaccards, J)
-#
-#         # - The detection counts only if the intersection is greater then INTERSECTION_TH
-#         dets = intersect_areas / (gt_areas + EPSILON) > DETECTION_TH
-#
-#         # - The seg measure is the sum of the jaccards of the detected objects to
-#         # the number of different objects in the image
-#         seg_measure = jaccards[dets].sum() / (number_of_classes + EPSILON)
-#
-#         btch_seg_measures = np.append(btch_seg_measures, seg_measure)
-#
-#     return seg_measure
-#
-#
-#

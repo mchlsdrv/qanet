@@ -1,16 +1,12 @@
 import os
-import cv2
+
+import matplotlib.pyplot as plt
 import numpy as np
-import copy
-import pandas as pd
 import pathlib
 import tensorflow as tf
-from collections.abc import Callable as function
-from functools import partial
 from importlib import reload
-os.chdir('D:/University/PhD/QANET/qanet')
-from utils.general_utils import aux_funcs
-from utils.train_utils import train_funcs
+# os.chdir('D:/University/PhD/QANET/qanet')
+os.chdir('C:/Users/mchls/Desktop/University/PhD/Projects/QANet/qanet')
 from utils.image_utils import (
     image_funcs,
     augmentation_funcs,
@@ -18,9 +14,6 @@ from utils.image_utils import (
 )
 from utils.general_utils import (
     aux_funcs,
-)
-from configs.general_configs import (
-    VAL_PROP
 )
 
 
@@ -43,24 +36,25 @@ class DataLoader(tf.keras.utils.Sequence):
         self.shuff = shuffle
 
     def _get_img_seg_fls(self):
-        '''
-        > This private method pairs between the image files and their corresponding segmentations.
-        The files in the folders are asummed to have last three characters of their name
+        """
+
+        This private method pairs between the image files and their corresponding segmentations.
+        The files in the folders are assumed to have last three characters of their name
         an index which should match for all the triplets of (img, seg)
-        '''
+
+        :return: list
+        """
 
         # - All the image files
         img_fls = list()
         for root, _, image_files in os.walk(self.img_dir):
             for image_file in image_files:
-                file_name = image_file[:image_file.index('.')].split('/')[-1]
                 img_fls.append(f'{root}/{image_file}')
 
         # - All the segmentation files
         seg_fls = list()
         for root, _, seg_files in os.walk(self.seg_dir):
             for seg_file in seg_files:
-                file_name = seg_file[:seg_file.index('.')].split('/')[-1]
                 seg_fls.append(f'{root}/{seg_file}')
 
         # - Pair the image files to their segmentation files
@@ -80,16 +74,16 @@ class DataLoader(tf.keras.utils.Sequence):
         return img_seg_fls
 
     def __len__(self):
-        '''
+        """
         > Returns the number of batches
-        '''
+        """
         return int(np.floor(self.n_fls / self.btch_sz))
 
     def __getitem__(self, index):
-        '''
+        """
         > Returns a batch of in a form of tuple:
             (image crops, segmentation crops, augmented segmentation crops, target seg measure of the crops)
-        '''
+        """
         if index + self.btch_sz <= self.n_fls:
             # -1- If there are enough files to fit in the batch
             btch_fls = self.img_seg_fls[index:index+self.btch_sz]
@@ -99,19 +93,19 @@ class DataLoader(tf.keras.utils.Sequence):
         return self._get_batch(batch_files=btch_fls)
 
     def _get_batch(self, batch_files: list):
-        img_crps_btch = np.array([], dtype=np.float32)
-        seg_crps_btch = np.array([], dtype=np.float32)
-        mod_seg_crps_btch = np.array([], dtype=np.float32)
-        trgt_seg_msrs_btch = np.array([], dtype=np.float32)
+        img_crps_btch = list()
+        seg_crps_btch = list()
+        mod_seg_crps_btch = list()
+        trgt_seg_msrs_btch = list()
 
         # 1) For each file in the batch files
         btch_fls = list(map(aux_funcs.decode_file, batch_files))
         for idx, (img_fl, seg_fl) in enumerate(btch_fls):
             # 2) Read the image
-            img = image_funcs.load_image(img_fl)  #cv2.imread(img_fl, cv2.IMREAD_UNCHANGED)
-            print(img.shape)
-            seg = image_funcs.load_image(seg_fl)  #cv2.imread(seg_fl, cv2.IMREAD_UNCHANGED)
-            print(seg.shape)
+            img = image_funcs.load_image(img_fl)  # cv2.imread(img_fl, cv2.IMREAD_UNCHANGED)
+            # print(img.shape)
+            seg = image_funcs.load_image(seg_fl)  # cv2.imread(seg_fl, cv2.IMREAD_UNCHANGED)
+            # print(seg.shape)
 
             # 3) Apply the preprocessing function
             img = preprocessing_funcs.preprocessings(image=img)
@@ -124,23 +118,28 @@ class DataLoader(tf.keras.utils.Sequence):
             )
             mod_seg_crp = augmentation_funcs.augmentations(seg_crp)
             trgt_seg_msr = aux_funcs.get_seg_measure(
-                ground_truth_segmentations=seg_crp,
-                predicted_segmentations=mod_seg_crp
+                ground_truth=seg_crp,
+                segmentations=mod_seg_crp
             )
 
-            img_crps_btch = np.append(img_crps_btch, img_crp)
-            seg_crps_btch = np.append(seg_crps_btch, seg_crp)
-            mod_seg_crps_btch = np.append(mod_seg_crps_btch, mod_seg_crp)
-            trgt_seg_msrs_btch = np.append(trgt_seg_msrs_btch, trgt_seg_msr)
+            img_crps_btch.append(img_crp)
+            seg_crps_btch.append(seg_crp)
+            mod_seg_crps_btch.append(mod_seg_crp)
+            trgt_seg_msrs_btch.append(trgt_seg_msr)
 
-        if self.shuffle:
-            rand_idxs = np.arange(img_btch.shape[0])
-            np.random.shuffle(rand_idxs)
+        img_crps_btch = np.array(img_crps_btch, dtype=np.float32)
+        seg_crps_btch = np.array(seg_crps_btch, dtype=np.float32)
+        mod_seg_crps_btch = np.array(mod_seg_crps_btch, dtype=np.float32)
+        trgt_seg_msrs_btch = np.array(trgt_seg_msrs_btch, dtype=np.float32)
 
-            img_crps_btch = img_crps_btch[random_idxs]
-            seg_crps_btch = seg_crps_btch[random_idxs]
-            mod_seg_crps_btch = mod_seg_crps_btch[random_idxs]
-            trgt_seg_msrs_btch = trgt_seg_msrs_btch[random_idxs]
+        if self.shuff:
+            rnd_idxs = np.arange(img_crps_btch.shape[0])
+            np.random.shuffle(rnd_idxs)
+
+            img_crps_btch = img_crps_btch[rnd_idxs]
+            seg_crps_btch = seg_crps_btch[rnd_idxs]
+            mod_seg_crps_btch = mod_seg_crps_btch[rnd_idxs]
+            trgt_seg_msrs_btch = trgt_seg_msrs_btch[rnd_idxs]
 
         return (
             tf.convert_to_tensor(img_crps_btch, dtype=tf.float32),
@@ -150,25 +149,32 @@ class DataLoader(tf.keras.utils.Sequence):
         )
 
 
-DATA_DIR = pathlib.Path('D:/University/PhD/QANET/Data/Fluo-N2DH-GOWT1-ST')
+# DATA_DIR = pathlib.Path('D:/University/PhD/QANET/Data/Fluo-N2DH-GOWT1-ST')
+DATA_DIR = pathlib.Path('C:/Users/mchls/Desktop/University/PhD/Projects/QANet/Data/Silver_GT/Fluo-N2DH-GOWT1-ST')
 IMAGE_DIR = DATA_DIR / '01'
 IMAGE_DIR.is_dir()
 GT_DIR = DATA_DIR / '01_ST/SEG'
 GT_DIR.is_dir()
 
-if __name__=='__main__':
-    data = dict(
+if __name__ == '__main__':
+    test_data = dict(
         images_dir=IMAGE_DIR,
         segmentations_dir=GT_DIR
     )
-    reload(preprocessing_funcs)
-    reload(image_funcs)
+    reload(aux_funcs);
+    reload(preprocessing_funcs);
+    reload(image_funcs);
     dl = DataLoader(
-        data=data,
+        data=test_data,
         crop_shape=(254, 254, 1),
-        batch_size=32,
+        batch_size=10,
         shuffle=True
     )
-
-    for btch in dl:
-        print(btch.shape)
+    # len(dl)
+    np.count_nonzero(np.array([1, 2, 3]))
+    for idx, btch in enumerate(dl):
+        imgs, segs, mod_segs, J = btch
+        print(J)
+        plt.imshow(imgs[0], cmap='gray')
+        # print(idx)
+        # print(btch[0].shape)

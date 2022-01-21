@@ -11,8 +11,8 @@ def preprocessings(image):
     img = image
     if len(img.shape) < 3:
         img = np.expand_dims(img, 2)
-    print(img.shape)
-    
+    # print(img.shape)
+
     # - If the image is in RGB - convert it to gray scale
     if img.shape[-1] > 1:
         img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
