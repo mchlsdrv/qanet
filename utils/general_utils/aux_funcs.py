@@ -243,9 +243,10 @@ def get_seg_measure(ground_truth, segmentations):
             jaccards = np.append(jaccards, J)  # => add the jaccard to history
 
     # - The detection counts only if the intersection covers at least 0.5 of the objects' area
-    det_objs = I_areas / (gt_areas + EPSILON) > .5
+    # det_objs = I_areas / (gt_areas + EPSILON) > .5
 
     # - The seg measure is the sum of the jaccards of the detected objects (i.e., the once which overlap by at least 0.5 of objects' area) to the number of different object classes in the crop
-    seg_measure = jaccards[det_objs].sum() / (number_of_classes + EPSILON)
+    seg_measure = jaccards.sum() / (number_of_classes + EPSILON)
+    # seg_measure = jaccards[det_objs].sum() / (number_of_classes + EPSILON)
 
     return seg_measure
