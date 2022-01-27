@@ -11,11 +11,6 @@ from scipy.ndimage import (
     grey_dilation,
     grey_erosion
 )
-from skimage.feature import (
-    corner_harris,
-    corner_subpix,
-    corner_peaks
-)
 from skimage.transform import (
     warp,
     AffineTransform
@@ -23,12 +18,14 @@ from skimage.transform import (
 from scipy.ndimage.interpolation import map_coordinates
 from scipy.ndimage.filters import gaussian_filter
 
-os.chdir('C:/Users/mchls/Desktop/University/PhD/Projects/QANet/qanet')
-# os.chdir('D:/University/PhD/QANET/qanet')
+# os.chdir('C:/Users/mchls/Desktop/University/PhD/Projects/QANet/qanet')
+os.chdir('D:/University/PhD/QANET/qanet')
 from configs.general_configs import (
     BRIGHTNESS_DELTA,
     CONTRAST
 )
+from utils.general_utils import aux_funcs
+
 CROP_SHAPE = (256, 256)
 EROSION_SIZES = (5, 7, 11, 15)
 DILATION_SIZES = (5, 7, 11, 15)
@@ -178,67 +175,91 @@ def augment(image, segmentation):
     return img, seg, spoiled_seg
 
 
-def plot(images, labels):
+def plot(images, labels, save_file=None):
     fig, ax = plt.subplots(1, len(images), figsize=(15, 10))
     for idx, (img, lbl) in enumerate(zip(images, labels)):
         ax[idx].imshow(img, cmap='gray')
         ax[idx].set_title(lbl)
-    return fig
+
+    if save_file is not None:
+        fig.savefig(save_file)
+        plt.close(fig)
 
 
-DATA_DIR = pathlib.Path('C:/Users/mchls/Desktop/University/PhD/Projects/QANet/Data/Silver_GT/Fluo-N2DH-GOWT1-ST')
-OUTPUT_DIR = pathlib.Path('C:/Users/mchls/Desktop/University/PhD/Projects/QANet/Data/output/augmentations')
-# DATA_DIR = pathlib.Path('D:/University/PhD/QANET/Data/Fluo-N2DH-GOWT1-ST')
+# DATA_DIR = pathlib.Path('C:/Users/mchls/Desktop/University/PhD/Projects/QANet/Data/Silver_GT/Fluo-N2DH-GOWT1-ST')
+DATA_DIR = pathlib.Path('D:/University/PhD/QANET/Data/Fluo-N2DH-GOWT1-ST')
 IMAGE_DIR = DATA_DIR / '01'
 IMAGE_DIR.is_dir()
 GT_DIR = DATA_DIR / '01_ST/SEG'
 GT_DIR.is_dir()
+# OUTPUT_DIR = pathlib.Path('C:/Users/mchls/Desktop/University/PhD/Projects/QANet/Data/output/augmentations')
+OUTPUT_DIR = pathlib.Path('D:/University/PhD/QANET/Data')
 
 if __name__ == '__main__':
     org_img = cv2.imread(f'{IMAGE_DIR}/t000.tif')
     org_seg = cv2.imread(f'{GT_DIR}/man_seg000.tif', -1)
 
-    plot([org_img, org_seg])
+    plot([org_img, org_seg], ['Image', 'Segmentation'])
 
     # ROTATION
     rot_img, rot_seg = random_rotation(img, seg)
-    plot([img, rot_img, rot_seg])
+    plot([img, rot_img, rot_seg], ['Image', 'Rotated Image', 'Rotated Segmentation'])
 
     # EROSION
-    er_seg = erode(seg)
-    plot([seg, er_seg])
+    er_seg = random_erosion(seg)
+    plot([seg, er_seg], ['Segmentation', 'Eroded Segmentation'])
 
     # DILATION
-    di_seg = dilate(seg)
-    plot([seg, di_seg])
+    di_seg = random_dilation(seg)
+    plot([seg, di_seg], ['Segmentation', 'Dilated Segmentation'])
 
     # OPENING
-    op_seg = open(seg)
-    plot([seg, op_seg])
+    op_seg = random_opening(seg)
+    plot([seg, op_seg], ['Segmentation', 'Opened Segmentation'])
 
     # CLOSING
-    cl_seg = close(seg)
-    plot([seg, cl_seg])
+    cl_seg = random_closing(seg)
+    plot([seg, cl_seg], ['Segmentation', 'Closed Segmentation'])
 
     # AFFINE TRANSFORM
     aff_seg = affine_transform(seg)
-    plot([seg, aff_seg])
+    plot([seg, aff_seg], ['Segmentation', 'Affine Segmentation'])
 
     # ELASTIC TRANSFORM
     el_seg = elastic_transform(org_seg)
     plot([org_seg, el_seg], ['Segmentation', 'Augmented Segmentation'])
+
     OUTPUT_DIR.is_dir()
-    rot_dir = OUTPUT_DIR / 'rotations'
-    er_dir = OUTPUT_DIR / 'erosions'
-    dil_dir = OUTPUT_DIR / 'dilations'
-    op_dir = OUTPUT_DIR / 'openings'
-    cls_dir = OUTPUT_DIR / 'closiongs'
-    aff_dir = OUTPUT_DIR / 'affines'
-    morph_dir = OUTPUT_DIR / 'morphological'
-    aug_dir = OUTPUT_DIR / 'all cropped'
-    os.makedirs(aug_dir, exist_ok=True)
+    augs_dir = OUTPUT_DIR / 'augmentations'
+    os.makedirs(augs_dir, exist_ok=True)
+
+    rot_dir = augs_dir / 'rotations'
+    os.makedirs(rot_dir, exist_ok=True)
+
+    er_dir = augs_dir / 'erosions'
+    os.makedirs(er_dir, exist_ok=True)
+
+    dil_dir = augs_dir / 'dilations'
+    os.makedirs(dil_dir, exist_ok=True)
+
+    op_dir = augs_dir / 'openings'
+    os.makedirs(op_dir, exist_ok=True)
+
+    cls_dir = augs_dir / 'closiongs'
+    os.makedirs(cls_dir, exist_ok=True)
+
+    aff_dir = augs_dir / 'affines'
+    os.makedirs(aff_dir, exist_ok=True)
+
+    morph_dir = augs_dir / 'morphological'
+    os.makedirs(morph_dir, exist_ok=True)
+
+    all_crops_dir = augs_dir / 'all cropped'
+    os.makedirs(all_crops_dir, exist_ok=True)
+
     img, seg, spoiled_seg = augment(org_img, org_seg)
     plot([img, seg, spoiled_seg])
+
     for idx in range(50):
 
         rot = plot([*random_rotation(org_img, org_seg)], ['Image', 'Segmentation'])
@@ -269,7 +290,9 @@ if __name__ == '__main__':
         morph.savefig(f'{morph_dir}/morph_{idx}.png')
         plt.close(morph)
 
-    for idx in range(100):
-        aug_seg = plot([*augment(image=org_img, segmentation=org_seg)], ['Image Crop', 'Segmentation Crop', 'Augmented Segmentation Crop'])
-        aug_seg.savefig(f'{aug_dir}/aug_{idx}.png')
-        plt.close(aug_seg)
+    
+    for idx in range(1000):
+        img, seg, aug_seg = augment(image=org_img, segmentation=org_seg)
+        J = aux_funcs.get_seg_measure(seg, aug_seg)
+
+        plot([img, seg, aug_seg], ['Image Crop', 'Segmentation Crop', f'Augmented Segmentation Crop (J = {J:.2f})'], save_file=f'{all_crops_dir}/aug_{idx}.png')
