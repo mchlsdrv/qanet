@@ -148,7 +148,7 @@ def elastic_transform(segmentation):
     x, y = np.meshgrid(np.arange(seg_shp[0]), np.arange(seg_shp[1]))
     idxs = np.reshape(y + dy, (-1, 1)), np.reshape(x + dx, (-1, 1))
 
-    return map_coordinates(seg, idxs, order=1, mode='reflect').reshape(seg_shp)
+    return map_coordinates(segmentation, idxs, order=1, mode='reflect').reshape(seg_shp)
 
 
 def augment(image, segmentation):
@@ -160,37 +160,39 @@ def augment(image, segmentation):
     img, seg = random_crop(image=img, segmentation=seg, crop_shape=CROP_SHAPE)
 
     # II. Segmentation only
-    spoiled_seg = seg
     #  1) Non-ridgid (Affine)
-    if np.random.random() >= .5:
-        spoiled_seg = affine_transform(seg)
+    spoiled_seg = affine_transform(seg)
 
+    #  2) Morphological
+    spoiled_seg = morphological_transform(spoiled_seg)
+
+    #  3) Elastic
     if np.random.random() >= .5:
-        spoiled_seg = morphological_transform(seg)
+        spoiled_seg = elastic_transform(spoiled_seg)
 
     # img = tf.cast(img, tf.float32)
     # seg = tf.cast(seg, tf.float32)
     # spoiled_seg = tf.cast(spoiled_seg, tf.float32)
 
+    # plot([img, seg, spoiled_seg])
     return img, seg, spoiled_seg
 
 
+def plot(images, labels):
+    fig, ax = plt.subplots(1, len(images), figsize=(15, 10))
+    for idx, (img, lbl) in enumerate(zip(images, labels)):
+        ax[idx].imshow(img, cmap='gray')
+        ax[idx].set_title(lbl)
+    return fig
+
+
 DATA_DIR = pathlib.Path('C:/Users/mchls/Desktop/University/PhD/Projects/QANet/Data/Silver_GT/Fluo-N2DH-GOWT1-ST')
-OUTPUT_DIR = pathlib.Path('C:/Users/mchls/Desktop/University/PhD/Projects/QANet/Data/output')
+OUTPUT_DIR = pathlib.Path('C:/Users/mchls/Desktop/University/PhD/Projects/QANet/Data/output/augmentations')
 # DATA_DIR = pathlib.Path('D:/University/PhD/QANET/Data/Fluo-N2DH-GOWT1-ST')
 IMAGE_DIR = DATA_DIR / '01'
 IMAGE_DIR.is_dir()
 GT_DIR = DATA_DIR / '01_ST/SEG'
 GT_DIR.is_dir()
-
-
-def plot(images):
-    fig, ax = plt.subplots(1, len(images), figsize=(15, 10))
-    for idx, img in enumerate(images):
-        ax[idx].imshow(img, cmap='gray')
-    return fig
-
-
 
 if __name__ == '__main__':
     org_img = cv2.imread(f'{IMAGE_DIR}/t000.tif')
@@ -223,9 +225,9 @@ if __name__ == '__main__':
     plot([seg, aff_seg])
 
     # ELASTIC TRANSFORM
-    el_seg = elastic_transform(seg)
-    plot([seg, el_seg])
-
+    el_seg = elastic_transform(org_seg)
+    plot([org_seg, el_seg], ['Segmentation', 'Augmented Segmentation'])
+    OUTPUT_DIR.is_dir()
     rot_dir = OUTPUT_DIR / 'rotations'
     er_dir = OUTPUT_DIR / 'erosions'
     dil_dir = OUTPUT_DIR / 'dilations'
@@ -233,35 +235,41 @@ if __name__ == '__main__':
     cls_dir = OUTPUT_DIR / 'closiongs'
     aff_dir = OUTPUT_DIR / 'affines'
     morph_dir = OUTPUT_DIR / 'morphological'
-
+    aug_dir = OUTPUT_DIR / 'all cropped'
+    os.makedirs(aug_dir, exist_ok=True)
     img, seg, spoiled_seg = augment(org_img, org_seg)
     plot([img, seg, spoiled_seg])
-    for idx in range(10):
+    for idx in range(50):
 
-        rot = plot([img, *random_rotation(img, seg)])
+        rot = plot([*random_rotation(org_img, org_seg)], ['Image', 'Segmentation'])
         rot.savefig(f'{rot_dir}/rot_{idx}.png')
         plt.close(rot)
 
-        er = plot([seg, random_erosion(seg)])
+        er = plot([org_seg, random_erosion(org_seg)], ['Segmentation', 'Augmented Segmentation'])
         er.savefig(f'{er_dir}/er_{idx}.png')
         plt.close(er)
 
-        dil = plot([seg, random_dilation(seg)])
+        dil = plot([org_seg, random_dilation(org_seg)], ['Segmentation', 'Augmented Segmentation'])
         dil.savefig(f'{dil_dir}/dil_{idx}.png')
         plt.close(dil)
 
-        op = plot([seg, random_opening(seg)])
+        op = plot([org_seg, random_opening(org_seg)], ['Segmentation', 'Augmented Segmentation'])
         op.savefig(f'{op_dir}/op_{idx}.png')
         plt.close(op)
 
-        cls = plot([seg, random_closing(seg)])
+        cls = plot([org_seg, random_closing(org_seg)], ['Segmentation', 'Augmented Segmentation'])
         cls.savefig(f'{cls_dir}/cls_{idx}.png')
         plt.close(cls)
 
-        aff = plot([seg, affine_transform(seg)])
+        aff = plot([org_seg, affine_transform(org_seg)], ['Segmentation', 'Augmented Segmentation'])
         aff.savefig(f'{aff_dir}/aff_{idx}.png')
         plt.close(aff)
 
-        morph = plot([seg, elastic_transform(seg)])
+        morph = plot([org_seg, elastic_transform(org_seg)], ['Segmentation', 'Augmented Segmentation'])
         morph.savefig(f'{morph_dir}/morph_{idx}.png')
         plt.close(morph)
+
+    for idx in range(100):
+        aug_seg = plot([*augment(image=org_img, segmentation=org_seg)], ['Image Crop', 'Segmentation Crop', 'Augmented Segmentation Crop'])
+        aug_seg.savefig(f'{aug_dir}/aug_{idx}.png')
+        plt.close(aug_seg)
