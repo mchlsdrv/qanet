@@ -5,7 +5,7 @@ import numpy as np
 import cv2
 import matplotlib.pyplot as plt
 from tensorflow import keras
-
+from importlib import reload
 from scipy.ndimage import (
     generate_binary_structure,
     grey_dilation,
@@ -18,14 +18,18 @@ from skimage.transform import (
 from scipy.ndimage.interpolation import map_coordinates
 from scipy.ndimage.filters import gaussian_filter
 
-# os.chdir('C:/Users/mchls/Desktop/University/PhD/Projects/QANet/qanet')
-os.chdir('D:/University/PhD/QANET/qanet')
+os.chdir('C:/Users/mchls/Desktop/University/PhD/Projects/QANet/qanet')
+# os.chdir('D:/University/PhD/QANET/qanet')
 from configs.general_configs import (
-    BRIGHTNESS_DELTA,
-    CONTRAST
+    EPSILON
 )
+from utils.image_utils import image_funcs
+reload(image_funcs)
 from utils.general_utils import aux_funcs
-
+STANDARDIZE_CROPS = True
+NON_EMPTY_CROPS = True
+NON_EMPTY_CROP_THRESHOLD = 1000
+MAX_EMPTY_CROPS = 100
 CROP_SHAPE = (256, 256)
 EROSION_SIZES = (5, 7, 11, 15)
 DILATION_SIZES = (5, 7, 11, 15)
@@ -40,7 +44,7 @@ def random_rotation(image: np.ndarray, segmentation: np.ndarray) -> (np.ndarray,
     dgrs = np.random.randint(-180, 180)
     # Rotates the image by degrees
     img_shp = image.shape
-    h, w = img.shape[0], img.shape[1]
+    h, w = img_shp[0], img_shp[1]
 
     # - Represents the point around which the image will be rotated
     cX, cY = w // 2, h // 2
@@ -60,23 +64,35 @@ def random_rotation(image: np.ndarray, segmentation: np.ndarray) -> (np.ndarray,
 
 
 def random_crop(image, segmentation, crop_shape):
+    n_tries = 0
     # 1) Produce random x, y coordinates with size of crop_shape
+    while True:
+        # - x coordinate
+        h = crop_shape[0]
+        x1 = np.random.randint(0, image.shape[0] - h)
+        x2 = x1 + h
 
-    # - x coordinate
-    h = crop_shape[0]
-    x1 = np.random.randint(0, image.shape[0] - h)
-    x2 = x1 + h
+        # - y coordinate
+        w = crop_shape[1]
+        y1 = np.random.randint(0, image.shape[1] - w)
+        y2 = y1 + w
 
-    # - y coordinate
-    w = crop_shape[1]
-    y1 = np.random.randint(0, image.shape[1] - w)
-    y2 = y1 + w
+        # 2) Randomly crop the image and the label
+        img_crp = image[x1:x2, y1:y2]
+        seg_crp = segmentation[x1:x2, y1:y2]
 
-    # 2) Randomly crop the image and the label
-    img = image[x1:x2, y1:y2]
-    seg = segmentation[x1:x2, y1:y2]
+        # 3) Check if one of the following happens:
+        # - a - the crop contains some foreground
+        # - b - if we reach the maximum number of tries
+        # - c - if we don't care (i.e., non_empty=False),
+        if seg_crp.sum() > NON_EMPTY_CROP_THRESHOLD \
+        or n_tries >= MAX_EMPTY_CROPS \
+        or not NON_EMPTY_CROPS:
+            break
 
-    return img, seg
+        n_tries += 1
+
+    return img_crp, seg_crp
 
 
 def random_erosion(image, kernel=None):
@@ -175,124 +191,95 @@ def augment(image, segmentation):
     return img, seg, spoiled_seg
 
 
-def plot(images, labels, save_file=None):
+def plot(images, labels, save_file: pathlib.Path = None):
     fig, ax = plt.subplots(1, len(images), figsize=(15, 10))
     for idx, (img, lbl) in enumerate(zip(images, labels)):
         ax[idx].imshow(img, cmap='gray')
         ax[idx].set_title(lbl)
 
-    if save_file is not None:
-        fig.savefig(save_file)
+    if isinstance(save_file, pathlib.Path):
+        os.makedirs(save_file.parent, exist_ok=True)
+        fig.savefig(str(save_file))
         plt.close(fig)
 
-
-# DATA_DIR = pathlib.Path('C:/Users/mchls/Desktop/University/PhD/Projects/QANet/Data/Silver_GT/Fluo-N2DH-GOWT1-ST')
-DATA_DIR = pathlib.Path('D:/University/PhD/QANET/Data/Fluo-N2DH-GOWT1-ST')
+DATA_DIR = pathlib.Path('C:/Users/mchls/Desktop/University/PhD/Projects/QANet/Data/Silver_GT/Fluo-N2DH-GOWT1-ST')
+# DATA_DIR = pathlib.Path('D:/University/PhD/QANET/Data/Fluo-N2DH-GOWT1-ST')
 IMAGE_DIR = DATA_DIR / '01'
 IMAGE_DIR.is_dir()
 GT_DIR = DATA_DIR / '01_ST/SEG'
 GT_DIR.is_dir()
-# OUTPUT_DIR = pathlib.Path('C:/Users/mchls/Desktop/University/PhD/Projects/QANet/Data/output/augmentations')
-OUTPUT_DIR = pathlib.Path('D:/University/PhD/QANET/Data')
+OUTPUT_DIR = pathlib.Path('C:/Users/mchls/Desktop/University/PhD/Projects/QANet/Data/output/augmentations')
+# OUTPUT_DIR = pathlib.Path('D:/University/PhD/QANET/Data/output/augmentations')
 
 if __name__ == '__main__':
     org_img = cv2.imread(f'{IMAGE_DIR}/t000.tif')
     org_seg = cv2.imread(f'{GT_DIR}/man_seg000.tif', -1)
+    
+    # TODO: This should be done together with the image loading
+    org_img = image_funcs.preprocessings(org_img)
 
+    org_img.shape
     plot([org_img, org_seg], ['Image', 'Segmentation'])
 
     # ROTATION
-    rot_img, rot_seg = random_rotation(img, seg)
-    plot([img, rot_img, rot_seg], ['Image', 'Rotated Image', 'Rotated Segmentation'])
+    rot_img, rot_seg = random_rotation(org_img, org_seg)
+    plot([org_img, rot_img, rot_seg], ['Image', 'Rotated Image', 'Rotated Segmentation'])
 
     # EROSION
-    er_seg = random_erosion(seg)
-    plot([seg, er_seg], ['Segmentation', 'Eroded Segmentation'])
+    plot([org_seg, random_erosion(org_seg)], ['Segmentation', 'Eroded Segmentation'])
 
     # DILATION
-    di_seg = random_dilation(seg)
-    plot([seg, di_seg], ['Segmentation', 'Dilated Segmentation'])
+    plot([org_seg, random_dilation(org_seg)], ['Segmentation', 'Dilated Segmentation'])
 
     # OPENING
-    op_seg = random_opening(seg)
-    plot([seg, op_seg], ['Segmentation', 'Opened Segmentation'])
+    plot([org_seg, random_opening(org_seg)], ['Segmentation', 'Opened Segmentation'])
 
     # CLOSING
-    cl_seg = random_closing(seg)
-    plot([seg, cl_seg], ['Segmentation', 'Closed Segmentation'])
+    plot([org_seg, random_closing(org_seg)], ['Segmentation', 'Closed Segmentation'])
 
     # AFFINE TRANSFORM
-    aff_seg = affine_transform(seg)
-    plot([seg, aff_seg], ['Segmentation', 'Affine Segmentation'])
+    plot([org_seg, affine_transform(org_seg)], ['Segmentation', 'Affine Segmentation'])
 
     # ELASTIC TRANSFORM
-    el_seg = elastic_transform(org_seg)
-    plot([org_seg, el_seg], ['Segmentation', 'Augmented Segmentation'])
+    plot([org_seg, elastic_transform(org_seg)], ['Segmentation', 'Augmented Segmentation'])
 
-    OUTPUT_DIR.is_dir()
-    augs_dir = OUTPUT_DIR / 'augmentations'
-    os.makedirs(augs_dir, exist_ok=True)
+    rot_dir = OUTPUT_DIR / 'rotations'
 
-    rot_dir = augs_dir / 'rotations'
-    os.makedirs(rot_dir, exist_ok=True)
+    er_dir = OUTPUT_DIR / 'erosions'
 
-    er_dir = augs_dir / 'erosions'
-    os.makedirs(er_dir, exist_ok=True)
+    dil_dir = OUTPUT_DIR / 'dilations'
 
-    dil_dir = augs_dir / 'dilations'
-    os.makedirs(dil_dir, exist_ok=True)
+    op_dir = OUTPUT_DIR / 'openings'
 
-    op_dir = augs_dir / 'openings'
-    os.makedirs(op_dir, exist_ok=True)
+    cls_dir = OUTPUT_DIR / 'closiongs'
 
-    cls_dir = augs_dir / 'closiongs'
-    os.makedirs(cls_dir, exist_ok=True)
+    aff_dir = OUTPUT_DIR / 'affines'
 
-    aff_dir = augs_dir / 'affines'
-    os.makedirs(aff_dir, exist_ok=True)
+    morph_dir = OUTPUT_DIR / 'morphological'
 
-    morph_dir = augs_dir / 'morphological'
-    os.makedirs(morph_dir, exist_ok=True)
-
-    all_crops_dir = augs_dir / 'all cropped'
-    os.makedirs(all_crops_dir, exist_ok=True)
-
+    crops_dir = OUTPUT_DIR / 'crops'
+    img.max()
     img, seg, spoiled_seg = augment(org_img, org_seg)
-    plot([img, seg, spoiled_seg])
-
+    plot([img, seg, spoiled_seg], ['image', 'Segmentation', 'Augmented Segmentation'])
     for idx in range(50):
 
-        rot = plot([*random_rotation(org_img, org_seg)], ['Image', 'Segmentation'])
-        rot.savefig(f'{rot_dir}/rot_{idx}.png')
-        plt.close(rot)
+        plot([*random_rotation(org_img, org_seg)], ['Image', 'Segmentation'], rot_dir / 'rot_{idx}.png')
 
-        er = plot([org_seg, random_erosion(org_seg)], ['Segmentation', 'Augmented Segmentation'])
-        er.savefig(f'{er_dir}/er_{idx}.png')
-        plt.close(er)
+        plot([org_seg, random_erosion(org_seg)], ['Segmentation', 'Augmented Segmentation'], er_dir / 'er_{idx}.png')
 
-        dil = plot([org_seg, random_dilation(org_seg)], ['Segmentation', 'Augmented Segmentation'])
-        dil.savefig(f'{dil_dir}/dil_{idx}.png')
-        plt.close(dil)
+        plot([org_seg, random_dilation(org_seg)], ['Segmentation', 'Augmented Segmentation'], dil_dir / 'dil_{idx}.png')
 
-        op = plot([org_seg, random_opening(org_seg)], ['Segmentation', 'Augmented Segmentation'])
-        op.savefig(f'{op_dir}/op_{idx}.png')
-        plt.close(op)
+        plot([org_seg, random_opening(org_seg)], ['Segmentation', 'Augmented Segmentation'], op_dir / 'op_{idx}.png')
 
-        cls = plot([org_seg, random_closing(org_seg)], ['Segmentation', 'Augmented Segmentation'])
-        cls.savefig(f'{cls_dir}/cls_{idx}.png')
-        plt.close(cls)
+        plot([org_seg, random_closing(org_seg)], ['Segmentation', 'Augmented Segmentation'], cls_dir / 'cls_{idx}.png')
 
-        aff = plot([org_seg, affine_transform(org_seg)], ['Segmentation', 'Augmented Segmentation'])
-        aff.savefig(f'{aff_dir}/aff_{idx}.png')
-        plt.close(aff)
+        plot([org_seg, affine_transform(org_seg)], ['Segmentation', 'Augmented Segmentation'], aff_dir / 'aff_{idx}.png')
 
-        morph = plot([org_seg, elastic_transform(org_seg)], ['Segmentation', 'Augmented Segmentation'])
-        morph.savefig(f'{morph_dir}/morph_{idx}.png')
-        plt.close(morph)
+        plot([org_seg, elastic_transform(org_seg)], ['Segmentation', 'Augmented Segmentation'], morph_dir / 'morph_{idx}.png')
 
-    
+
     for idx in range(1000):
         img, seg, aug_seg = augment(image=org_img, segmentation=org_seg)
         J = aux_funcs.get_seg_measure(seg, aug_seg)
 
-        plot([img, seg, aug_seg], ['Image Crop', 'Segmentation Crop', f'Augmented Segmentation Crop (J = {J:.2f})'], save_file=f'{all_crops_dir}/aug_{idx}.png')
+        plot([img, seg, aug_seg], ['Image Crop', 'Segmentation Crop', f'Augmented Segmentation Crop (J = {J:.2f})'], save_file=crops_dir / f'std/aug_{idx}.png')
