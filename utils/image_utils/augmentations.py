@@ -1,13 +1,9 @@
 import os
-import tensorflow as tf
 import pathlib
 import numpy as np
 import cv2
-import matplotlib.pyplot as plt
-from tensorflow import keras
 from importlib import reload
 from scipy.ndimage import (
-    generate_binary_structure,
     grey_dilation,
     grey_erosion
 )
@@ -21,23 +17,27 @@ from scipy.ndimage.filters import gaussian_filter
 os.chdir('C:/Users/mchls/Desktop/University/PhD/Projects/QANet/qanet')
 # os.chdir('D:/University/PhD/QANET/qanet')
 from configs.general_configs import (
-    EPSILON
+    EROSION_SIZES,
+    DILATION_SIZES,
+    OPENNING_SIZES,
+    CLOSING_SIZES,
+    SCALE_RANGE,
+    SHEER_RANGE,
+    CROP_SHAPE,
+    NON_EMPTY_CROPS,
+    NON_EMPTY_CROP_THRESHOLD,
+    MAX_EMPTY_CROPS,
 )
-from utils.image_utils import image_funcs
-reload(image_funcs)
-from utils.general_utils import aux_funcs
-STANDARDIZE_CROPS = True
-NON_EMPTY_CROPS = True
-NON_EMPTY_CROP_THRESHOLD = 1000
-MAX_EMPTY_CROPS = 100
-CROP_SHAPE = (256, 256)
-EROSION_SIZES = (5, 7, 11, 15)
-DILATION_SIZES = (5, 7, 11, 15)
-OPENNING_SIZES = (5, 7, 11, 15)
-CLOSING_SIZES = (5, 7, 11, 15)
-
-AFFINE_SCALE = (1.3, 1.1)
-AFFINE_SHEER = .2
+from utils.image_utils import filters
+from utils.image_utils.preprocessings import (
+    preprocess_image
+)
+from utils.image_utils.image_aux import (
+    get_seg_measure
+)
+from utils.visualisation_utils.plotting_funcs import (
+    plot
+)
 
 
 def random_rotation(image: np.ndarray, segmentation: np.ndarray) -> (np.ndarray, np.ndarray):
@@ -63,17 +63,17 @@ def random_rotation(image: np.ndarray, segmentation: np.ndarray) -> (np.ndarray,
     return rot_img, rot_seg
 
 
-def random_crop(image, segmentation, crop_shape):
+def random_crop(image, segmentation):
     n_tries = 0
     # 1) Produce random x, y coordinates with size of crop_shape
     while True:
         # - x coordinate
-        h = crop_shape[0]
+        h = CROP_SHAPE[0]
         x1 = np.random.randint(0, image.shape[0] - h)
         x2 = x1 + h
 
         # - y coordinate
-        w = crop_shape[1]
+        w = CROP_SHAPE[1]
         y1 = np.random.randint(0, image.shape[1] - w)
         y2 = y1 + w
 
@@ -112,7 +112,7 @@ def random_dilation(image, kernel=None):
 
 
 def random_opening(image):
-    # Connected labels are brought appart
+    # Connected labels are brought apart
     krnl = np.random.choice(OPENNING_SIZES)
     return random_dilation(random_erosion(image, kernel=krnl), kernel=krnl)
 
@@ -137,8 +137,8 @@ def morphological_transform(segmentation):
 
 
 def affine_transform(segmentation):
-    scl = np.random.uniform(0.01, 0.1, 2)
-    tform = AffineTransform(scale=scl + 1, shear=np.random.uniform(0.1, 0.2))
+    scl = np.random.uniform(*SCALE_RANGE, 2)
+    tform = AffineTransform(scale=scl + 1, shear=np.random.uniform(*SHEER_RANGE))
     return warp(segmentation, tform.inverse, output_shape=segmentation.shape)
 
 
@@ -170,10 +170,10 @@ def augment(image, segmentation):
     img, seg = random_rotation(image=image, segmentation=segmentation)
 
     #  2) Random crop
-    img, seg = random_crop(image=img, segmentation=seg, crop_shape=CROP_SHAPE)
+    img, seg = random_crop(image=img, segmentation=seg)
 
     # II. Segmentation only
-    #  1) Non-ridgid (Affine)
+    #  1) Non-ridged (Affine)
     spoiled_seg = affine_transform(seg)
 
     #  2) Morphological
@@ -187,20 +187,8 @@ def augment(image, segmentation):
     # seg = tf.cast(seg, tf.float32)
     # spoiled_seg = tf.cast(spoiled_seg, tf.float32)
 
-    # plot([img, seg, spoiled_seg])
     return img, seg, spoiled_seg
 
-
-def plot(images, labels, save_file: pathlib.Path = None):
-    fig, ax = plt.subplots(1, len(images), figsize=(15, 10))
-    for idx, (img, lbl) in enumerate(zip(images, labels)):
-        ax[idx].imshow(img, cmap='gray')
-        ax[idx].set_title(lbl)
-
-    if isinstance(save_file, pathlib.Path):
-        os.makedirs(save_file.parent, exist_ok=True)
-        fig.savefig(str(save_file))
-        plt.close(fig)
 
 DATA_DIR = pathlib.Path('C:/Users/mchls/Desktop/University/PhD/Projects/QANet/Data/Silver_GT/Fluo-N2DH-GOWT1-ST')
 # DATA_DIR = pathlib.Path('D:/University/PhD/QANET/Data/Fluo-N2DH-GOWT1-ST')
@@ -214,11 +202,13 @@ OUTPUT_DIR = pathlib.Path('C:/Users/mchls/Desktop/University/PhD/Projects/QANet/
 if __name__ == '__main__':
     org_img = cv2.imread(f'{IMAGE_DIR}/t000.tif')
     org_seg = cv2.imread(f'{GT_DIR}/man_seg000.tif', -1)
-    
-    # TODO: This should be done together with the image loading
-    org_img = image_funcs.preprocessings(org_img)
+    plot([org_img, org_img], ['Image', 'Segmentation'])
 
-    org_img.shape
+    # reload(filters)
+    prep_img = preprocess_image(org_img)
+    img, seg, spoiled_seg = augment(prep_img, org_seg)
+    plot([img, seg, spoiled_seg], ['image', 'Segmentation', 'Augmented Segmentation'])
+    img.max()
     plot([org_img, org_seg], ['Image', 'Segmentation'])
 
     # ROTATION
@@ -258,9 +248,8 @@ if __name__ == '__main__':
     morph_dir = OUTPUT_DIR / 'morphological'
 
     crops_dir = OUTPUT_DIR / 'crops'
-    img.max()
-    img, seg, spoiled_seg = augment(org_img, org_seg)
-    plot([img, seg, spoiled_seg], ['image', 'Segmentation', 'Augmented Segmentation'])
+
+    # TODO: This should be done together with the image loading
     for idx in range(50):
 
         plot([*random_rotation(org_img, org_seg)], ['Image', 'Segmentation'], rot_dir / 'rot_{idx}.png')
@@ -277,9 +266,8 @@ if __name__ == '__main__':
 
         plot([org_seg, elastic_transform(org_seg)], ['Segmentation', 'Augmented Segmentation'], morph_dir / 'morph_{idx}.png')
 
-
     for idx in range(1000):
         img, seg, aug_seg = augment(image=org_img, segmentation=org_seg)
-        J = aux_funcs.get_seg_measure(seg, aug_seg)
+        J = get_seg_measure(seg, aug_seg)
 
-        plot([img, seg, aug_seg], ['Image Crop', 'Segmentation Crop', f'Augmented Segmentation Crop (J = {J:.2f})'], save_file=crops_dir / f'std/aug_{idx}.png')
+        plot([img, seg, aug_seg], ['Image Crop', 'Segmentation Crop', f'Augmented Segmentation Crop (J = {J:.2f})'], save_file=crops_dir / f'clahe/aug_{idx}.png')

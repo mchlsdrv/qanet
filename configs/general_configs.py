@@ -1,27 +1,49 @@
 import pathlib
-import cv2
-from matplotlib import pyplot as plt
 
-DEBUG = False
-DATA_DIR_PATH = pathlib.Path('../Data')
-TRAIN_DATA_DIR = str(DATA_DIR_PATH / 'antrax_strep_small_med_large/S1/medium/train')
-TEST_DATA_DIR = str(DATA_DIR_PATH / 'antrax_strep_small_med_large/S1/medium/test')
-OUTPUT_DIR = '../Output/antrax_strep_medium'
-CONFIGS_DIR_PATH = pathlib.Path('C:/Users/mchls/Desktop/University/PhD/projects/QANet/qanet/configs')
-RIBCAGE_CONFIGS_FILE_PATH = CONFIGS_DIR_PATH / 'ribcage_configs.yml'
+
+# PATHS
+DATA_DIR_PATH = pathlib.Path('C:/Users/mchls/Desktop/University/PhD/Projects/QANet/Data/Silver_GT/Fluo-N2DH-GOWT1-ST')
+TRAIN_DATA_DIR = DATA_DIR_PATH / 'train'
+TEST_DATA_DIR = DATA_DIR_PATH / 'test'
+OUTPUT_DIR = pathlib.Path('C:/Users/mchls/Desktop/University/PhD/Projects/QANet/Data/output/augmentations')
+CONFIGS_DIR_PATH = pathlib.Path('C:/Users/mchls/Desktop/University/PhD/Projects/QANet/qanet/configs')
+RIBCAGE_CONFIGS_FILE_PATH = pathlib.Path('C:/Users/mchls/Desktop/University/PhD/Projects/QANet/qanet/configs/ribcage_configs.yml')
 
 # CONSTANTS
 EPSILON = 1e-7
 
 # DATA
-VAL_PROP = .2
+VALIDATION_PROPORTION = .2
 
 # PREPROCESSING CONFIGS
-STANDARDIZE_CROPS = True
+STANDARDIZE_IMAGE = True
+
+# - Crops
+CROP_SHAPE = (256, 256)
+NON_EMPTY_CROPS = True
+NON_EMPTY_CROP_THRESHOLD = 1000
+MAX_EMPTY_CROPS = 100
+
+# FILTERS CONFIGS
+# - CLipped Adaptive Histogram Equalization (CLAHE)
+# Enhances the contrast by equalizing the image intensity
+APPLY_CLAHE_FILTER = True
+CLAHE_CLIP_LIMIT = 2.0
+CLAHE_TILE_GRID_SIZE = (8, 8)
 
 # AUGMENTATION CONFIGS
 BRIGHTNESS_DELTA = 0.1
 CONTRAST = (0.4, 0.6)
+
+# - Morphological Transforms
+EROSION_SIZES = (5, 7, 11, 15)
+DILATION_SIZES = (5, 7, 11, 15)
+OPENNING_SIZES = (5, 7, 11, 15)
+CLOSING_SIZES = (5, 7, 11, 15)
+
+# - Affine Transforms
+SCALE_RANGE = (0.01, 0.1)
+SHEER_RANGE = (.1, .2)
 
 # CALLBACKS
 # - Early Stopping
@@ -58,4 +80,3 @@ CONV_VIS_LAYER_LOG_INTERVAL = 2
 MODEL_CHECKPOINT_VERBOSE = 1
 MODEL_CHECKPOINT_CHECKPOINT_FREQUENCY = 1000
 MODEL_CHECKPOINT_SAVE_WEIGHTS_ONLY = True
-

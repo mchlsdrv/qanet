@@ -7,13 +7,22 @@ import tensorflow as tf
 from importlib import reload
 # os.chdir('D:/University/PhD/QANET/qanet')
 os.chdir('C:/Users/mchls/Desktop/University/PhD/Projects/QANet/qanet')
-from utils.image_utils import (
-    image_funcs,
-    augmentation_funcs,
-    preprocessing_funcs
+
+from utils.image_utils.preprocessings import (
+    preprocess_image
 )
+
+from utils.image_utils.image_aux import (
+    get_seg_measure,
+    load_image
+)
+
 from utils.general_utils import (
     aux_funcs,
+)
+
+from utils.image_utils.augmentations import (
+    augment,
 )
 
 
@@ -101,30 +110,25 @@ class DataLoader(tf.keras.utils.Sequence):
         # 1) For each file in the batch files
         btch_fls = list(map(aux_funcs.decode_file, batch_files))
         for idx, (img_fl, seg_fl) in enumerate(btch_fls):
-            # 2) Read the image
-            img = image_funcs.load_image(img_fl)  # cv2.imread(img_fl, cv2.IMREAD_UNCHANGED)
-            # print(img.shape)
-            seg = image_funcs.load_image(seg_fl)  # cv2.imread(seg_fl, cv2.IMREAD_UNCHANGED)
-            # print(seg.shape)
+
+            # 2) Read the image and apply preprocessing functions on it
+            img = preprocess_image(load_image(img_fl))
+
+            # 2.1) No need to apply the preprocessing on the label, as it consists from a running index
+            seg = load_image(seg_fl)  # cv2.imread(seg_fl, cv2.IMREAD_UNCHANGED)
 
             # 3) Apply the preprocessing function
-            img = preprocessing_funcs.preprocessings(image=img)
+            img = preprocess_image(image=img)
 
-            # 4) Randomly crop the image together with the label
-            img_crp, seg_crp = image_funcs.get_random_crop(
-                image=img,
-                segmentation=seg,
-                crop_shape=self.crp_shp
-            )
-            mod_seg_crp = augmentation_funcs.augmentations(seg_crp)
-            trgt_seg_msr = aux_funcs.get_seg_measure(
-                ground_truth=seg_crp,
-                segmentations=mod_seg_crp
+            aug_img_crp, aug_seg_crp, spoiled_aug_seg_crp = augment(image=img, segmentation=seg)
+            trgt_seg_msr = get_seg_measure(
+                ground_truth=aug_seg_crp,
+                segmentations=spoiled_aug_seg_crp
             )
 
-            img_crps_btch.append(img_crp)
-            seg_crps_btch.append(seg_crp)
-            mod_seg_crps_btch.append(mod_seg_crp)
+            img_crps_btch.append(aug_img_crp)
+            seg_crps_btch.append(aug_seg_crp)
+            mod_seg_crps_btch.append(spoiled_aug_seg_crp)
             trgt_seg_msrs_btch.append(trgt_seg_msr)
 
         img_crps_btch = np.array(img_crps_btch, dtype=np.float32)
@@ -161,9 +165,9 @@ if __name__ == '__main__':
         images_dir=IMAGE_DIR,
         segmentations_dir=GT_DIR
     )
-    reload(aux_funcs);
-    reload(preprocessing_funcs);
-    reload(image_funcs);
+    # reload(aux_funcs);
+    # reload(preprocessings);
+    # reload(image_aux);
     dl = DataLoader(
         data=test_data,
         crop_shape=(254, 254, 1),
