@@ -28,7 +28,9 @@ from configs.general_configs import (
     NON_EMPTY_CROP_THRESHOLD,
     MAX_EMPTY_CROPS,
 )
-from utils.image_utils import filters
+from utils.image_utils.filters import (
+    clahe_filter
+)
 from utils.image_utils.preprocessings import (
     preprocess_image
 )
@@ -38,7 +40,8 @@ from utils.image_utils.image_aux import (
 from utils.visualisation_utils.plotting_funcs import (
     plot
 )
-
+from utils.visualisation_utils import plotting_funcs
+reload(utils.visualisation_utils)
 
 def random_rotation(image: np.ndarray, segmentation: np.ndarray) -> (np.ndarray, np.ndarray):
     dgrs = np.random.randint(-180, 180)
@@ -174,7 +177,8 @@ def augment(image, segmentation):
 
     # II. Segmentation only
     #  1) Non-ridged (Affine)
-    spoiled_seg = affine_transform(seg)
+    if np.random.random() >= .5:
+        spoiled_seg = affine_transform(seg)
 
     #  2) Morphological
     spoiled_seg = morphological_transform(spoiled_seg)
@@ -266,8 +270,10 @@ if __name__ == '__main__':
 
         plot([org_seg, elastic_transform(org_seg)], ['Segmentation', 'Augmented Segmentation'], morph_dir / 'morph_{idx}.png')
 
-    for idx in range(1000):
+    plotting_funcs.plot([org_img, clahe_filter(org_img)], ['Image', 'CLAHE'])
+    for idx in range(100):
         img, seg, aug_seg = augment(image=org_img, segmentation=org_seg)
         J = get_seg_measure(seg, aug_seg)
 
-        plot([img, seg, aug_seg], ['Image Crop', 'Segmentation Crop', f'Augmented Segmentation Crop (J = {J:.2f})'], save_file=crops_dir / f'clahe/aug_{idx}.png')
+        plot([img, seg, aug_seg], ['Image Crop', 'Segmentation Crop', f'Augmented Segmentation Crop (J = {J:.2f})'], save_file=crops_dir / f'new/aug_{idx}.png')
+

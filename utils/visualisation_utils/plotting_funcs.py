@@ -6,7 +6,7 @@ import cv2
 
 
 def plot(images, labels, save_file: pathlib.Path = None) -> None:
-    fig, ax = plt.subplots(1, len(images), figsize=(15, 10))
+    fig, ax = plt.subplots(1, len(images), figsize=(25, 10))
     for idx, (img, lbl) in enumerate(zip(images, labels)):
         ax[idx].imshow(img, cmap='gray')
         ax[idx].set_title(lbl)

@@ -81,9 +81,12 @@ class RibCage(keras.Model):
             preds = self.model([X, X_segmentations], training=True)
             loss = self.compiled_loss(label, preds)
 
-        # Calculate gradients
+
         trainable_vars = self.trainable_variables
+
+        # Calculate gradients
         gradients = tape.gradient(loss, trainable_vars)
+
         # Update weights
         self.optimizer.apply_gradients(zip(gradients, trainable_vars))
 
@@ -101,6 +104,7 @@ class RibCage(keras.Model):
 
         # Return the mapping metric names to current value
         predictions = tf.maximum(0., tf.minimum(predictions, 1.))
+        
         return {metric.name: metric.result() for metric in self.metrics}
 
     def unit_test(self):
