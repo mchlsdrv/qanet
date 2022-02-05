@@ -203,7 +203,7 @@ def augment(image, segmentation):
     # II. Segmentation only
     spoiled_seg = seg
     #  1) Non-ridged (Affine)
-    if np.random.random() >= .5:#.66:
+    if np.random.random() >= .5:
         spoiled_seg = affine_transform(seg)
 
     #  2) Morphological
@@ -240,26 +240,6 @@ if __name__ == '__main__':
     # PREPROCESSING
     prep_img = preprocess_image(org_img)
     img, seg, spoiled_seg = augment(prep_img, org_seg)
-    # plot([seg, spoiled_seg], ['gt', 'seg'])
-    # np.unique(seg)
-    # gt_lbl_px = np.argwhere(seg == 1)
-    # gt_x, gt_y = gt_lbl_px[:, 0], gt_lbl_px[:, 1]
-    # O = np.zeros_like(seg)
-    # O[(gt_x, gt_y)] = 1
-    # plt.imshow(O, cmap='gray')
-    # S = np.zeros_like(spoiled_seg)
-    # spl_lbl_px = np.argwhere(spoiled_seg == 1)
-    # spl_x, spl_y = spl_lbl_px[:, 0], spl_lbl_px[:, 1]
-    # S[(spl_x, spl_y)] = 1
-    # plt.imshow(S, cmap='gray')
-    # I = np.logical_and(O, S).sum()
-    # I
-    # U = np.logical_or(O, S).sum()
-    # U
-    # I / U
-    # seg_m = image_aux.get_seg_measure(seg, spoiled_seg)
-    # seg_m
-    # plot([img, seg, spoiled_seg], ['image', 'Segmentation', f'Augmented Segmentation (seg = {seg_m:.2f})'])
 
     # JACCARDS
     reload(image_aux);

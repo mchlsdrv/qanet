@@ -5,7 +5,10 @@ DEBUG = False
 # PATHS
 DATA_DIR_PATH = pathlib.Path('C:/Users/mchls/Desktop/University/PhD/Projects/QANet/Data/Silver_GT/Fluo-N2DH-GOWT1-ST')
 TRAIN_DATA_DIR = DATA_DIR_PATH / 'train'
+IMAGE_DIR = DATA_DIR_PATH / '01'
+GROUND_TRUTH_DIR = DATA_DIR_PATH / '01_ST/SEG'
 TEST_DATA_DIR = DATA_DIR_PATH / 'test'
+
 OUTPUT_DIR = pathlib.Path('C:/Users/mchls/Desktop/University/PhD/Projects/QANet/Data/output/augmentations')
 CONFIGS_DIR_PATH = pathlib.Path('C:/Users/mchls/Desktop/University/PhD/Projects/QANet/qanet/configs')
 RIBCAGE_CONFIGS_FILE_PATH = pathlib.Path('C:/Users/mchls/Desktop/University/PhD/Projects/QANet/qanet/configs/ribcage_configs.yml')
@@ -35,16 +38,19 @@ CLAHE_TILE_GRID_SIZE = (30, 30)
 
 # AUGMENTATION CONFIGS
 # - Morphological Transforms
-EROSION_SIZES = (1, 3, 5)
-DILATION_SIZES = (1, 3, 5)
-OPENNING_SIZES = (1, 3, 5)
-CLOSING_SIZES = (1, 3, 5)
+EROSION_SIZES = (1, 3, 5, 7, 11)
+DILATION_SIZES = (1, 3, 5, 7, 11)
+OPENNING_SIZES = (1, 3, 5, 7, 11)
+CLOSING_SIZES = (1, 3, 5, 7, 11)
 
 # - Affine Transforms
-SCALE_RANGE = (0.01, 0.1)
-SHEER_RANGE = (.05, .1)
+SCALE_RANGE = (.01, .2)
+SHEER_RANGE = (.05, .2)
 
-# CALLBACKS
+# NN
+# > Training
+LEARNING_RATE = 1e-4
+# > CALLBACKS
 # - Early Stopping
 EARLY_STOPPING_MONITOR = 'val_loss'
 EARLY_STOPPING_PATIENCE = 10

@@ -3,12 +3,15 @@ import datetime
 import pathlib
 import tensorflow as tf
 from tensorflow import keras
-from utils.general_utils import aux_funcs
+os.chdir('C:/Users/mchls/Desktop/University/PhD/Projects/QANet/qanet')
+from utils.general_utils.aux_funcs import (
+    choose_gpu,
+)
 from utils.data_utils import data_funcs
-from utils.train_utils import train_funcs
 import logging.config
 
 from configs.general_configs import (
+    LEARNING_RATE,
     CONFIGS_DIR_PATH,
 )
 
@@ -23,10 +26,15 @@ by changing the value of TF_CPP_MIN_LOG_LEVEL:
 '''
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
 TS = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-LEARNING_RATE = 1e-4
 
-DATA_PATH = 'C:/Users/mchls/Desktop/University/PhD/projects/QANet/data/Fluo-N2DH-SIM+'
 if __name__ == '__main__':
+
+    DATA_DIR = pathlib.Path('C:/Users/mchls/Desktop/University/PhD/Projects/QANet/Data/Silver_GT/Fluo-N2DH-GOWT1-ST')
+    IMAGE_DIR = DATA_DIR / '01'
+    IMAGE_DIR.is_dir()
+    GT_DIR = DATA_DIR / '01_ST/SEG'
+    GT_DIR.is_dir()
+
     parser = aux_funcs.get_arg_parser()
     args = parser.parse_args()
 
@@ -41,21 +49,24 @@ if __name__ == '__main__':
     if isinstance(logger, logging.Logger):
         logger.info(tf.config.list_physical_devices('GPU'))
 
-    aux_funcs.choose_gpu(gpu_id=args.gpu_id, logger=logger)
+    choose_gpu(gpu_id=args.gpu_id, logger=logger)
 
     input_image_shape = (args.crop_size, args.crop_size, 1)
 
     # - Train model
     if isinstance(logger, logging.Logger):
-        logger.info(f'- Training the feature extractor model ...')
+        logger.info(f'- Training the RibCage model ...')
     model, weights_loaded = aux_funcs.get_model(
-        checkpoint_dir=pathlib.Path(args.feature_extractor_checkpoint_dir),
+        checkpoint_dir=pathlib.Path(args.checkpoint_dir),
         logger=logger
     )
     if not args.no_train:
         # - Train data loader
         train_dl = data_funcs.DataLoader(
-            data=dict(),
+            data=dict(
+                images_dir=IMAGE_DIR,
+                segmentations_dir=GT_DIR
+            ),
             crop_shape=(256, 256, 1),
             batch_size=32,
             shuffle=True
@@ -64,8 +75,8 @@ if __name__ == '__main__':
         # - Validation data loader
         val_dl = data_funcs.DataLoader(
             data=dict(),
-            crop_shape=(256, 256, 1),
-            batch_size=32,
+            crop_shape=(args.crop_size, args.crop_size, 1),
+            batch_size=args.batch_size,
             shuffle=True
         )
 

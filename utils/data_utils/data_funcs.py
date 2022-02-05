@@ -1,5 +1,4 @@
 import os
-
 import matplotlib.pyplot as plt
 import numpy as np
 import pathlib
@@ -8,13 +7,14 @@ from importlib import reload
 # os.chdir('D:/University/PhD/QANET/qanet')
 os.chdir('C:/Users/mchls/Desktop/University/PhD/Projects/QANet/qanet')
 
+from utils.image_utils import preprocessings
 from utils.image_utils.preprocessings import (
-    preprocess_image
+    preprocess_image,
 )
 
 from utils.image_utils.image_aux import (
     get_seg_measure,
-    load_image
+    load_image,
 )
 
 from utils.general_utils import (
@@ -24,7 +24,7 @@ from utils.general_utils import (
 from utils.image_utils.augmentations import (
     augment,
 )
-
+from utils.visualisation_utils.plotting_funcs import plot
 
 class DataLoader(tf.keras.utils.Sequence):
     def __init__(self, data: dict, crop_shape: tuple, batch_size: int, shuffle: bool = True):
@@ -112,18 +112,16 @@ class DataLoader(tf.keras.utils.Sequence):
         for idx, (img_fl, seg_fl) in enumerate(btch_fls):
 
             # 2) Read the image and apply preprocessing functions on it
-            img = preprocess_image(load_image(img_fl))
+            img = load_image(img_fl)
+            img = preprocessings.preprocess_image(load_image(img_fl))
 
             # 2.1) No need to apply the preprocessing on the label, as it consists from a running index
-            seg = load_image(seg_fl)  # cv2.imread(seg_fl, cv2.IMREAD_UNCHANGED)
-
-            # 3) Apply the preprocessing function
-            img = preprocess_image(image=img)
+            seg = load_image(seg_fl)
 
             aug_img_crp, aug_seg_crp, spoiled_aug_seg_crp = augment(image=img, segmentation=seg)
             trgt_seg_msr = get_seg_measure(
                 ground_truth=aug_seg_crp,
-                segmentations=spoiled_aug_seg_crp
+                segmentation=spoiled_aug_seg_crp
             )
 
             img_crps_btch.append(aug_img_crp)
@@ -153,32 +151,29 @@ class DataLoader(tf.keras.utils.Sequence):
         )
 
 
-# DATA_DIR = pathlib.Path('D:/University/PhD/QANET/Data/Fluo-N2DH-GOWT1-ST')
-DATA_DIR = pathlib.Path('C:/Users/mchls/Desktop/University/PhD/Projects/QANet/Data/Silver_GT/Fluo-N2DH-GOWT1-ST')
-IMAGE_DIR = DATA_DIR / '01'
-IMAGE_DIR.is_dir()
-GT_DIR = DATA_DIR / '01_ST/SEG'
-GT_DIR.is_dir()
 
 if __name__ == '__main__':
+    # DATA_DIR = pathlib.Path('D:/University/PhD/QANET/Data/Fluo-N2DH-GOWT1-ST')
+    DATA_DIR = pathlib.Path('C:/Users/mchls/Desktop/University/PhD/Projects/QANet/Data/Silver_GT/Fluo-N2DH-GOWT1-ST')
+    IMAGE_DIR = DATA_DIR / '01'
+    IMAGE_DIR.is_dir()
+    GT_DIR = DATA_DIR / '01_ST/SEG'
+    GT_DIR.is_dir()
+
     test_data = dict(
         images_dir=IMAGE_DIR,
         segmentations_dir=GT_DIR
     )
-    # reload(aux_funcs);
-    # reload(preprocessings);
-    # reload(image_aux);
+    reload(aux_funcs);
+    reload(preprocessings);
+    reload(image_aux);
     dl = DataLoader(
         data=test_data,
         crop_shape=(254, 254, 1),
         batch_size=10,
         shuffle=True
     )
-    # len(dl)
-    np.count_nonzero(np.array([1, 2, 3]))
+
     for idx, btch in enumerate(dl):
-        imgs, segs, mod_segs, J = btch
-        print(J)
-        plt.imshow(imgs[0], cmap='gray')
-        # print(idx)
-        # print(btch[0].shape)
+        imgs, segs, mod_segs, seg_msr = btch
+        plot(images=[imgs[0], segs[0], mod_segs[0]], labels=['Image', 'Segmentation', f'Modified Segmentation (E[SM] = {seg_msr[0]:.2f})'], figsize=(25, 10), save_file=None)
