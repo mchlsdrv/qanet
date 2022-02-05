@@ -3,7 +3,6 @@ import cv2
 from configs.general_configs import (
     CLAHE_CLIP_LIMIT,
     CLAHE_TILE_GRID_SIZE,
-    EPSILON
 )
 from utils.image_utils.image_aux import (
     add_channels_dim
@@ -26,4 +25,3 @@ def clahe_filter(image: np.ndarray) -> np.ndarray:
     img = add_channels_dim(img)
 
     return img
-

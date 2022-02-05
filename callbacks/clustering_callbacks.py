@@ -1,13 +1,11 @@
 import os
-import datetime as dt
 from pathlib import Path
 import numpy as np
 import tensorflow as tf
 from tensorflow import keras
 import matplotlib.pyplot as plt
 from utils.general_utils import aux_funcs
-from utils.image_utils import image_funcs
-
+from utils.image_utils import image_aux
 
 from configs.general_configs import (
     # - Early Stopping
@@ -117,11 +115,11 @@ class ConvLayerVis(keras.callbacks.Callback):
                         feat_map_idx = row + col
                         if feat_map_idx >= num_feat_maps:
                             break
-                        ax[row][col].imshow(feature_map[0, :, :, row+col], cmap=self.figure_configs.get('cmap'))
+                        ax[row][col].imshow(feature_map[0, :, :, row + col], cmap=self.figure_configs.get('cmap'))
                 fig.suptitle(f'{layer_name}')
 
                 with self.file_writer.as_default():
-                    tf.summary.image(f'{layer_name} Feature Maps', image_funcs.get_image_from_figure(figure=fig), step=epoch)
+                    tf.summary.image(f'{layer_name} Feature Maps', image_aux.get_image_from_figure(figure=fig), step=epoch)
 
 
 def get_callbacks(model, X, ts, output_dir_path, no_reduce_lr_on_plateau=False):
@@ -155,20 +153,20 @@ def get_callbacks(model, X, ts, output_dir_path, no_reduce_lr_on_plateau=False):
             save_freq=MODEL_CHECKPOINT_CHECKPOINT_FREQUENCY
         ),
     ]
-        # -----------------
-        # Custom callbacks
-        # -----------------
+    # -----------------
+    # Custom callbacks
+    # -----------------
     conv_layer_vis_cb = ConvLayerVis(
-            X=X,
-            input_layer=model.model.input,
-            layers=model.model.layers,
-            figure_configs=dict(
-                figsize=CONV_VIS_LAYER_FIG_SIZE,
-                cmap=CONV_VIS_LAYER_CMAP,
-             ),
-            log_dir=f'{output_dir_path}/{ts}/logs/train',
-            log_interval=CONV_VIS_LAYER_LOG_INTERVAL
-        )
+        X=X,
+        input_layer=model.model.input,
+        layers=model.model.layers,
+        figure_configs=dict(
+            figsize=CONV_VIS_LAYER_FIG_SIZE,
+            cmap=CONV_VIS_LAYER_CMAP,
+        ),
+        log_dir=f'{output_dir_path}/{ts}/logs/train',
+        log_interval=CONV_VIS_LAYER_LOG_INTERVAL
+    )
     tb_th = conv_layer_vis_cb.tensorboard_th
     callbacks.append(conv_layer_vis_cb)
     if not no_reduce_lr_on_plateau:

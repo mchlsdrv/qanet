@@ -1,5 +1,6 @@
 import pathlib
 
+DEBUG = False
 
 # PATHS
 DATA_DIR_PATH = pathlib.Path('C:/Users/mchls/Desktop/University/PhD/Projects/QANet/Data/Silver_GT/Fluo-N2DH-GOWT1-ST')
@@ -21,22 +22,23 @@ STANDARDIZE_IMAGE = False
 # - Crops
 CROP_SHAPE = (256, 256)
 NON_EMPTY_CROPS = True
-NON_EMPTY_CROP_THRESHOLD = 5000
-MAX_EMPTY_CROPS = 100
+MIN_OBJECT_AREA = 400
+NON_EMPTY_CROP_THRESHOLD = 2000
+MAX_EMPTY_CROPS = 10
 
 # FILTERS CONFIGS
 # - CLipped Adaptive Histogram Equalization (CLAHE)
 # Enhances the contrast by equalizing the image intensity
 APPLY_CLAHE_FILTER = True
-CLAHE_CLIP_LIMIT = 2.0
-CLAHE_TILE_GRID_SIZE = (8, 8)
+CLAHE_CLIP_LIMIT = 10.0
+CLAHE_TILE_GRID_SIZE = (30, 30)
 
 # AUGMENTATION CONFIGS
 # - Morphological Transforms
-EROSION_SIZES = (3, 5, 7, 9)
-DILATION_SIZES = (3, 5, 7, 9)
-OPENNING_SIZES = (3, 5, 7, 9)
-CLOSING_SIZES = (3, 5, 7, 9)
+EROSION_SIZES = (1, 3, 5)
+DILATION_SIZES = (1, 3, 5)
+OPENNING_SIZES = (1, 3, 5)
+CLOSING_SIZES = (1, 3, 5)
 
 # - Affine Transforms
 SCALE_RANGE = (0.01, 0.1)
