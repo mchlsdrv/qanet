@@ -27,7 +27,7 @@ def add_channels_dim(image: np.ndarray):
 def load_image(image_file):
     img = cv2.imread(image_file, cv2.IMREAD_UNCHANGED)
     if len(img.shape) < 3:
-        img = np.expand_dims(img, 2)
+        img = add_channels_dim(image=img)
     return img
 
 
@@ -92,7 +92,7 @@ def get_seg_measure(ground_truth, segmentation):
     # - Jaccard history to compute the mean jaccard at the end
     jaccards = np.array([])
 
-    # - For each class label in the labels from the GROUND TRUTH class labels we check its' segmentation jaccard 
+    # - For each class label in the labels from the GROUND TRUTH class labels we check its' segmentation jaccard
     for gt_cls_lbl in gt_cls_lbls:
 
         # - Prepare binary GROUND TRUTH label for the current class

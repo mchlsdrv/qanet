@@ -9,10 +9,14 @@ import tensorflow as tf
 import numpy as np
 from models import cnn
 from configs.general_configs import (
-    TRAIN_DATA_DIR,
-    TEST_DATA_DIR,
+    IMAGES_DIR ,
+    SEGMENTATIONS_DIR,
     OUTPUT_DIR,
     EPSILON,
+    LEARNING_RATE,
+    BATCH_SIZE,
+    EPOCHS,
+    VALIDATION_PROPORTION,
 )
 
 
@@ -134,25 +138,57 @@ def get_arg_parser():
     # FLAGS
     # a) General parameters
     parser.add_argument('--gpu_id', type=int, choices=[gpu_id for gpu_id in range(-1, len(tf.config.list_physical_devices('GPU')))], default=-1 if len(tf.config.list_physical_devices('GPU')) > 0 else -1, help='The ID of the GPU (if there is any) to run the network on (e.g., --gpu_id 1 will run the network on GPU #1 etc.)')
-    parser.add_argument('--train_data_dir', type=str, default=TRAIN_DATA_DIR, help='The path to the train data directory')
-    parser.add_argument('--test_data_dir', type=str, default=TEST_DATA_DIR, help='The path to the test data directory')
+    parser.add_argument('--images_dir', type=str, default=IMAGES_DIR, help='The path to the directory where the images are stored')
+    parser.add_argument('--segmentations_dir', type=str, default=SEGMENTATIONS_DIR, help='The path to the directory where the corresponding segmentaions are stored')
+    parser.add_argument('--test_data_dir', type=str, default='', help=f'Path to the test images, their segmentations and a file with the corresponding seg measures. Images should be placed in a folder called \'imgs\', the segmentations in a folder called \'segs\', and the file with the seg measures should be called \'seg_measures.pkl\', and be placed together with the two previous folders')
+    parser.add_argument('--inference_data_dir', type=str, default='', help=f'Path to the images to infere, and their segmentations and a file with the corresponding seg measures. Images should be placed in a folder called \'imgs\', the segmentations in a folder called \'segs\'')
     parser.add_argument('--output_dir', type=str, default=OUTPUT_DIR, help='The path to the directory where the outputs will be placed')
 
     # b) Augmentations
-    parser.add_argument('--crop_size', type=int, default=256, help='The size of the images that will be used for network training and inference. If not specified - the image size will be determined by the value in general_configs.py file.')
+    parser.add_argument('--crop_size', type=int, default=CROP_SIZE, help='The size of the images that will be used for network training and inference. If not specified - the image size will be determined by the value in general_configs.py file.')
 
     # c) Network
-    parser.add_argument('--train_epochs', type=int, default=100, help='Number of epochs to train the feature extractor network')
-    parser.add_argument('--train_steps_per_epoch', type=int, default=1000, help='Number of iterations that will be performed on each epoch for the feature extractor network')
-    parser.add_argument('--batch_size', type=int, default=32, help='The number of samples in each batch')
-    parser.add_argument('--validation_split', type=float, default=0.1, help='The proportion of the data to be used for validation in the train process of the feature extractor model ((should be in range [0.0, 1.0])')
-    parser.add_argument('--validation_steps_proportion', type=float, default=0.5, help='The proportion of validation steps in regards to the training steps in the train process of the feature extractor model ((should be in range [0.0, 1.0])')
+    parser.add_argument('--train_epochs', type=int, default=EPOCHS, help='Number of epochs to train the feature extractor network')
+    parser.add_argument('--batch_size', type=int, default=BATCH_SIZE, help='The number of samples in each batch')
     parser.add_argument('--checkpoint_dir', type=str, default='', help=f'The path to the directory that contains the checkpoints of the feature extraction model')
-    parser.add_argument('--optimizer_lr', type=float, default=1e-4, help=f'The initial learning rate of the optimizer')
+    parser.add_argument('--learning_rater', type=float, default=LEARNING_RATE, help=f'The initial learning rate of the optimizer')
+    parser.add_argument('--validation_proportion', type=float, default=VALIDATION_PROPORTION, help=f'The proportion of the data which will be set aside, and be used in the process of validation')
+
+    # d) Flags
     parser.add_argument('--no_reduce_lr_on_plateau', default=False, action='store_true', help=f'If not to use the ReduceLROnPlateau callback')
-    parser.add_argument('--no_train', default=False, action='store_true', help=f'If theres no need to train the rib cage model')
 
     return parser
+
+
+def get_file_names(images_dir: pathlib.Path, segmentations_dir: pathlib.Path):
+    img_fls, seg_fls = list(), list()
+
+    for root, dirs, files in os.walk(images_dir):
+        for file in files:
+            img_fls.append(f'{root}/{file}')
+
+    for root, dirs, files in os.walk(segmentations_dir):
+        for file in files:
+            seg_fls.append(f'{root}/{file}')
+
+    return list(zip(img_fls, seg_fls))
+
+
+def get_train_val_split(data: np.ndarray, validation_proportion: float = .2):
+    n_items = len(data)
+    item_idxs = np.arange(n_items)
+    n_val_items = int(n_items * validation_proportion)
+
+    # - Randomly pick the validation items' indices
+    val_idxs = np.random.choice(item_idxs, n_val_items, replace=False)
+
+    # - Pick the items for the validation set
+    val_data = data[val_idxs]
+
+    # - The items for training are the once which are not included in the validation set
+    train_data = data[np.setdiff1d(item_idxs, val_idxs)]
+
+    return train_data, val_data
 
 
 def get_jaccard(gt_batch, seg_batch):
@@ -185,3 +221,44 @@ def get_jaccard(gt_batch, seg_batch):
     J = I / (U + EPSILON)
 
     return J, I, U
+
+
+    def train_model(model, data: dict, callback_configs: dict, compile_configs: dict, fit_configs: dict, general_configs: dict, logger: logging.Logger = None):
+
+        # 2 - Train model
+        # 2.2 Configure callbacks
+
+        # 2.3 Compile model
+        model.compile(
+            loss=compile_configs.get('loss'),
+            optimizer=compile_configs.get('optimizer'),
+            metrics=compile_configs.get('metrics')
+        )
+
+        # 2.4 Fit model
+        validation_steps = int(fit_configs.get('validation_steps_proportion') * fit_configs.get('train_steps_per_epoch')) if 0 < int(fit_configs.get('validation_steps_proportion') * fit_configs.get('train_steps_per_epoch')) <= fit_configs.get('train_steps_per_epoch') else 1
+        model.fit(
+            data.get('train_dataset'),
+            batch_size=fit_configs.get('batch_size'),
+            epochs=fit_configs.get('train_epochs'),
+            steps_per_epoch=fit_configs.get('train_steps_per_epoch'),
+            validation_data=data.get('val_dataset'),
+            validation_steps=validation_steps,
+            validation_freq=fit_configs.get('valdation_freq'),  # [1, 100, 1500, ...] - validate on these epochs
+            shuffle=fit_configs.get('shuffle'),
+            callbacks=callbacks
+        )
+
+        def test_step(self, data):
+            D_btch, N_btch = data
+            phi_X_btch = self.model(self.augmentations(D_btch), training=False)
+            phi_ngbrs_btch = self.model(self.augmentations(N_btch), training=False)
+
+            loss = self.compiled_loss(phi_X_btch, phi_ngbrs_btch, regularization_losses=self.losses)
+
+           # Update the metrics
+            self.compiled_metrics.update_state(phi_X_btch, phi_ngbrs_btch)
+
+            # Return the mapping metric names to current value
+            return {m.name: m.result() for m in self.metrics}
+        return model

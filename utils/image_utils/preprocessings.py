@@ -26,8 +26,11 @@ def standardize(image):
 
 
 def convert_to_grayscale(image):
-    img = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-    return add_channels_dim(img)
+    img = image
+    if len(img.shape) == 3 and img.shape[-1] == 3:
+        img = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+        img = add_channels_dim(img)
+    return img
 
 
 def preprocess_image(image):
