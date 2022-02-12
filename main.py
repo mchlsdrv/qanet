@@ -52,6 +52,7 @@ if __name__ == '__main__':
 
     # - Configure the GPU to run on
     choose_gpu(gpu_id=args.gpu_id, logger=logger)
+    input_image_shape = (args.crop_size, args.crop_size, 1)
 
     # - Train model
     if isinstance(logger, logging.Logger):
