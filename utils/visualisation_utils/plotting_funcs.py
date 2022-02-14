@@ -1,10 +1,30 @@
 import os
-import logging
 import pathlib
-import cv2
 import numpy as np
 import matplotlib.pyplot as plt
 plt.style.use('ggplot')
+
+
+def plot_scatter(true_seg_measures: np.ndarray, predicted_seg_measures: np.ndarray, figsize: tuple = (20, 10), save_file: pathlib.Path = None):
+    fig, ax = plt.subplots(figsize=figsize)
+
+    ax.scatter(true_seg_measures, predicted_seg_measures, label='True vs Predicted')
+    ax.plot([0., 1.], [0., 1.], label='Perfect Match')
+    ax.set(
+        title='Seg-Measure - Ground Truth vs Predicted',
+
+        xlabel='Ground Truth',
+        xlim=[0., 1.],
+        xticks=np.arange(0., 1.1, 0.1),
+
+        ylabel='Predicted',
+        ylim=[0., 1.],
+        yticks=np.arange(0., 1.1, 0.1)
+    )
+
+    save_figure(figure=fig, save_file=save_file)
+
+    return fig
 
 
 def plot(images, labels, figsize=(25, 10), save_file: pathlib.Path = None) -> None:
@@ -41,7 +61,7 @@ def plot_image_histogram(images: np.ndarray, labels: list, n_bins: int = 256, fi
         vals, bins = np.histogram(img, n_bins, density=True)
         if density:
             vals = vals / vals.sum()
-        vals, bins = vals[1:], bins[1:][:-1]  # don't inclute the 0
+        vals, bins = vals[1:], bins[1:][:-1]  # don't include the 0
 
         # - If there is only a single plot - no second dimension will be available, and it will result in an error
         if len(images) > 1:

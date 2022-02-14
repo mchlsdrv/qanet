@@ -1,8 +1,3 @@
-import os
-import datetime
-import matplotlib.pyplot as plt
-from importlib import reload
-import pathlib
 import numpy as np
 import cv2
 from scipy.ndimage import (
@@ -16,42 +11,22 @@ from skimage.transform import (
 from scipy.ndimage.interpolation import map_coordinates
 from scipy.ndimage.filters import gaussian_filter
 
-os.chdir('C:/Users/mchls/Desktop/University/PhD/Projects/QANet/qanet')
-# os.chdir('D:/University/PhD/QANET/qanet')
 from configs.general_configs import (
-    EPSILON,
     EROSION_SIZES,
     DILATION_SIZES,
-    OPENNING_SIZES,
+    OPENING_SIZES,
     CLOSING_SIZES,
     SCALE_RANGE,
     SHEER_RANGE,
-    CROP_SHAPE,
+    CROP_SIZE,
     NON_EMPTY_CROPS,
     NON_EMPTY_CROP_THRESHOLD,
     MAX_EMPTY_CROPS,
 )
-from utils.image_utils import (
-    filters
-)
-from utils.image_utils.filters import (
-    clahe_filter
-)
-from utils.image_utils.preprocessings import (
-    preprocess_image
-)
-from utils.image_utils import image_aux
 from utils.image_utils.image_aux import (
-    get_seg_measure,
     get_crop
 )
-from utils.visualisation_utils import plotting_funcs
-from utils.visualisation_utils.plotting_funcs import (
-    plot,
-    plot_image_histogram,
-    plot_seg_measure_histogram
-)
-from utils.image_utils import image_aux
+
 
 def random_rotation(image: np.ndarray, segmentation: np.ndarray) -> (np.ndarray, np.ndarray):
     dgrs = np.random.randint(-180, 180)
@@ -77,15 +52,15 @@ def random_rotation(image: np.ndarray, segmentation: np.ndarray) -> (np.ndarray,
 
 
 def random_crop(image, segmentation):
-    h, w = CROP_SHAPE
+    h, w = CROP_SIZE, CROP_SIZE
     x = np.random.randint(0, image.shape[0] - h)
 
     # - y coordinate
     y = np.random.randint(0, image.shape[1] - w)
 
     # 2) Randomly crop the image and the label
-    img_crp = get_crop(image=image, x=x, y=y, crop_shape=CROP_SHAPE)
-    seg_crp = get_crop(image=segmentation, x=x, y=y, crop_shape=CROP_SHAPE)
+    img_crp = get_crop(image=image, x=x, y=y, crop_shape=(CROP_SIZE, CROP_SIZE))
+    seg_crp = get_crop(image=segmentation, x=x, y=y, crop_shape=(CROP_SIZE, CROP_SIZE))
 
     if NON_EMPTY_CROPS and seg_crp.sum() < NON_EMPTY_CROP_THRESHOLD:
         # 1) Produce random x, y coordinates with size of crop_shape
@@ -97,8 +72,8 @@ def random_crop(image, segmentation):
             y = np.random.randint(0, image.shape[1] - w)
 
             # 2) Randomly crop the image and the label
-            img_crp = get_crop(image=image, x=x, y=y, crop_shape=CROP_SHAPE)
-            seg_crp = get_crop(image=segmentation, x=x, y=y, crop_shape=CROP_SHAPE)
+            img_crp = get_crop(image=image, x=x, y=y, crop_shape=(CROP_SIZE, CROP_SIZE))
+            seg_crp = get_crop(image=segmentation, x=x, y=y, crop_shape=(CROP_SIZE, CROP_SIZE))
 
             # 3) Check if one of the following happens:
             # - the crop contains some foreground
@@ -128,7 +103,7 @@ def random_dilation(image, kernel=None):
 
 def random_opening(image):
     # Connected labels are brought apart
-    krnl = np.random.choice(OPENNING_SIZES)
+    krnl = np.random.choice(OPENING_SIZES)
     return random_dilation(random_erosion(image, kernel=krnl), kernel=krnl)
 
 
@@ -219,88 +194,3 @@ def augment(image, segmentation):
     # spoiled_seg = tf.cast(spoiled_seg, tf.float32)
 
     return img, seg, spoiled_seg
-
-
-if __name__ == '__main__':
-    DATA_DIR = pathlib.Path('C:/Users/mchls/Desktop/University/PhD/Projects/QANet/Data/Silver_GT/Fluo-N2DH-GOWT1-ST')
-    # DATA_DIR = pathlib.Path('D:/University/PhD/QANET/Data/Fluo-N2DH-GOWT1-ST')
-    IMAGE_DIR = DATA_DIR / '01'
-    IMAGE_DIR.is_dir()
-    GT_DIR = DATA_DIR / '01_ST/SEG'
-    GT_DIR.is_dir()
-    OUTPUT_DIR = pathlib.Path('C:/Users/mchls/Desktop/University/PhD/Projects/QANet/Data/output/augmentations')
-    # OUTPUT_DIR = pathlib.Path('D:/University/PhD/QANET/Data/output/augmentations')
-    BSF_DATA = pathlib.Path('C:/Users/mchls/Desktop/University/PhD/Projects/BFS/w2642/00')
-    BSF_DATA.is_dir()
-
-    org_img = cv2.imread(f'{IMAGE_DIR}/t000.tif')
-    org_seg = cv2.imread(f'{GT_DIR}/man_seg000.tif', -1)
-    plot([org_img, org_img], ['Image', 'Segmentation'])
-
-    # PREPROCESSING
-    prep_img = preprocess_image(org_img)
-    img, seg, spoiled_seg = augment(prep_img, org_seg)
-
-    # JACCARDS
-    reload(image_aux);
-    reload(plotting_funcs);
-    crops_dir = OUTPUT_DIR / 'crops'
-    Js = np.array([])
-    t_strt = datetime.datetime.now()
-    for idx in range(1000):
-        img, seg, aug_seg = augment(image=org_img, segmentation=org_seg)
-        J = image_aux.get_seg_measure(seg, aug_seg)
-        Js = np.append(Js, J)
-        plot([img, seg, aug_seg], ['Image Crop', 'Segmentation Crop', f'Augmented Segmentation Crop (J = {J:.2f})'], save_file=crops_dir / f'new/aug_{idx}.png')
-    print(f'Runtime: {datetime.datetime.now() - t_strt}')
-    plotting_funcs.plot_seg_measure_histogram(Js, bin_width=0.1, density=True)
-    plotting_funcs.plot_seg_measure_histogram(Js, bin_width=0.1, density=True)
-    # CLAHE
-    reload(filters);
-    clahe_dir = OUTPUT_DIR / 'CLAHE'
-    for cl in [1, 5, 10, 20, 30, 50, 100]:
-        imgs = [org_img]
-        nms = ['Original']
-        for g in [8, 10, 20, 30, 40, 50, 100]:
-            CLAHE_CLIP_LIMIT = cl
-            CLAHE_TILE_GRID_SIZE = (g, g)
-            clahe_img = clahe_filter(org_img)
-            imgs.append(clahe_img)
-            nms.append(f'CLAHE clip={cl}, grid={g}x{g}')
-        plot_image_histogram(imgs, nms, n_bins=256, figsize=(80, 10), save_file=clahe_dir / f'FLUO_N2DH_GOWT1/CLAHE_{cl}.png')
-
-    bsf_img = cv2.imread(f'{BSF_DATA}/1.tif', -1)
-    for cl in [1, 5, 10, 20, 30, 50, 100]:
-        imgs = [bsf_img]
-        nms = ['Original']
-        for g in [8, 10, 20, 30, 40, 50, 100]:
-            CLAHE_CLIP_LIMIT = cl
-            CLAHE_TILE_GRID_SIZE = (g, g)
-            clahe_img = clahe_filter(bsf_img)
-            imgs.append(clahe_img)
-            nms.append(f'CLAHE clip={cl}, grid={g}x{g}')
-        plot_image_histogram(imgs, nms, n_bins=256, figsize=(80, 10), save_file=clahe_dir / f'BSF/CLAHE_{cl}.png')
-
-    a = np.array([
-    [0, 0, 1, 1, 1, 0],
-    [0, 1, 1, 1, 1, 0],
-    [1, 1, 1, 1, 1, 1],
-    [1, 1, 1, 1, 1, 1],
-    [1, 1, 1, 1, 1, 0],
-    [0, 1, 1, 1, 0, 0],
-    ])
-
-    b = np.array([
-    [1, 1, 1, 1, 1, 0],
-    [1, 1, 1, 1, 1, 0],
-    [1, 1, 1, 1, 1, 1],
-    [1, 1, 1, 1, 1, 1],
-    [1, 1, 1, 1, 1, 0],
-    [1, 1, 1, 1, 1, 0],
-    ])
-
-    I = np.logical_and(a, b).sum()
-    U = np.logical_or(a, b).sum()
-    I / U
-    a = np.array([1])
-    a.any()

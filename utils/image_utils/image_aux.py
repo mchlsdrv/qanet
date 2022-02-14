@@ -3,12 +3,9 @@ import numpy as np
 import tensorflow as tf
 import cv2
 import matplotlib.pyplot as plt
-import os
-os.chdir('C:/Users/mchls/Desktop/University/PhD/Projects/QANet/qanet')
 from configs.general_configs import (
     EPSILON,
     MIN_OBJECT_AREA,
-    DEBUG
 )
 
 
@@ -74,7 +71,7 @@ def get_largest_label(binary_ground_truth: np.ndarray, multiclass_segmentation: 
     if no_background:
         seg_cls_lbls = seg_cls_lbls[seg_cls_lbls > 0]  # => as '0' will be there, we need to dispose of it, as it is the background
 
-    # - Get the unique classes in the segmentation in the vacinity of the GROUND TRUTH label
+    # - Get the unique classes in the segmentation in the vicinity of the GROUND TRUTH label
     seg_cls_lbls, seg_cls_lbls_cnts = np.unique(seg_cls_lbls, return_counts=True)  # => counting the labels
 
     # - If the predicted label does not contain any class - skip it, as there is no detections
@@ -102,7 +99,7 @@ def get_seg_measure(ground_truth, segmentation):
         if gt_bin_cls_lbl.sum() > MIN_OBJECT_AREA:
 
             # - Find the class label in the SEGMENTATION which corresponds to the class label in the GROUND TRUTH, by finding
-            # the most prevalent label in the SEGMENTATION in the vacinity of the GROUND TRUTH
+            # the most prevalent label in the SEGMENTATION in the vicinity of the GROUND TRUTH
             seg_cls_lbl = get_largest_label(binary_ground_truth=gt_bin_cls_lbl, multiclass_segmentation=segmentation, no_background=True)
 
             # - If theres no label in the segmentation - this object was not detected, so add 0. to jaccards, and skip

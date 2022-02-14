@@ -9,14 +9,59 @@ import tensorflow as tf
 import numpy as np
 from models import cnn
 from configs.general_configs import (
-    IMAGES_DIR ,
+    CROP_SIZE,
+    
+    IMAGES_DIR,
     SEGMENTATIONS_DIR,
     OUTPUT_DIR,
+
     EPSILON,
-    LEARNING_RATE,
-    BATCH_SIZE,
     EPOCHS,
+    BATCH_SIZE,
     VALIDATION_PROPORTION,
+    LEARNING_RATE,
+
+    TENSOR_BOARD,
+    TENSOR_BOARD_WRITE_GRAPH,
+    TENSOR_BOARD_WRITE_IMAGES,
+    TENSOR_BOARD_WRITE_STEPS_PER_SECOND,
+    TENSOR_BOARD_UPDATE_FREQ,
+    TENSOR_BOARD_LOG_INTERVAL,
+
+    PLOT_SCATTER,
+    SCATTER_PLOT_LOG_INTERVAL,
+    SCATTER_PLOT_FIGSIZE,
+
+    TENSOR_BOARD_LAUNCH,
+
+    EARLY_STOPPING,
+    EARLY_STOPPING_MONITOR,
+    EARLY_STOPPING_PATIENCE,
+    EARLY_STOPPING_MIN_DELTA,
+    EARLY_STOPPING_MODE,
+    EARLY_STOPPING_RESTORE_BEST_WEIGHTS,
+    EARLY_STOPPING_VERBOSE,
+
+    TERMINATE_ON_NAN,
+
+    REDUCE_LR_ON_PLATEAU,
+    REDUCE_LR_ON_PLATEAU_MONITOR,
+    REDUCE_LR_ON_PLATEAU_FACTOR,
+    REDUCE_LR_ON_PLATEAU_PATIENCE,
+    REDUCE_LR_ON_PLATEAU_MIN_DELTA,
+    REDUCE_LR_ON_PLATEAU_COOLDOWN,
+    REDUCE_LR_ON_PLATEAU_MIN_LR,
+    REDUCE_LR_ON_PLATEAU_MODE,
+    REDUCE_LR_ON_PLATEAU_VERBOSE,
+
+    MODEL_CHECKPOINT,
+    MODEL_CHECKPOINT_VERBOSE,
+    MODEL_CHECKPOINT_SAVE_WEIGHTS_ONLY,
+    MODEL_CHECKPOINT_CHECKPOINT_FREQUENCY,
+)
+
+from callbacks.visualisation_callbacks import (
+    ScatterPlotCallback
 )
 
 
@@ -24,6 +69,81 @@ def decode_file(file):
     if isinstance(file, bytes):
         file = file.decode('utf-8')
     return file
+
+
+# noinspection PyTypeChecker
+def get_callbacks(output_dir: pathlib.Path):
+    callbacks = []
+    # -------------------
+    # Built-in  callbacks
+    # -------------------
+    if TENSOR_BOARD:
+        log_dir = output_dir / f'logs',
+        callbacks.append(
+            tf.keras.callbacks.TensorBoard(
+                log_dir=log_dir,
+                write_graph=TENSOR_BOARD_WRITE_GRAPH,
+                write_images=TENSOR_BOARD_WRITE_IMAGES,
+                write_steps_per_second=TENSOR_BOARD_WRITE_STEPS_PER_SECOND,
+                update_freq=TENSOR_BOARD_UPDATE_FREQ,
+                embeddings_freq=TENSOR_BOARD_LOG_INTERVAL,
+            )
+        )
+        if PLOT_SCATTER:
+            callbacks.append(
+                ScatterPlotCallback(
+                    figsize=SCATTER_PLOT_FIGSIZE,
+                    log_dir=log_dir,
+                    log_interval=SCATTER_PLOT_LOG_INTERVAL,
+                )
+            )
+        # - Launch the tensorboard in a thread
+        if TENSOR_BOARD_LAUNCH:
+            print(f'Launching a Tensor Board thread on logdir: \'{log_dir}\'...')
+            tb_th = launch_tensorboard(logdir=log_dir)
+
+    if EARLY_STOPPING:
+        callbacks.append(
+            tf.keras.callbacks.EarlyStopping(
+                monitor=EARLY_STOPPING_MONITOR,
+                min_delta=EARLY_STOPPING_MIN_DELTA,
+                patience=EARLY_STOPPING_PATIENCE,
+                mode=EARLY_STOPPING_MODE,
+                restore_best_weights=EARLY_STOPPING_RESTORE_BEST_WEIGHTS,
+                verbose=EARLY_STOPPING_VERBOSE,
+            )
+        )
+
+    if TERMINATE_ON_NAN:
+        callbacks.append(
+            tf.keras.callbacks.TerminateOnNaN()
+        )
+
+    if REDUCE_LR_ON_PLATEAU:
+        callbacks.append(
+            tf.keras.callbacks.ReduceLROnPlateau(
+                monitor=REDUCE_LR_ON_PLATEAU_MONITOR,
+                factor=REDUCE_LR_ON_PLATEAU_FACTOR,
+                patience=REDUCE_LR_ON_PLATEAU_PATIENCE,
+                min_delta=REDUCE_LR_ON_PLATEAU_MIN_DELTA,
+                cooldown=REDUCE_LR_ON_PLATEAU_COOLDOWN,
+                min_lr=REDUCE_LR_ON_PLATEAU_MIN_LR,
+                mode=REDUCE_LR_ON_PLATEAU_MODE,
+                verbose=REDUCE_LR_ON_PLATEAU_VERBOSE,
+            )
+        )
+
+    if MODEL_CHECKPOINT:
+        callbacks.append(
+            tf.keras.callbacks.ModelCheckpoint(
+                filepath=(output_dir / f'checkpoints') / 'cp-{epoch:04d}.ckpt',
+                verbose=MODEL_CHECKPOINT_VERBOSE,
+                save_weights_only=MODEL_CHECKPOINT_SAVE_WEIGHTS_ONLY,
+                save_freq=MODEL_CHECKPOINT_CHECKPOINT_FREQUENCY
+            )
+        )
+
+    return callbacks
 
 
 def get_train_val_idxs(n_items, val_prop):
@@ -72,9 +192,9 @@ def get_model(checkpoint_dir: pathlib.Path = None, logger: logging.Logger = None
     if checkpoint_dir.is_dir:
         try:
             latest_cpt = tf.train.latest_checkpoint(checkpoint_dir)
-
-            model.load_weights(latest_cpt)
-            weights_loaded = True
+            if latest_cpt is not None:
+                model.load_weights(latest_cpt)
+                weights_loaded = True
         except Exception as err:
             if isinstance(logger, logging.Logger):
                 logger.exception(err)
@@ -139,9 +259,9 @@ def get_arg_parser():
     # a) General parameters
     parser.add_argument('--gpu_id', type=int, choices=[gpu_id for gpu_id in range(-1, len(tf.config.list_physical_devices('GPU')))], default=-1 if len(tf.config.list_physical_devices('GPU')) > 0 else -1, help='The ID of the GPU (if there is any) to run the network on (e.g., --gpu_id 1 will run the network on GPU #1 etc.)')
     parser.add_argument('--images_dir', type=str, default=IMAGES_DIR, help='The path to the directory where the images are stored')
-    parser.add_argument('--segmentations_dir', type=str, default=SEGMENTATIONS_DIR, help='The path to the directory where the corresponding segmentaions are stored')
+    parser.add_argument('--segmentations_dir', type=str, default=SEGMENTATIONS_DIR, help='The path to the directory where the corresponding segmentations are stored')
     parser.add_argument('--test_data_dir', type=str, default='', help=f'Path to the test images, their segmentations and a file with the corresponding seg measures. Images should be placed in a folder called \'imgs\', the segmentations in a folder called \'segs\', and the file with the seg measures should be called \'seg_measures.pkl\', and be placed together with the two previous folders')
-    parser.add_argument('--inference_data_dir', type=str, default='', help=f'Path to the images to infere, and their segmentations and a file with the corresponding seg measures. Images should be placed in a folder called \'imgs\', the segmentations in a folder called \'segs\'')
+    parser.add_argument('--inference_data_dir', type=str, default='', help=f'Path to the images to infer, and their segmentations and a file with the corresponding seg measures. Images should be placed in a folder called \'imgs\', the segmentations in a folder called \'segs\'')
     parser.add_argument('--output_dir', type=str, default=OUTPUT_DIR, help='The path to the directory where the outputs will be placed')
 
     # b) Augmentations
@@ -151,7 +271,7 @@ def get_arg_parser():
     parser.add_argument('--train_epochs', type=int, default=EPOCHS, help='Number of epochs to train the feature extractor network')
     parser.add_argument('--batch_size', type=int, default=BATCH_SIZE, help='The number of samples in each batch')
     parser.add_argument('--checkpoint_dir', type=str, default='', help=f'The path to the directory that contains the checkpoints of the feature extraction model')
-    parser.add_argument('--learning_rater', type=float, default=LEARNING_RATE, help=f'The initial learning rate of the optimizer')
+    parser.add_argument('--learning_rate', type=float, default=LEARNING_RATE, help=f'The initial learning rate of the optimizer')
     parser.add_argument('--validation_proportion', type=float, default=VALIDATION_PROPORTION, help=f'The proportion of the data which will be set aside, and be used in the process of validation')
 
     # d) Flags
@@ -221,44 +341,3 @@ def get_jaccard(gt_batch, seg_batch):
     J = I / (U + EPSILON)
 
     return J, I, U
-
-
-    def train_model(model, data: dict, callback_configs: dict, compile_configs: dict, fit_configs: dict, general_configs: dict, logger: logging.Logger = None):
-
-        # 2 - Train model
-        # 2.2 Configure callbacks
-
-        # 2.3 Compile model
-        model.compile(
-            loss=compile_configs.get('loss'),
-            optimizer=compile_configs.get('optimizer'),
-            metrics=compile_configs.get('metrics')
-        )
-
-        # 2.4 Fit model
-        validation_steps = int(fit_configs.get('validation_steps_proportion') * fit_configs.get('train_steps_per_epoch')) if 0 < int(fit_configs.get('validation_steps_proportion') * fit_configs.get('train_steps_per_epoch')) <= fit_configs.get('train_steps_per_epoch') else 1
-        model.fit(
-            data.get('train_dataset'),
-            batch_size=fit_configs.get('batch_size'),
-            epochs=fit_configs.get('train_epochs'),
-            steps_per_epoch=fit_configs.get('train_steps_per_epoch'),
-            validation_data=data.get('val_dataset'),
-            validation_steps=validation_steps,
-            validation_freq=fit_configs.get('valdation_freq'),  # [1, 100, 1500, ...] - validate on these epochs
-            shuffle=fit_configs.get('shuffle'),
-            callbacks=callbacks
-        )
-
-        def test_step(self, data):
-            D_btch, N_btch = data
-            phi_X_btch = self.model(self.augmentations(D_btch), training=False)
-            phi_ngbrs_btch = self.model(self.augmentations(N_btch), training=False)
-
-            loss = self.compiled_loss(phi_X_btch, phi_ngbrs_btch, regularization_losses=self.losses)
-
-           # Update the metrics
-            self.compiled_metrics.update_state(phi_X_btch, phi_ngbrs_btch)
-
-            # Return the mapping metric names to current value
-            return {m.name: m.result() for m in self.metrics}
-        return model

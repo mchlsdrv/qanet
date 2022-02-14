@@ -2,20 +2,26 @@ import os
 import datetime
 import pathlib
 import tensorflow as tf
-from tensorflow import keras
+from functools import partial
 from utils.general_utils.aux_funcs import (
     choose_gpu,
+    get_logger,
+    get_model,
+    get_arg_parser,
     get_file_names,
     get_train_val_split,
+    get_callbacks,
 )
-from utils.data_utils import data_funcs
+from utils.data_utils.data_funcs import (
+    DataLoader
+)
 import logging.config
 
 from configs.general_configs import (
-    IMAGES_DIR,
-    SEGMENTATIONS_DIR,
-    LEARNING_RATE,
     CONFIGS_DIR_PATH,
+    LOSS,
+    OPTIMIZER,
+    METRICS
 )
 
 '''
@@ -34,7 +40,7 @@ TS = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
 if __name__ == '__main__':
 
     # - Get the argument parser
-    parser = aux_funcs.get_arg_parser()
+    parser = get_arg_parser()
     args = parser.parse_args()
 
     # - Create the directory for the current run
@@ -42,7 +48,7 @@ if __name__ == '__main__':
     os.makedirs(current_run_dir, exist_ok=True)
 
     # - Configure the logger
-    logger = aux_funcs.get_logger(
+    logger = get_logger(
         configs_file=CONFIGS_DIR_PATH / 'logger_configs.yml',
         save_file=current_run_dir / f'logs.log'
     )
@@ -57,7 +63,7 @@ if __name__ == '__main__':
     # - Train model
     if isinstance(logger, logging.Logger):
         logger.info(f'- Training the RibCage model ...')
-    model, weights_loaded = aux_funcs.get_model(
+    model, weights_loaded = get_model(
         checkpoint_dir=pathlib.Path(args.checkpoint_dir),
         logger=logger
     )
@@ -66,8 +72,8 @@ if __name__ == '__main__':
     if args.test_data_dir:
         pass
 
-    # - If we want to infere results from the current model
-elif args.inference_data_dir:
+        # - If we want to infer results from the current model
+    elif args.inference_data_dir:
         pass
 
     # - If we want to train a new model
@@ -79,27 +85,28 @@ elif args.inference_data_dir:
                 images_dir=args.images_dir,
                 segmentations_dir=args.segmentations_dir
             ),
-            val_prop=args.validation_proportion
+            validation_proportion=args.validation_proportion
         )
 
         # - Create the train data loader
-        train_dl = data_funcs.DataLoader(
-            images_files=train_fls[:, 0],
-            seg_files=train_fls[:, 1]
+        train_dl = DataLoader(
+            data_files=train_fls
         )
 
         # - Create the validation data loader
-        val_dl = data_funcs.DataLoader(
-            images_files=val_fls[:, 0],
-            seg_files=val_fls[:, 1]
+        val_dl = DataLoader(
+            data_files=val_fls
         )
 
         # - Train procedure
         model.compile(
-            loss=tf.keras.losses.MeanSquaredError(),
-            optimizer=tf.keras.optimizers.Adam(lr=args.learning_rate),
-            metrics=['acc']
+            loss=LOSS,
+            optimizer=partial(OPTIMIZER, lr=args.learning_rate),
+            metrics=METRICS
         )
+
+        # - Callbacks
+        callbacks = get_callbacks(output_dir=current_run_dir)
 
         # 2.4 Fit model
         model.fit(
@@ -107,6 +114,6 @@ elif args.inference_data_dir:
             batch_size=args.batch_size,
             epochs=args.epochs,
             validation_data=val_dl,
-            shuffle=SHUFFLE,
-            # callbacks=callbacks
+            shuffle=True,
+            callbacks=callbacks
         )

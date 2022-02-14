@@ -1,4 +1,3 @@
-import numpy as np
 import cv2
 from configs.general_configs import (
     APPLY_CLAHE_FILTER,
@@ -41,7 +40,7 @@ def preprocess_image(image):
     if STANDARDIZE_IMAGE:
         img = standardize(img)
 
-    # - Allpy the CLAHE (Contrast Limited Adaptive Histogram Equalisation) to improve the contrast
+    # - Apply the CLAHE (Contrast Limited Adaptive Histogram Equalisation) to improve the contrast
     # returns a 2D image (HxW)
     if APPLY_CLAHE_FILTER:
         img = clahe_filter(img)
