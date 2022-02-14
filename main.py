@@ -2,7 +2,6 @@ import os
 import datetime
 import pathlib
 import tensorflow as tf
-from functools import partial
 from utils.general_utils.aux_funcs import (
     choose_gpu,
     get_logger,
@@ -101,7 +100,7 @@ if __name__ == '__main__':
         # - Train procedure
         model.compile(
             loss=LOSS,
-            optimizer=partial(OPTIMIZER, lr=args.learning_rate),
+            optimizer=OPTIMIZER(learning_rate=args.learning_rate),
             metrics=METRICS
         )
 

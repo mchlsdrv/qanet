@@ -59,8 +59,8 @@ class RibCage(keras.Model):
         image_dims = self.ribcage_configs.get('image_dims')
         block_filters, block_kernel_sizes = self.ribcage_configs.get('conv2d_blocks')['block_filters'], self.ribcage_configs.get('conv2d_blocks')['block_kernel_sizes']
 
-        input_left_rib = tmp_input_left_rib = keras.Input(image_dims + (3, ), name='input_left_rib')
-        input_right_rib = tmp_input_right_rib = keras.Input(image_dims + (1, ), name='input_right_rib')
+        input_left_rib = tmp_input_left_rib = keras.Input(image_dims + [3, ], name='input_left_rib')
+        input_right_rib = tmp_input_right_rib = keras.Input(image_dims + [1, ], name='input_right_rib')
         input_spine = tmp_input_spine = keras.layers.Concatenate()([input_left_rib, input_right_rib])
 
         for filters, kernel_size in zip(block_filters, block_kernel_sizes):
@@ -88,6 +88,9 @@ class RibCage(keras.Model):
 
     def save(self, save_path: pathlib.Path):
         self.model.save(save_path)
+
+    def summary(self):
+        return self.model.summary()
 
     def train_step(self, data):
 

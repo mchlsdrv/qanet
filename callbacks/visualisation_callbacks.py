@@ -15,8 +15,8 @@ class ScatterPlotCallback(tf.keras.callbacks.Callback):
     def __init__(self, figsize: tuple = (20, 10), log_dir: pathlib.Path = None, log_interval: int = 10):
         super().__init__()
         self.log_dir = log_dir
-        self.train_file_writer = tf.summary.create_file_writer(self.log_dir / 'train')
-        self.val_file_writer = tf.summary.create_file_writer(self.log_dir / 'val')
+        self.train_file_writer = tf.summary.create_file_writer(str(self.log_dir / 'train'))
+        self.val_file_writer = tf.summary.create_file_writer(str(self.log_dir / 'val'))
         self.figsize = figsize
         self.log_interval = log_interval
 

@@ -78,7 +78,7 @@ def get_callbacks(output_dir: pathlib.Path):
     # Built-in  callbacks
     # -------------------
     if TENSOR_BOARD:
-        log_dir = output_dir / f'logs',
+        log_dir = output_dir / f'logs'
         callbacks.append(
             tf.keras.callbacks.TensorBoard(
                 log_dir=log_dir,
@@ -200,8 +200,10 @@ def get_model(checkpoint_dir: pathlib.Path = None, logger: logging.Logger = None
                 logger.exception(err)
         else:
             if isinstance(logger, logging.Logger):
-                logger.info(f'Weights from \'checkpoint_dir\' were loaded successfully to the \'RibCage\' model!')
-
+                if latest_cpt is not None:
+                    logger.info(f'Weights from \'checkpoint_dir\' were loaded successfully to the \'RibCage\' model!')
+                else:
+                    logger.info(f'No weights were found to load!')
     if isinstance(logger, logging.Logger):
         logger.info(model.summary())
 
@@ -268,9 +270,9 @@ def get_arg_parser():
     parser.add_argument('--crop_size', type=int, default=CROP_SIZE, help='The size of the images that will be used for network training and inference. If not specified - the image size will be determined by the value in general_configs.py file.')
 
     # c) Network
-    parser.add_argument('--train_epochs', type=int, default=EPOCHS, help='Number of epochs to train the feature extractor network')
+    parser.add_argument('--epochs', type=int, default=EPOCHS, help='Number of epochs to train the model')
     parser.add_argument('--batch_size', type=int, default=BATCH_SIZE, help='The number of samples in each batch')
-    parser.add_argument('--checkpoint_dir', type=str, default='', help=f'The path to the directory that contains the checkpoints of the feature extraction model')
+    parser.add_argument('--checkpoint_dir', type=str, default='', help=f'The path to the directory that contains the checkpoints of the model')
     parser.add_argument('--learning_rate', type=float, default=LEARNING_RATE, help=f'The initial learning rate of the optimizer')
     parser.add_argument('--validation_proportion', type=float, default=VALIDATION_PROPORTION, help=f'The proportion of the data which will be set aside, and be used in the process of validation')
 
@@ -302,11 +304,14 @@ def get_train_val_split(data: np.ndarray, validation_proportion: float = .2):
     # - Randomly pick the validation items' indices
     val_idxs = np.random.choice(item_idxs, n_val_items, replace=False)
 
+    # - Convert the data from list into numpy.ndarray object to use the indexing
+    np_data = np.array(data, dtype=object)
+
     # - Pick the items for the validation set
-    val_data = data[val_idxs]
+    val_data = np_data[val_idxs]
 
     # - The items for training are the once which are not included in the validation set
-    train_data = data[np.setdiff1d(item_idxs, val_idxs)]
+    train_data = np_data[np.setdiff1d(item_idxs, val_idxs)]
 
     return train_data, val_data
 
