@@ -10,7 +10,7 @@ import numpy as np
 from models import cnn
 from configs.general_configs import (
     CROP_SIZE,
-    
+
     IMAGES_DIR,
     SEGMENTATIONS_DIR,
     OUTPUT_DIR,
@@ -62,6 +62,14 @@ from configs.general_configs import (
 
 from callbacks.visualisation_callbacks import (
     ScatterPlotCallback
+)
+
+from utils.visualisation_utils.plotting_funcs import (
+    plot_scatter
+)
+
+from utils.image_utils.image_aux import (
+    get_image_from_figure
 )
 
 
@@ -184,10 +192,10 @@ def launch_tensorboard(logdir):
     return tensorboard_th
 
 
-def get_model(checkpoint_dir: pathlib.Path = None, logger: logging.Logger = None):
+def get_model(input_image_dims: tuple, checkpoint_dir: pathlib.Path = None, logger: logging.Logger = None):
     weights_loaded = False
 
-    model = cnn.RibCage()
+    model = cnn.RibCage(input_image_dims=input_image_dims)
 
     if checkpoint_dir.is_dir:
         try:
@@ -346,3 +354,134 @@ def get_jaccard(gt_batch, seg_batch):
     J = I / (U + EPSILON)
 
     return J, I, U
+
+
+def info_log(logger: logging.Logger, message: str):
+    if isinstance(logger, logging.Logger):
+        logger.info(message)
+    else:
+        print(message)
+
+
+def err_log(logger: logging.Logger, message: str):
+    if isinstance(logger, logging.Logger):
+        logger.exception(message)
+    else:
+        print(message)
+
+
+def scatter_to_tensorboard(x: np.ndarray, y: np.ndarray, epoch: int, title: str):
+    fig = plot_scatter(
+        x=x,
+        y=y,
+        figsize=SCATTER_PLOT_FIGSIZE,
+        save_file=None
+    )
+
+    tf.summary.image(
+        title,
+        get_image_from_figure(figure=fig),
+        step=epoch
+    )
+
+
+def train_model(model, data: dict, epochs: int, log_dir: pathlib.Path, logger: logging.Logger = None):
+    @tf.function
+    def train_step(images: np.ndarray, segmentations: np.ndarray, jaccards: np.ndarray):
+        # - Compute the loss according to the predictions
+        with tf.GradientTape() as tape:
+            pred_js = model([images, segmentations], training=True)
+            loss = model.compiled_loss(jaccards, pred_js)
+
+        # - Get the weights to adjust according to the loss calculated
+        trainable_vars = model.trainable_variables
+
+        # - Calculate gradients
+        gradients = tape.gradient(loss, trainable_vars)
+
+        # - Update weights
+        model.optimizer.apply_gradients(zip(gradients, trainable_vars))
+
+        # - Update the metrics
+        model.train_loss(loss)
+
+        return loss, pred_js
+
+    @tf.function
+    def val_step(images: np.ndarray, segmentations: np.ndarray, jaccards: np.ndarray):
+        # - Compute the loss according to the predictions
+        pred_js = model([images, segmentations], training=False)
+        loss = model.compiled_loss(jaccards, pred_js)
+
+        # - Update the metrics
+        model.val_loss(loss)
+
+        return loss, pred_js
+
+    # - Create tf.FileWriter classes for train and val datasets
+    train_file_writer = tf.summary.create_file_writer(str(log_dir / 'train'))
+    val_file_writer = tf.summary.create_file_writer(str(log_dir / 'val'))
+
+    # - Main loop
+    for epoch in range(epochs):
+
+        # - Train step
+        train_losses = np.array([])
+        train_js = np.array([])
+        train_pred_js = np.array([])
+        for step, (imgs, segs, js) in enumerate(data.get('train')):
+            train_step_loss, train_step_pred_js = train_step(
+                images=imgs,
+                segmentations=segs,
+                jaccards=js
+            )
+
+            # - Add the target  and the predicted seg measures to epoch history
+            train_losses = np.append(train_losses, train_step_loss)
+            train_js = np.append(train_js, js)
+            train_pred_js = np.append(train_pred_js, train_step_pred_js)
+
+        # - Validation step
+        val_losses = np.array([])
+        val_js = np.array([])
+        val_pred_js = np.array([])
+        for step, (imgs, segs, js) in enumerate(data.get('val')):
+            val_step_loss, val_step_pred_js = val_step(
+                images=imgs,
+                segmentations=segs,
+                jaccards=js
+            )
+
+            # - Add the target  and the predicted seg measures to epoch history
+            val_losses = np.append(val_losses, val_step_loss)
+            val_js = np.append(val_js, js)
+            val_pred_js = np.append(val_pred_js, val_step_pred_js)
+
+        info_log(
+            logger=logger,
+            message=f'Epoch: {epoch} | Train - Loss: {train_losses.mean()} | Val - Loss: {val_losses.mean()}'
+        )
+
+        if epoch % SCATTER_PLOT_LOG_INTERVAL == 0:
+            print(f'\nAdding scatter plot of the seg measures for epoch #{epoch} to the tensorboard...')
+
+            # - Plot train scatter plot
+            with train_file_writer.as_default():
+                scatter_to_tensorboard(
+                    x=train_js,
+                    y=train_pred_js,
+                    epoch=epoch,
+                    title=f'Train'
+                )
+
+            # - Plot validation scatter plot
+            with val_file_writer.as_default():
+                scatter_to_tensorboard(
+                    x=val_js,
+                    y=val_pred_js,
+                    epoch=epoch,
+                    title=f'Validation'
+                )
+
+        if epoch % MODEL_CHECKPOINT_CHECKPOINT_FREQUENCY == 0:
+            model.save_weights(log_dir / f'checkpoints/epoch_{epoch}.ckpt')

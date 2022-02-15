@@ -24,7 +24,8 @@ from configs.general_configs import (
     MAX_EMPTY_CROPS,
 )
 from utils.image_utils.image_aux import (
-    get_crop
+    get_crop,
+    add_channels_dim
 )
 
 
@@ -192,5 +193,11 @@ def augment(image, segmentation):
     # img = tf.cast(img, tf.float32)
     # seg = tf.cast(seg, tf.float32)
     # spoiled_seg = tf.cast(spoiled_seg, tf.float32)
+    if len(img.shape) < 3:
+        img = add_channels_dim(img)
+    if len(seg.shape) < 3:
+        seg = add_channels_dim(seg)
+    if len(spoiled_seg.shape) < 3:
+        spoiled_seg = add_channels_dim(spoiled_seg)
 
     return img, seg, spoiled_seg

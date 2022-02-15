@@ -39,8 +39,8 @@ class ScatterPlotCallback(tf.keras.callbacks.Callback):
                     save_file = self.log_dir / f'train_epoch_{epoch}.png'
 
                 fig = plot_scatter(
-                    true_seg_measures=self.model.train_epoch_trgt_seg_msrs,
-                    predicted_seg_measures=self.model.train_epoch_pred_seg_msrs,
+                    x=self.model.train_epoch_trgt_seg_msrs,
+                    y=self.model.train_epoch_pred_seg_msrs,
                     figsize=self.figsize,
                     save_file=save_file
                 )
@@ -57,8 +57,8 @@ class ScatterPlotCallback(tf.keras.callbacks.Callback):
                     save_file = self.log_dir / f'val_epoch_{epoch}.png'
 
                 fig = plot_scatter(
-                    true_seg_measures=self.model.val_epoch_trgt_seg_msrs,
-                    predicted_seg_measures=self.model.val_epoch_pred_seg_msrs,
+                    x=self.model.val_epoch_trgt_seg_msrs,
+                    y=self.model.val_epoch_pred_seg_msrs,
                     figsize=self.figsize,
                     save_file=save_file
                 )

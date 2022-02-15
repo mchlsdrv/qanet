@@ -10,8 +10,9 @@ from configs.general_configs import (
 
 
 class RibCage(keras.Model):
-    def __init__(self):
+    def __init__(self, input_image_dims: tuple):
         super().__init__()
+        self.input_image_dims = input_image_dims
 
         # - Open the models' configurations file
         self.ribcage_configs = None
@@ -19,7 +20,7 @@ class RibCage(keras.Model):
             self.ribcage_configs = yaml.safe_load(config_file)
 
         # - Build the model
-        self.model = self.build()
+        self.model = self.build_model()
 
         # - Metrics
         self.train_loss = tf.metrics.Mean(name='train_loss')
@@ -55,12 +56,11 @@ class RibCage(keras.Model):
             ]
         )
 
-    def build(self):
-        image_dims = self.ribcage_configs.get('image_dims')
+    def build_model(self):
         block_filters, block_kernel_sizes = self.ribcage_configs.get('conv2d_blocks')['block_filters'], self.ribcage_configs.get('conv2d_blocks')['block_kernel_sizes']
 
-        input_left_rib = tmp_input_left_rib = keras.Input(image_dims + [3, ], name='input_left_rib')
-        input_right_rib = tmp_input_right_rib = keras.Input(image_dims + [1, ], name='input_right_rib')
+        input_left_rib = tmp_input_left_rib = keras.Input(self.input_image_dims + (1, ), name='input_left_rib')
+        input_right_rib = tmp_input_right_rib = keras.Input(self.input_image_dims + (1, ), name='input_right_rib')
         input_spine = tmp_input_spine = keras.layers.Concatenate()([input_left_rib, input_right_rib])
 
         for filters, kernel_size in zip(block_filters, block_kernel_sizes):

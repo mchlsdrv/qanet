@@ -9,7 +9,7 @@ from utils.general_utils.aux_funcs import (
     get_arg_parser,
     get_file_names,
     get_train_val_split,
-    get_callbacks,
+    train_model
 )
 from utils.data_utils.data_funcs import (
     DataLoader
@@ -63,6 +63,7 @@ if __name__ == '__main__':
     if isinstance(logger, logging.Logger):
         logger.info(f'- Training the RibCage model ...')
     model, weights_loaded = get_model(
+        input_image_dims=(args.crop_size, args.crop_size),
         checkpoint_dir=pathlib.Path(args.checkpoint_dir),
         logger=logger
     )
@@ -104,15 +105,26 @@ if __name__ == '__main__':
             metrics=METRICS
         )
 
-        # - Callbacks
-        callbacks = get_callbacks(output_dir=current_run_dir)
-
-        # 2.4 Fit model
-        model.fit(
-            train_dl,
-            batch_size=args.batch_size,
+        # - Train
+        train_model(
+            model=model,
+            data=dict(
+                train=train_dl,
+                val=val_dl
+            ),
             epochs=args.epochs,
-            validation_data=val_dl,
-            shuffle=True,
-            callbacks=callbacks
+            log_dir=current_run_dir,
+            logger=logger
         )
+        # # - Callbacks
+        # callbacks = get_callbacks(output_dir=current_run_dir)
+        #
+        # # 2.4 Fit model
+        # model.fit(
+        #     train_dl,
+        #     batch_size=args.batch_size,
+        #     epochs=args.epochs,
+        #     validation_data=val_dl,
+        #     shuffle=True,
+        #     callbacks=callbacks
+        # )

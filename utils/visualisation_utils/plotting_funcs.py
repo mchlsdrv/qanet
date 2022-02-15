@@ -5,10 +5,10 @@ import matplotlib.pyplot as plt
 plt.style.use('ggplot')
 
 
-def plot_scatter(true_seg_measures: np.ndarray, predicted_seg_measures: np.ndarray, figsize: tuple = (20, 10), save_file: pathlib.Path = None):
+def plot_scatter(x: np.ndarray, y: np.ndarray, figsize: tuple = (20, 10), save_file: pathlib.Path = None):
     fig, ax = plt.subplots(figsize=figsize)
 
-    ax.scatter(true_seg_measures, predicted_seg_measures, label='True vs Predicted')
+    ax.scatter(x, y, label='True vs Predicted')
     ax.plot([0., 1.], [0., 1.], label='Perfect Match')
     ax.set(
         title='Seg-Measure - Ground Truth vs Predicted',

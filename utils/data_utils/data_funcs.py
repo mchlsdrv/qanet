@@ -101,7 +101,6 @@ class DataLoader(tf.keras.utils.Sequence):
 
     def _get_batch(self, batch_files: list):
         img_crps_btch = list()
-        # seg_crps_btch = list()
         mod_seg_crps_btch = list()
         trgt_seg_msrs_btch = list()
 
@@ -122,7 +121,6 @@ class DataLoader(tf.keras.utils.Sequence):
             )
 
             img_crps_btch.append(aug_img_crp)
-            # seg_crps_btch.append(aug_seg_crp)
             mod_seg_crps_btch.append(spoiled_aug_seg_crp)
             trgt_seg_msrs_btch.append(trgt_seg_msr)
 
