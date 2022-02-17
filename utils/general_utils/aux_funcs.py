@@ -108,7 +108,7 @@ def get_callbacks(output_dir: pathlib.Path):
             callbacks.append(
                 ScatterPlotCallback(
                     figsize=SCATTER_PLOT_FIGSIZE,
-                    log_dir=,
+                    log_dir=output_dir,
                     log_interval=SCATTER_PLOT_LOG_INTERVAL,
                 )
             )
