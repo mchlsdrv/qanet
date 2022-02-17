@@ -12,6 +12,7 @@ from scipy.ndimage.interpolation import map_coordinates
 from scipy.ndimage.filters import gaussian_filter
 
 from configs.general_configs import (
+    DEBUG,
     EROSION_SIZES,
     DILATION_SIZES,
     OPENING_SIZES,
@@ -80,8 +81,8 @@ def random_crop(image, segmentation):
             # - the crop contains some foreground
             if seg_crp.sum() > NON_EMPTY_CROP_THRESHOLD:
                 break
-
-            print(f'The crops\' sum is {seg_crp.sum()} < {NON_EMPTY_CROP_THRESHOLD}. Trying to acquire another crop (try #{try_idx})...')
+            if DEBUG:
+                print(f'The crops\' sum is {seg_crp.sum()} < {NON_EMPTY_CROP_THRESHOLD}. Trying to acquire another crop (try #{try_idx})...')
 
     return img_crp, seg_crp
 
@@ -189,7 +190,7 @@ def augment(image, segmentation):
     #  3) Elastic
     if np.random.random() >= .5:
         spoiled_seg = elastic_transform(spoiled_seg)
-        
+
     if len(img.shape) < 3:
         img = add_channels_dim(img)
     if len(seg.shape) < 3:

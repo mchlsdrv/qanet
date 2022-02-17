@@ -22,15 +22,15 @@ class RibCage(keras.Model):
         # - Build the model
         self.model = self.build_model()
 
-        # - Metrics
-        self.train_loss = tf.metrics.Mean(name='train_loss')
-        self.val_loss = tf.metrics.Mean(name='val_loss')
-
         # - Train epoch history
+        self.train_imgs = None
+        self.train_pred_segs = None
         self.train_epoch_trgt_seg_msrs = np.array([])
         self.train_epoch_pred_seg_msrs = np.array([])
 
         # - Validation epoch history
+        self.val_imgs = None
+        self.val_pred_segs = None
         self.val_epoch_trgt_seg_msrs = np.array([])
         self.val_epoch_pred_seg_msrs = np.array([])
 
@@ -111,14 +111,16 @@ class RibCage(keras.Model):
         # - Update weights
         self.optimizer.apply_gradients(zip(gradients, trainable_vars))
 
-        # - Update the metrics
-        self.train_loss(loss)
+
+        # - Add images
+        self.train_imgs = imgs
+        self.train_pred_segs = aug_segs
 
         # - Add the target seg measures to epoch history
-        self.train_epoch_trgt_seg_msrs = np.append(self.train_epoch_trgt_seg_msrs, trgt_seg_msrs)
+        self.train_epoch_trgt_seg_msrs = np.append(self.train_epoch_trgt_seg_msrs, trgt_seg_msrs.numpy())
 
         # - Add the modified seg measures to epoch history
-        self.train_epoch_pred_seg_msrs = np.append(self.train_epoch_pred_seg_msrs, pred_seg_msrs)
+        self.train_epoch_pred_seg_msrs = np.append(self.train_epoch_pred_seg_msrs, pred_seg_msrs.numpy())
 
         # - Return the mapping metric names to current value
         return {metric.name: metric.result() for metric in self.metrics}
@@ -130,12 +132,15 @@ class RibCage(keras.Model):
         # - Compute the loss according to the predictions
         pred_seg_msrs = self.model([imgs, aug_segs], training=True)
         loss = self.compiled_loss(trgt_seg_msrs, pred_seg_msrs)
-        self.val_loss(loss)
+
+        # - Add images
+        self.val_imgs = imgs
+        self.val_pred_segs = aug_segs
 
         # - Add the target seg measures to epoch history
-        self.val_epoch_trgt_seg_msrs = np.append(self.val_epoch_trgt_seg_msrs, trgt_seg_msrs)
+        self.val_epoch_trgt_seg_msrs = np.append(self.val_epoch_trgt_seg_msrs, trgt_seg_msrs.numpy())
 
         # - Add the modified seg measures to epoch history
-        self.val_epoch_pred_seg_msrs = np.append(self.val_epoch_pred_seg_msrs, pred_seg_msrs)
+        self.val_epoch_pred_seg_msrs = np.append(self.val_epoch_pred_seg_msrs, pred_seg_msrs.numpy())
 
         return {metric.name: metric.result() for metric in self.metrics}

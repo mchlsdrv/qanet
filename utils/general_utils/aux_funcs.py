@@ -9,6 +9,8 @@ import tensorflow as tf
 import numpy as np
 from models import cnn
 from configs.general_configs import (
+    DEBUG,
+
     CROP_SIZE,
 
     IMAGES_DIR,
@@ -28,7 +30,10 @@ from configs.general_configs import (
     TENSOR_BOARD_UPDATE_FREQ,
     TENSOR_BOARD_SCALARS_LOG_INTERVAL,
     TENSOR_BOARD_IMAGES_LOG_INTERVAL,
+    TENSOR_BOARD_LOG_INTERVAL,
 
+    PLOT_SCATTER,
+    SCATTER_PLOT_LOG_INTERVAL,
     SCATTER_PLOT_FIGSIZE,
 
     TENSOR_BOARD_LAUNCH,
@@ -89,10 +94,9 @@ def get_callbacks(output_dir: pathlib.Path):
     # Built-in  callbacks
     # -------------------
     if TENSOR_BOARD:
-        log_dir = output_dir / f'logs'
         callbacks.append(
             tf.keras.callbacks.TensorBoard(
-                log_dir=log_dir,
+                log_dir=output_dir,
                 write_graph=TENSOR_BOARD_WRITE_GRAPH,
                 write_images=TENSOR_BOARD_WRITE_IMAGES,
                 write_steps_per_second=TENSOR_BOARD_WRITE_STEPS_PER_SECOND,
@@ -385,7 +389,7 @@ def write_scalars_to_tensorboard(writer, data: dict, step: int):
                 step=step
             )
 
-            
+
 def write_images_to_tensorboard(writer, data: dict, step: int):
     with writer.as_default():
         with tf.device('/cpu:0'):

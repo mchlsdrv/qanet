@@ -104,8 +104,16 @@ class DataLoader(tf.keras.utils.Sequence):
             trgt_seg_msrs_btch = trgt_seg_msrs_btch[rnd_idxs]
 
         return (
-            tf.convert_to_tensor(img_crps_btch, dtype=tf.float32),
-            tf.convert_to_tensor(seg_crps_btch, dtype=tf.float32),
-            tf.convert_to_tensor(aug_seg_crps_btch, dtype=tf.float32),
+            (
+                tf.convert_to_tensor(img_crps_btch, dtype=tf.float32),
+                # tf.convert_to_tensor(seg_crps_btch, dtype=tf.float32),
+                tf.convert_to_tensor(aug_seg_crps_btch, dtype=tf.float32)
+            ),
             tf.convert_to_tensor(trgt_seg_msrs_btch, dtype=tf.float32)
         )
+        # return (
+        #     tf.convert_to_tensor(img_crps_btch, dtype=tf.float32),
+        #     tf.convert_to_tensor(seg_crps_btch, dtype=tf.float32),
+        #     tf.convert_to_tensor(aug_seg_crps_btch, dtype=tf.float32),
+        #     tf.convert_to_tensor(trgt_seg_msrs_btch, dtype=tf.float32)
+        # )

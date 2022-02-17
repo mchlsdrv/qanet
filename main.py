@@ -9,6 +9,7 @@ from utils.general_utils.aux_funcs import (
     get_arg_parser,
     get_file_names,
     get_train_val_split,
+    get_callbacks,
     train_model
 )
 from utils.data_utils.data_funcs import (
@@ -20,7 +21,8 @@ from configs.general_configs import (
     CONFIGS_DIR_PATH,
     LOSS,
     OPTIMIZER,
-    METRICS
+    METRICS,
+    SHUFFLE
 )
 
 '''
@@ -102,17 +104,23 @@ if __name__ == '__main__':
         model.compile(
             loss=LOSS,
             optimizer=OPTIMIZER(learning_rate=args.learning_rate),
+            run_eagerly=True,
             metrics=METRICS
+
+        )
+
+        callbacks = get_callbacks(
+            output_dir=current_run_dir
         )
 
         # - Train
-        train_model(
-            model=model,
-            data=dict(
-                train=train_dl,
-                val=val_dl
-            ),
+        model.fit(
+            train_dl,
+            batch_size=args.batch_size,
+            validation_data=val_dl,
+            shuffle=SHUFFLE,
+            max_queue_size=args.batch_size,
+            workers=4,
             epochs=args.epochs,
-            log_dir=current_run_dir,
-            logger=logger
+            callbacks=callbacks
         )
