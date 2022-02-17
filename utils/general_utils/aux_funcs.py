@@ -26,10 +26,9 @@ from configs.general_configs import (
     TENSOR_BOARD_WRITE_IMAGES,
     TENSOR_BOARD_WRITE_STEPS_PER_SECOND,
     TENSOR_BOARD_UPDATE_FREQ,
-    TENSOR_BOARD_LOG_INTERVAL,
+    TENSOR_BOARD_SCALARS_LOG_INTERVAL,
+    TENSOR_BOARD_IMAGES_LOG_INTERVAL,
 
-    PLOT_SCATTER,
-    SCATTER_PLOT_LOG_INTERVAL,
     SCATTER_PLOT_FIGSIZE,
 
     TENSOR_BOARD_LAUNCH,
@@ -58,6 +57,10 @@ from configs.general_configs import (
     MODEL_CHECKPOINT_VERBOSE,
     MODEL_CHECKPOINT_SAVE_WEIGHTS_ONLY,
     MODEL_CHECKPOINT_CHECKPOINT_FREQUENCY,
+)
+
+from utils.image_utils.preprocessings import (
+    normalize
 )
 
 from callbacks.visualisation_callbacks import (
@@ -370,19 +373,65 @@ def err_log(logger: logging.Logger, message: str):
         print(message)
 
 
-def scatter_to_tensorboard(x: np.ndarray, y: np.ndarray, epoch: int, title: str):
-    fig = plot_scatter(
-        x=x,
-        y=y,
-        figsize=SCATTER_PLOT_FIGSIZE,
-        save_file=None
-    )
+def write_scalars_to_tensorboard(writer, data: dict, step: int):
+    with writer.as_default():
+        with tf.device('/cpu:0'):
 
-    tf.summary.image(
-        title,
-        get_image_from_figure(figure=fig),
-        step=epoch
-    )
+            # SCALARS
+            # - Write the loss
+            tf.summary.scalar(
+                'Loss',
+                data.get('Loss'),
+                step=step
+            )
+
+            
+def write_images_to_tensorboard(writer, data: dict, step: int):
+    with writer.as_default():
+        with tf.device('/cpu:0'):
+            # - Write the images
+            # -> Normalize the images
+            imgs = data.get('Images')
+            disp_imgs = imgs - tf.reduce_min(imgs, axis=(1, 2, 3), keepdims=True)
+            disp_imgs = disp_imgs / tf.reduce_max(disp_imgs, axis=(1, 2, 3), keepdims=True)
+            tf.summary.image(
+                'Images',
+                disp_imgs,
+                max_outputs=1,
+                step=step
+            )
+
+            # -> Write the ground truth
+            disp_gts = data.get('GroundTruth')
+            tf.summary.image(
+                'GroundTruth',
+                disp_gts,
+                max_outputs=1,
+                step=step
+            )
+
+            # -> Write the segmentations
+            disp_segs = data.get('Segmentations')
+            tf.summary.image(
+                'Segmentations',
+                disp_segs,
+                max_outputs=1,
+                step=step
+            )
+
+            # -> Write the scatter plot
+            tf.summary.image(
+                'Scatter',
+                get_image_from_figure(
+                    figure=plot_scatter(
+                        x=data.get('Scatter')['x'],
+                        y=data.get('Scatter')['y'],
+                        figsize=SCATTER_PLOT_FIGSIZE,
+                        save_file=None
+                    )
+                ),
+                step=step
+            )
 
 
 def train_model(model, data: dict, epochs: int, log_dir: pathlib.Path, logger: logging.Logger = None):
@@ -420,7 +469,7 @@ def train_model(model, data: dict, epochs: int, log_dir: pathlib.Path, logger: l
 
     # - Create tf.FileWriter classes for train and val datasets
     train_file_writer = tf.summary.create_file_writer(str(log_dir / 'train'))
-    val_file_writer = tf.summary.create_file_writer(str(log_dir / 'val'))
+    val_file_writer = tf.summary.create_file_writer(str(log_dir / 'validation'))
 
     # - Main loop
     for epoch in range(epochs):
@@ -429,10 +478,10 @@ def train_model(model, data: dict, epochs: int, log_dir: pathlib.Path, logger: l
         train_losses = np.array([])
         train_js = np.array([])
         train_pred_js = np.array([])
-        for step, (imgs, segs, js) in enumerate(data.get('train')):
+        for step, (btch_trn_imgs, btch_trn_segs, btch_trn_aug_segs, js) in enumerate(data.get('train')):
             train_step_loss, train_step_pred_js = train_step(
-                images=imgs,
-                segmentations=segs,
+                images=btch_trn_imgs,
+                segmentations=btch_trn_aug_segs,
                 jaccards=js
             )
 
@@ -445,10 +494,10 @@ def train_model(model, data: dict, epochs: int, log_dir: pathlib.Path, logger: l
         val_losses = np.array([])
         val_js = np.array([])
         val_pred_js = np.array([])
-        for step, (imgs, segs, js) in enumerate(data.get('val')):
+        for step, (btch_val_imgs, btch_val_segs, btch_val_aug_segs, js) in enumerate(data.get('val')):
             val_step_loss, val_step_pred_js = val_step(
-                images=imgs,
-                segmentations=segs,
+                images=btch_val_imgs,
+                segmentations=btch_val_aug_segs,
                 jaccards=js
             )
 
@@ -459,29 +508,60 @@ def train_model(model, data: dict, epochs: int, log_dir: pathlib.Path, logger: l
 
         info_log(
             logger=logger,
-            message=f'Epoch: {epoch} | Train - Loss: {train_losses.mean()} | Val - Loss: {val_losses.mean()}'
+            message=f'Epoch: {epoch} | Train - Loss: {train_losses.mean():.4f} | Val - Loss: {val_losses.mean():.4f}'
         )
 
-        if epoch % SCATTER_PLOT_LOG_INTERVAL == 0:
-            print(f'\nAdding scatter plot of the seg measures for epoch #{epoch} to the tensorboard...')
-
-            # - Plot train scatter plot
-            with train_file_writer.as_default():
-                scatter_to_tensorboard(
-                    x=train_js,
-                    y=train_pred_js,
-                    epoch=epoch,
-                    title=f'Train'
+        # - Callbacks
+        if TENSOR_BOARD:
+            if epoch % TENSOR_BOARD_SCALARS_LOG_INTERVAL == 0:
+                write_scalars_to_tensorboard(
+                    writer=train_file_writer,
+                    data=dict(
+                            Loss=train_step_loss
+                    ),
+                    step=epoch
                 )
 
-            # - Plot validation scatter plot
-            with val_file_writer.as_default():
-                scatter_to_tensorboard(
-                    x=val_js,
-                    y=val_pred_js,
-                    epoch=epoch,
-                    title=f'Validation'
+                # - Plot validation scatter plot
+                write_scalars_to_tensorboard(
+                    writer=val_file_writer,
+                    data=dict(
+                            Loss=val_step_loss
+                    ),
+                    step=epoch
                 )
 
-        if epoch % MODEL_CHECKPOINT_CHECKPOINT_FREQUENCY == 0:
-            model.save_weights(log_dir / f'checkpoints/epoch_{epoch}.ckpt')
+            if epoch % TENSOR_BOARD_IMAGES_LOG_INTERVAL == 0:
+                print(f'\nAdding data to tensorboard for epoch #{epoch}...')
+                write_images_to_tensorboard(
+                    writer=train_file_writer,
+                    data=dict(
+                        Images=btch_trn_imgs,
+                        GroundTruth=btch_trn_segs,
+                        Segmentations=btch_trn_aug_segs,
+                        Scatter=dict(
+                            x=train_js,
+                            y=train_pred_js,
+                        )
+                    ),
+                    step=epoch
+                )
+
+                # - Plot validation scatter plot
+                write_images_to_tensorboard(
+                    writer=val_file_writer,
+                    data=dict(
+                        Images=btch_val_imgs,
+                        GroundTruth=btch_val_segs,
+                        Segmentations=btch_val_aug_segs,
+                        Scatter=dict(
+                            x=val_js,
+                            y=val_pred_js,
+                        )
+                    ),
+                    step=epoch
+                )
+
+        if MODEL_CHECKPOINT:
+            if epoch % MODEL_CHECKPOINT_CHECKPOINT_FREQUENCY == 0:
+                model.save_weights(log_dir / f'checkpoints/epoch_{epoch}.ckpt')

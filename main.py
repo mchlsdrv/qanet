@@ -116,15 +116,3 @@ if __name__ == '__main__':
             log_dir=current_run_dir,
             logger=logger
         )
-        # # - Callbacks
-        # callbacks = get_callbacks(output_dir=current_run_dir)
-        #
-        # # 2.4 Fit model
-        # model.fit(
-        #     train_dl,
-        #     batch_size=args.batch_size,
-        #     epochs=args.epochs,
-        #     validation_data=val_dl,
-        #     shuffle=True,
-        #     callbacks=callbacks
-        # )

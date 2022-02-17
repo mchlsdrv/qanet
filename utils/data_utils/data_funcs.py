@@ -43,43 +43,6 @@ class DataLoader(tf.keras.utils.Sequence):
         # TRAINING
         self.shuff = SHUFFLE
 
-    # def _get_img_seg_fls(self):
-    #     """
-    #
-    #     This private method pairs between the image files and their corresponding segmentations.
-    #     The files in the folders are assumed to have last self.n_idx_chrs characters of their name
-    #     an index which should match for all the (img, seg)
-    #
-    #     :return: list
-    #     """
-    #     # - All the image files
-    #     img_fls = list()
-    #     for root, _, image_files in os.walk(self.img_dir):
-    #         for image_file in image_files:
-    #             img_fls.append(f'{root}/{image_file}')
-    #
-    #     # - All the segmentation files
-    #     seg_fls = list()
-    #     for root, _, seg_files in os.walk(self.seg_dir):
-    #         for seg_file in seg_files:
-    #             seg_fls.append(f'{root}/{seg_file}')
-    #
-    #     # - Pair the image files to their segmentation files
-    #     img_seg_fls = list()
-    #     for img_fl, seg_fl in zip(img_fls, seg_fls):
-    #
-    #         img_name = img_fl[:img_fl.index('.')].split('/')[-1]
-    #         img_idx = img_name[-self.n_idx_chrs:]  # => The last self.n_idx_chrs characters are the image index
-    #
-    #         seg_name = seg_fl[:seg_fl.index('.')].split('/')[-1]
-    #         seg_idx = seg_name[-self.n_idx_chrs:]  # => The last self.n_idx_chrs characters are the image index
-    #
-    #         # -1- If the file indices match
-    #         if img_idx == seg_idx:
-    #             img_seg_fls.append((img_fl, seg_fl))
-    #
-    #     return img_seg_fls
-
     def __len__(self):
         """
         > Returns the number of batches
@@ -101,7 +64,8 @@ class DataLoader(tf.keras.utils.Sequence):
 
     def _get_batch(self, batch_files: list):
         img_crps_btch = list()
-        mod_seg_crps_btch = list()
+        seg_crps_btch = list()
+        aug_seg_crps_btch = list()
         trgt_seg_msrs_btch = list()
 
         # 1) For each file in the batch files
@@ -114,18 +78,20 @@ class DataLoader(tf.keras.utils.Sequence):
             # 2.1) No need to apply the preprocessing on the label, as it consists from a running index
             seg = load_image(seg_fl)
 
-            aug_img_crp, aug_seg_crp, spoiled_aug_seg_crp = augment(image=img, segmentation=seg)
+            img_crp, seg_crp, aug_seg_crp = augment(image=img, segmentation=seg)
             trgt_seg_msr = get_seg_measure(
-                ground_truth=aug_seg_crp,
-                segmentation=spoiled_aug_seg_crp
+                ground_truth=seg_crp,
+                segmentation=aug_seg_crp
             )
 
-            img_crps_btch.append(aug_img_crp)
-            mod_seg_crps_btch.append(spoiled_aug_seg_crp)
+            img_crps_btch.append(img_crp)
+            seg_crps_btch.append(seg_crp)
+            aug_seg_crps_btch.append(aug_seg_crp)
             trgt_seg_msrs_btch.append(trgt_seg_msr)
 
         img_crps_btch = np.array(img_crps_btch, dtype=np.float32)
-        mod_seg_crps_btch = np.array(mod_seg_crps_btch, dtype=np.float32)
+        seg_crps_btch = np.array(seg_crps_btch, dtype=np.float32)
+        aug_seg_crps_btch = np.array(aug_seg_crps_btch, dtype=np.float32)
         trgt_seg_msrs_btch = np.array(trgt_seg_msrs_btch, dtype=np.float32)
 
         if self.shuff:
@@ -133,11 +99,13 @@ class DataLoader(tf.keras.utils.Sequence):
             np.random.shuffle(rnd_idxs)
 
             img_crps_btch = img_crps_btch[rnd_idxs]
-            mod_seg_crps_btch = mod_seg_crps_btch[rnd_idxs]
+            seg_crps_btch = seg_crps_btch[rnd_idxs]
+            aug_seg_crps_btch = aug_seg_crps_btch[rnd_idxs]
             trgt_seg_msrs_btch = trgt_seg_msrs_btch[rnd_idxs]
 
         return (
             tf.convert_to_tensor(img_crps_btch, dtype=tf.float32),
-            tf.convert_to_tensor(mod_seg_crps_btch, dtype=tf.float32),
+            tf.convert_to_tensor(seg_crps_btch, dtype=tf.float32),
+            tf.convert_to_tensor(aug_seg_crps_btch, dtype=tf.float32),
             tf.convert_to_tensor(trgt_seg_msrs_btch, dtype=tf.float32)
         )

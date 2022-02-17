@@ -189,10 +189,7 @@ def augment(image, segmentation):
     #  3) Elastic
     if np.random.random() >= .5:
         spoiled_seg = elastic_transform(spoiled_seg)
-
-    # img = tf.cast(img, tf.float32)
-    # seg = tf.cast(seg, tf.float32)
-    # spoiled_seg = tf.cast(spoiled_seg, tf.float32)
+        
     if len(img.shape) < 3:
         img = add_channels_dim(img)
     if len(seg.shape) < 3:

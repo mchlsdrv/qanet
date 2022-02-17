@@ -95,11 +95,11 @@ class RibCage(keras.Model):
     def train_step(self, data):
 
         # - Get the data of the current epoch
-        imgs, mod_segs, trgt_seg_msrs = data
+        (imgs, aug_segs), trgt_seg_msrs = data
 
         # - Compute the loss according to the predictions
         with tf.GradientTape() as tape:
-            pred_seg_msrs = self.model([imgs, mod_segs], training=True)
+            pred_seg_msrs = self.model([imgs, aug_segs], training=True)
             loss = self.compiled_loss(trgt_seg_msrs, pred_seg_msrs)
 
         # - Get the weights to adjust according to the loss calculated
@@ -125,10 +125,10 @@ class RibCage(keras.Model):
 
     def test_step(self, data):
         # - Get the data of the current epoch
-        imgs, mod_segs, trgt_seg_msrs = data
+        (imgs, aug_segs), trgt_seg_msrs = data
 
         # - Compute the loss according to the predictions
-        pred_seg_msrs = self.model([imgs, mod_segs], training=True)
+        pred_seg_msrs = self.model([imgs, aug_segs], training=True)
         loss = self.compiled_loss(trgt_seg_msrs, pred_seg_msrs)
         self.val_loss(loss)
 
@@ -139,18 +139,3 @@ class RibCage(keras.Model):
         self.val_epoch_pred_seg_msrs = np.append(self.val_epoch_pred_seg_msrs, pred_seg_msrs)
 
         return {metric.name: metric.result() for metric in self.metrics}
-
-    def unit_test(self):
-        input_shape_left = (160, 160, 3)
-        input_shape_right = (160, 160, 1)
-        iterations = 10
-        for _ in range(iterations):
-            left = np.random.randn(5, *input_shape_left).astype(np.float32)
-            right = np.random.randn(5, *input_shape_right).astype(np.float32)
-            output = self.model([left, right], training=True)
-            print(output)
-
-
-if __name__ == '__main__':
-    mdl = RibCage()
-    mdl.unit_test()

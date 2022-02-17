@@ -19,6 +19,11 @@ def float_representation(image):
     return image / image.max()
 
 
+def normalize(image):
+    # - Standardization the image
+    return (image - image.min()) / (image.max() + EPSILON)
+
+
 def standardize(image):
     # - Standardization the image
     return (image - image.mean()) / (image.std() + EPSILON)
@@ -35,6 +40,7 @@ def convert_to_grayscale(image):
 def preprocess_image(image):
     # - Convert the BGR image into a gray scale
     img = convert_to_grayscale(image)
+    # img = image
 
     # - Standardization the image
     if STANDARDIZE_IMAGE:
