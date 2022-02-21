@@ -1,6 +1,4 @@
 import os
-import multiprocessing as mlp
-import time
 import datetime
 import pathlib
 import tensorflow as tf
@@ -12,7 +10,6 @@ from utils.general_utils.aux_funcs import (
     get_file_names,
     get_train_val_split,
     get_callbacks,
-    train_model
 )
 from utils.data_utils.data_funcs import (
     DataLoader
@@ -24,8 +21,6 @@ from configs.general_configs import (
     LOSS,
     OPTIMIZER,
     METRICS,
-    BATCH_QUEUE_CAPACITY,
-    BATCH_QUEUE_DTYPES,
 )
 
 '''
@@ -135,7 +130,7 @@ if __name__ == '__main__':
             epochs=args.epochs,
             callbacks=callbacks
         )
-        #
-        # # - After the training - stop the batch threads for the train and validation data loaders
-        # train_dl.stop_threads()
-        # val_dl.stop_threads()
+
+        # - After the training - stop the batch threads for the train and validation data loaders
+        train_dl.stop_data_loading()
+        val_dl.stop_data_loading()
