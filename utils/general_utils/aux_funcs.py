@@ -9,7 +9,7 @@ import tensorflow as tf
 import numpy as np
 from models import cnn
 from configs.general_configs import (
-    DEBUG,
+    DEBUG_LEVEL,
 
     CROP_SIZE,
 
@@ -20,6 +20,7 @@ from configs.general_configs import (
     EPSILON,
     EPOCHS,
     BATCH_SIZE,
+    VAL_BATCH_SIZE,
     VALIDATION_PROPORTION,
     LEARNING_RATE,
 
@@ -61,7 +62,7 @@ from configs.general_configs import (
     MODEL_CHECKPOINT,
     MODEL_CHECKPOINT_VERBOSE,
     MODEL_CHECKPOINT_SAVE_WEIGHTS_ONLY,
-    MODEL_CHECKPOINT_CHECKPOINT_FREQUENCY,
+    MODEL_CHECKPOINT_PROPORTION,
 )
 
 from utils.image_utils.preprocessings import (
@@ -88,7 +89,7 @@ def decode_file(file):
 
 
 # noinspection PyTypeChecker
-def get_callbacks(output_dir: pathlib.Path):
+def get_callbacks(epochs: int, output_dir: pathlib.Path, logger: logging.Logger = None):
     callbacks = []
     # -------------------
     # Built-in  callbacks
@@ -114,7 +115,7 @@ def get_callbacks(output_dir: pathlib.Path):
             )
         # - Launch the tensorboard in a thread
         if TENSOR_BOARD_LAUNCH:
-            print(f'Launching a Tensor Board thread on logdir: \'{log_dir}\'...')
+            info_log(logger=logger, message=f'Launching a Tensor Board thread on logdir: \'{log_dir}\'...')
             tb_th = launch_tensorboard(logdir=log_dir)
 
     if EARLY_STOPPING:
@@ -154,11 +155,30 @@ def get_callbacks(output_dir: pathlib.Path):
                 filepath=(output_dir / f'checkpoints') / 'cp-{epoch:04d}.ckpt',
                 verbose=MODEL_CHECKPOINT_VERBOSE,
                 save_weights_only=MODEL_CHECKPOINT_SAVE_WEIGHTS_ONLY,
-                save_freq=MODEL_CHECKPOINT_CHECKPOINT_FREQUENCY
+                save_freq=int(MODEL_CHECKPOINT_PROPORTION * epochs)
             )
         )
 
     return callbacks
+
+
+def get_runtime(seconds: int):
+    hrs = int(seconds // 3600)
+    min = int((seconds - hrs * 3600) // 60)
+    sec = seconds - hrs * 3600 - min * 60
+
+    # - Format the strings
+    hrs_str = str(hrs)
+    if hrs < 10:
+        hrs_str = '0' + hrs_str
+    min_str = str(min)
+    if min < 10:
+        min_str = '0' + min_str
+    sec_str = f'{sec:.3}'
+    if sec < 10:
+        sec_str = '0' + sec_str
+
+    return hrs_str + ':' + min_str + ':' + sec_str + '[H:M:S]'
 
 
 def get_train_val_idxs(n_items, val_prop):
@@ -264,7 +284,7 @@ def get_logger(configs_file, save_file):
 
         logger = logging.getLogger(__name__)
     except Exception as err:
-        print(err)
+        err_log(logger=None, message=err)
 
     return logger
 
@@ -287,9 +307,10 @@ def get_arg_parser():
     # c) Network
     parser.add_argument('--epochs', type=int, default=EPOCHS, help='Number of epochs to train the model')
     parser.add_argument('--batch_size', type=int, default=BATCH_SIZE, help='The number of samples in each batch')
+    parser.add_argument('--val_batch_size', type=int, default=VAL_BATCH_SIZE, help='The number of samples in each validation batch')
+    parser.add_argument('--validation_proportion', type=float, default=VALIDATION_PROPORTION, help=f'The proportion of the data which will be set aside, and be used in the process of validation')
     parser.add_argument('--checkpoint_dir', type=str, default='', help=f'The path to the directory that contains the checkpoints of the model')
     parser.add_argument('--learning_rate', type=float, default=LEARNING_RATE, help=f'The initial learning rate of the optimizer')
-    parser.add_argument('--validation_proportion', type=float, default=VALIDATION_PROPORTION, help=f'The proportion of the data which will be set aside, and be used in the process of validation')
 
     # d) Flags
     parser.add_argument('--no_reduce_lr_on_plateau', default=False, action='store_true', help=f'If not to use the ReduceLROnPlateau callback')
@@ -311,7 +332,7 @@ def get_file_names(images_dir: pathlib.Path, segmentations_dir: pathlib.Path):
     return list(zip(img_fls, seg_fls))
 
 
-def get_train_val_split(data: np.ndarray, validation_proportion: float = .2):
+def get_train_val_split(data: np.ndarray, validation_proportion: float = .2, logger: logging.Logger = None):
     n_items = len(data)
     item_idxs = np.arange(n_items)
     n_val_items = int(n_items * validation_proportion)
@@ -327,6 +348,8 @@ def get_train_val_split(data: np.ndarray, validation_proportion: float = .2):
 
     # - The items for training are the once which are not included in the validation set
     train_data = np_data[np.setdiff1d(item_idxs, val_idxs)]
+
+    info_log(logger=logger, message=f'| Number of train data files : {len(train_data)} | Number of validation data files : {len(val_data)} |')
 
     return train_data, val_data
 
@@ -536,7 +559,7 @@ def train_model(model, data: dict, epochs: int, log_dir: pathlib.Path, logger: l
                 )
 
             if epoch % TENSOR_BOARD_IMAGES_LOG_INTERVAL == 0:
-                print(f'\nAdding data to tensorboard for epoch #{epoch}...')
+                info_log(logger=logger, message=f'\nAdding data to tensorboard for epoch #{epoch}...')
                 write_images_to_tensorboard(
                     writer=train_file_writer,
                     data=dict(

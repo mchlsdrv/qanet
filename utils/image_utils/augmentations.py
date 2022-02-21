@@ -1,4 +1,6 @@
 import numpy as np
+import logging
+import time
 import cv2
 from scipy.ndimage import (
     grey_dilation,
@@ -12,7 +14,8 @@ from scipy.ndimage.interpolation import map_coordinates
 from scipy.ndimage.filters import gaussian_filter
 
 from configs.general_configs import (
-    DEBUG,
+    DEBUG_LEVEL,
+    PROFILE,
     EROSION_SIZES,
     DILATION_SIZES,
     OPENING_SIZES,
@@ -29,8 +32,13 @@ from utils.image_utils.image_aux import (
     add_channels_dim
 )
 
+from utils.general_utils.aux_funcs import (
+    get_runtime,
+    info_log,
+    err_log
+)
 
-def random_rotation(image: np.ndarray, segmentation: np.ndarray) -> (np.ndarray, np.ndarray):
+def random_rotation(image: np.ndarray, segmentation: np.ndarray, logger: logging.Logger = None) -> (np.ndarray, np.ndarray):
     dgrs = np.random.randint(-180, 180)
     # Rotates the image by degrees
     img_shp = image.shape
@@ -53,7 +61,7 @@ def random_rotation(image: np.ndarray, segmentation: np.ndarray) -> (np.ndarray,
     return rot_img, rot_seg
 
 
-def random_crop(image, segmentation):
+def random_crop(image, segmentation, logger: logging.Logger = None):
     h, w = CROP_SIZE, CROP_SIZE
     x = np.random.randint(0, image.shape[0] - h)
 
@@ -81,13 +89,13 @@ def random_crop(image, segmentation):
             # - the crop contains some foreground
             if seg_crp.sum() > NON_EMPTY_CROP_THRESHOLD:
                 break
-            if DEBUG:
-                print(f'The crops\' sum is {seg_crp.sum()} < {NON_EMPTY_CROP_THRESHOLD}. Trying to acquire another crop (try #{try_idx})...')
+            if DEBUG_LEVEL > 1:
+                info_log(logger=logger, message=f'The crops\' sum is {seg_crp.sum()} < {NON_EMPTY_CROP_THRESHOLD}. Trying to acquire another crop (try #{try_idx})...')
 
     return img_crp, seg_crp
 
 
-def random_erosion(image, kernel=None):
+def random_erosion(image, kernel=None, logger: logging.Logger = None):
     # Shrinks the labels
     krnl = kernel
     if krnl is None:
@@ -95,7 +103,7 @@ def random_erosion(image, kernel=None):
     return grey_erosion(image, size=krnl)
 
 
-def random_dilation(image, kernel=None):
+def random_dilation(image, kernel=None, logger: logging.Logger = None):
     # "Fattens" the cell label
     krnl = kernel
     if krnl is None:
@@ -103,19 +111,19 @@ def random_dilation(image, kernel=None):
     return grey_dilation(image, size=krnl)
 
 
-def random_opening(image):
+def random_opening(image, logger: logging.Logger = None):
     # Connected labels are brought apart
     krnl = np.random.choice(OPENING_SIZES)
     return random_dilation(random_erosion(image, kernel=krnl), kernel=krnl)
 
 
-def random_closing(image):
+def random_closing(image, logger: logging.Logger = None):
     # Disconnected labels are brought together
     krnl = np.random.choice(CLOSING_SIZES)
     return random_erosion(random_dilation(image, kernel=krnl), kernel=krnl)
 
 
-def morphological_transform(segmentation):
+def morphological_transform(segmentation, logger: logging.Logger = None):
 
     seg = segmentation
     if np.random.random() > .5:
@@ -127,27 +135,16 @@ def morphological_transform(segmentation):
     if np.random.random() > .5:
         seg = random_closing(seg)
 
-    # rnd_var = np.random.random()
-    # if rnd_var > .5:
-    #     if rnd_var > .75:
-    #         seg = random_erosion(seg)
-    #     else:
-    #         seg = random_dilation(seg)
-    # else:
-    #     if rnd_var > .25:
-    #         seg = random_opening(seg)
-    #     else:
-    #         seg = random_closing(seg)
     return seg
 
 
-def affine_transform(segmentation):
+def affine_transform(segmentation, logger: logging.Logger = None):
     scl = np.random.uniform(*SCALE_RANGE, 2)
     tform = AffineTransform(scale=scl + 1, shear=np.random.uniform(*SHEER_RANGE))
     return warp(segmentation, tform.inverse, output_shape=segmentation.shape)
 
 
-def elastic_transform(segmentation):
+def elastic_transform(segmentation, logger: logging.Logger = None):
     """Elastic deformation of images as described in [Simard2003]_.
     .. [Simard2003] Simard, Steinkraus and Platt, "Best Practices for
     Convolutional Neural Networks applied to Visual Document Analysis", in
@@ -169,27 +166,29 @@ def elastic_transform(segmentation):
     return map_coordinates(segmentation, idxs, order=1, mode='reflect').reshape(seg_shp)
 
 
-def augment(image, segmentation):
+def augment(image, segmentation, logger: logging.Logger = None):
+    t_strt = time.time()
+
     # I. Image + segmentation
     #  1) Random rotation (whole of the image)
-    img, seg = random_rotation(image=image, segmentation=segmentation)
+    img, seg = random_rotation(image=image, segmentation=segmentation, logger=logger)
 
     #  2) Random crop
-    img, seg = random_crop(image=img, segmentation=seg)
+    img, seg = random_crop(image=img, segmentation=seg, logger=logger)
 
     # II. Segmentation only
     spoiled_seg = seg
     #  1) Non-ridged (Affine)
     if np.random.random() >= .5:
-        spoiled_seg = affine_transform(seg)
+        spoiled_seg = affine_transform(seg, logger=logger)
 
     #  2) Morphological
     if np.random.random() >= .5:
-        spoiled_seg = morphological_transform(spoiled_seg)
+        spoiled_seg = morphological_transform(spoiled_seg, logger=logger)
 
     #  3) Elastic
     if np.random.random() >= .5:
-        spoiled_seg = elastic_transform(spoiled_seg)
+        spoiled_seg = elastic_transform(spoiled_seg, logger=logger)
 
     if len(img.shape) < 3:
         img = add_channels_dim(img)
@@ -197,5 +196,8 @@ def augment(image, segmentation):
         seg = add_channels_dim(seg)
     if len(spoiled_seg.shape) < 3:
         spoiled_seg = add_channels_dim(spoiled_seg)
+
+    if PROFILE:
+        info_log(logger=logger, message=f'Augmentation took {get_runtime(seconds=time.time() - t_strt)}')
 
     return img, seg, spoiled_seg

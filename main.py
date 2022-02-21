@@ -1,4 +1,5 @@
 import os
+import time
 import datetime
 import pathlib
 import tensorflow as tf
@@ -22,7 +23,6 @@ from configs.general_configs import (
     LOSS,
     OPTIMIZER,
     METRICS,
-    SHUFFLE
 )
 
 '''
@@ -87,17 +87,24 @@ if __name__ == '__main__':
                 images_dir=args.images_dir,
                 segmentations_dir=args.segmentations_dir
             ),
-            validation_proportion=args.validation_proportion
+            validation_proportion=args.validation_proportion,
+            logger=logger
         )
 
         # - Create the train data loader
         train_dl = DataLoader(
-            data_files=train_fls
+            name='TRAIN',
+            data_files=train_fls,
+            batch_size=args.batch_size,
+            logger=logger
         )
 
         # - Create the validation data loader
         val_dl = DataLoader(
-            data_files=val_fls
+            name='VALIDATION',
+            data_files=val_fls,
+            batch_size=args.batch_size, #len(val_fls),
+            logger=logger
         )
 
         # - Train procedure
@@ -110,7 +117,9 @@ if __name__ == '__main__':
         )
 
         callbacks = get_callbacks(
-            output_dir=current_run_dir
+            epochs=args.epochs,
+            output_dir=current_run_dir,
+            logger=logger
         )
 
         # - Train
@@ -118,9 +127,13 @@ if __name__ == '__main__':
             train_dl,
             batch_size=args.batch_size,
             validation_data=val_dl,
-            shuffle=SHUFFLE,
+            shuffle=True,
             max_queue_size=args.batch_size,
-            workers=4,
+            workers=8,
             epochs=args.epochs,
             callbacks=callbacks
         )
+
+        # - After the training - stop the batch threads for the train and validation data loaders
+        train_dl.stop_threads()
+        val_dl.stop_threads()

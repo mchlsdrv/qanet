@@ -1,18 +1,56 @@
 import yaml
+import logging
+import time
 import pathlib
 import numpy as np
 import tensorflow as tf
 from tensorflow import keras
 from tensorflow.keras import layers
 from configs.general_configs import (
+    DEBUG_LEVEL,
+    PROFILE,
     RIBCAGE_CONFIGS_FILE_PATH
 )
 
+from utils.general_utils import aux_funcs
+# from utils.general_utils.aux_funcs import (
+#     get_runtime,
+#     info_log,
+# )
+
+
+# def get_runtime(seconds: int):
+#     hrs = int(seconds // 3600)
+#     min = int((seconds - hrs * 3600) // 60)
+#     sec = seconds - hrs * 3600 - min * 60
+#
+#     # - Format the strings
+#     hrs_str = str(hrs)
+#     if hrs_str < 10:
+#         hrs_str = '0' + hrs_str
+#     min_str = str(min)
+#     if min_str < 10:
+#         min_str = '0' + min_str
+#     sec_str = str(min)
+#     if sec < 10:
+#         sec_str = '0' + sec_str
+#
+#     return f'{hrs_str}:{min_str}:{sec_str:.2f} [H:M:S]'
+#
+#
+#
+# def info_log(logger: logging.Logger, message: str):
+#     if isinstance(logger, logging.Logger):
+#         logger.info(message)
+#     else:
+#         print(message)
+
 
 class RibCage(keras.Model):
-    def __init__(self, input_image_dims: tuple):
+    def __init__(self, input_image_dims: tuple, logger: logging.Logger = None):
         super().__init__()
         self.input_image_dims = input_image_dims
+        self.logger = logger
 
         # - Open the models' configurations file
         self.ribcage_configs = None
@@ -93,7 +131,7 @@ class RibCage(keras.Model):
         return self.model.summary()
 
     def train_step(self, data):
-
+        t_strt = time.time()
         # - Get the data of the current epoch
         (imgs, aug_segs), trgt_seg_msrs = data
 
@@ -122,10 +160,14 @@ class RibCage(keras.Model):
         # - Add the modified seg measures to epoch history
         self.train_epoch_pred_seg_msrs = np.append(self.train_epoch_pred_seg_msrs, pred_seg_msrs.numpy())
 
+        if PROFILE:
+            aux_funcs.info_log(logger=self.logger, message=f'Training on batch of size {imgs.shape} took {aux_funcs.get_runtime(seconds=time.time() - t_strt)}')
+
         # - Return the mapping metric names to current value
         return {metric.name: metric.result() for metric in self.metrics}
 
     def test_step(self, data):
+        t_strt = time.time()
         # - Get the data of the current epoch
         (imgs, aug_segs), trgt_seg_msrs = data
 
@@ -142,5 +184,8 @@ class RibCage(keras.Model):
 
         # - Add the modified seg measures to epoch history
         self.val_epoch_pred_seg_msrs = np.append(self.val_epoch_pred_seg_msrs, pred_seg_msrs.numpy())
+
+        if PROFILE:
+            aux_funcs.info_log(logger=self.logger, message=f'Validating on batch of size {imgs.shape} took {aux_funcs.get_runtime(seconds=time.time() - t_strt)}')
 
         return {metric.name: metric.result() for metric in self.metrics}
