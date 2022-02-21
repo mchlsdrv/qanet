@@ -1,4 +1,5 @@
 import os
+import multiprocessing as mlp
 import time
 import datetime
 import pathlib
@@ -23,6 +24,8 @@ from configs.general_configs import (
     LOSS,
     OPTIMIZER,
     METRICS,
+    BATCH_QUEUE_CAPACITY,
+    BATCH_QUEUE_DTYPES,
 )
 
 '''
@@ -102,11 +105,10 @@ if __name__ == '__main__':
         # - Create the validation data loader
         val_dl = DataLoader(
             name='VALIDATION',
-            data_files=val_fls,
-            batch_size=args.batch_size, #len(val_fls),
+            data_files=train_fls,
+            batch_size=args.batch_size,
             logger=logger
         )
-
         # - Train procedure
         model.compile(
             loss=LOSS,
@@ -133,7 +135,7 @@ if __name__ == '__main__':
             epochs=args.epochs,
             callbacks=callbacks
         )
-
-        # - After the training - stop the batch threads for the train and validation data loaders
-        train_dl.stop_threads()
-        val_dl.stop_threads()
+        #
+        # # - After the training - stop the batch threads for the train and validation data loaders
+        # train_dl.stop_threads()
+        # val_dl.stop_threads()
