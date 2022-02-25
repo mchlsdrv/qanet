@@ -40,7 +40,6 @@ def convert_to_grayscale(image):
 def preprocess_image(image):
     # - Convert the BGR image into a gray scale
     img = convert_to_grayscale(image)
-    # img = image
 
     # - Standardization the image
     if STANDARDIZE_IMAGE:

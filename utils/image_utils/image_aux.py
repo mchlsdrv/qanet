@@ -81,7 +81,7 @@ def get_largest_label(binary_ground_truth: np.ndarray, multiclass_segmentation: 
     return seg_cls_lbl
 
 
-def get_seg_measure(ground_truth, segmentation):
+def get_seg_measure(ground_truth, segmentation, zero_low_jaccards: bool = True):
 
     # - Labels in the GROUND TRUTH segmentation to check for
     gt_cls_lbls = np.unique(ground_truth)[1:]  # Exclude the background (the '0')
@@ -123,4 +123,7 @@ def get_seg_measure(ground_truth, segmentation):
             jaccards = np.append(jaccards, J)
 
     # - Return the mean Jaccard of the objects found in the image, or 0 if there's no objects of sufficient area were found
+    if zero_low_jaccards:
+        jaccards[np.argwhere(jaccards <= .5)] = 0.
+
     return jaccards.mean() if jaccards.any() else 0.

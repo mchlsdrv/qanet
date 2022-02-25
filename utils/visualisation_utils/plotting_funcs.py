@@ -8,6 +8,8 @@ plt.style.use('ggplot')
 def plot_scatter(x: np.ndarray, y: np.ndarray, figsize: tuple = (20, 10), save_file: pathlib.Path = None):
     fig, ax = plt.subplots(figsize=figsize)
 
+    plt.rc('font', size=28)
+    # ax.xaxis.label.set_fontsize(18)
     ax.scatter(x, y, label='True vs Predicted')
     ax.plot([0., 1.], [0., 1.], label='Perfect Match')
     ax.set(
@@ -21,6 +23,8 @@ def plot_scatter(x: np.ndarray, y: np.ndarray, figsize: tuple = (20, 10), save_f
         ylim=[0., 1.],
         yticks=np.arange(0., 1.1, 0.1)
     )
+
+    plt.legend()
 
     save_figure(figure=fig, save_file=save_file)
 

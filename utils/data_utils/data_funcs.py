@@ -1,4 +1,6 @@
+import os
 import numpy as np
+import pathlib
 import multiprocessing as mlp
 import time
 import tensorflow as tf
@@ -23,10 +25,19 @@ from utils.image_utils.augmentations import (
 )
 
 from configs.general_configs import (
+    TEMP_DIR,
     DEBUG_LEVEL,
     PROFILE,
+    ZERO_LOW_JACCARDS,
     SHUFFLE_CROPS,
-    BATCH_QUEUE_MAXSIZE
+    NON_EMPTY_CROPS,
+    ROTATION,
+    AFFINE,
+    EROSION,
+    DILATION,
+    OPENING,
+    CLOSING,
+    ELASTIC
 )
 
 
@@ -39,15 +50,24 @@ class DataLoader(tf.keras.utils.Sequence):
         self.n_fls = len(self.img_seg_fls)
         self.logger = logger
 
-        # BATCH QUEUE
-        self.btch_q = mlp.Queue(maxsize=BATCH_QUEUE_MAXSIZE)
+        tmp_dt_fl = TEMP_DIR / f'{self.name}_imgs_segs_temp.npy'
+        # - Load the temporal data
+        if tmp_dt_fl.is_file():
+            info_log(logger=self.logger, message=f'Loading temp data from \'{tmp_dt_fl}\'...')
+            self.imgs_segs_temp = np.load(str(tmp_dt_fl))
+        # - Or produce and save it
+        else:
+            info_log(logger=self.logger, message=f'Creating the temp data file from the files, and saving at \'{tmp_dt_fl}\'...')
+            self.imgs_segs_temp = self._get_temp_data(temp_data_file=tmp_dt_fl)
 
         # BATCH
-        self.btch_sz = batch_size
+        # - If the batch size is larger then the number of files - configure it as the number of files
+        self.btch_sz = batch_size if batch_size <= self.n_fls else self.n_fls
 
-        # START THE DATA LOADING PROCESS
-        self.data_loading_prcs = mlp.Process(target=self._enqueue_batches, args=(self.btch_q,))
-        self.data_loading_prcs.start()
+        # BATCH QUEUE
+        # - The maximal queue size is as the number of batches
+        self.btch_q_max_sz = self.__len__()
+        self.btch_q = mlp.Queue(maxsize=self.btch_q_max_sz)
 
     def __len__(self):
         """
@@ -60,16 +80,34 @@ class DataLoader(tf.keras.utils.Sequence):
         > Returns a batch of in a form of tuple:
             (image crops, segmentation crops, augmented segmentation crops, target seg measure of the crops)
         """
-        if DEBUG_LEVEL:
+        if DEBUG_LEVEL > 1:
             info_log(logger=self.logger, message=f'Dequeueing item for {self.name} procedure...')
 
         return self.btch_q.get()
 
-    def _enqueue_batches(self, batch_queue):
+    def _get_temp_data(self, temp_data_file: pathlib.Path):
+        imgs, segs = list(), list()
+        for idx, (img_fl, seg_fl) in enumerate(self.img_seg_fls):
+            img = preprocess_image(load_image(img_fl))
+            seg = load_image(seg_fl)
+
+            imgs.append(img)
+            segs.append(seg)
+
+        imgs_segs = np.array(list(zip(imgs, segs)))
+
+        if not temp_data_file.parent.is_dir():
+            os.makedirs(temp_data_file.parent)
+
+        np.save(str(temp_data_file), imgs_segs)
+
+        return imgs_segs
+
+    def enqueue_batches(self):#, batch_queue):
         with tf.device('cpu'):
             while True:
                 # - Shuffle files before the next epoch
-                np.random.shuffle(self.img_seg_fls)
+                np.random.shuffle(self.imgs_segs_temp)
 
                 btch_idx_strt = 0
                 for btch_idx in range(self.__len__()):
@@ -95,24 +133,31 @@ class DataLoader(tf.keras.utils.Sequence):
                     #   * Each thread gets only the indices which he returns
                     btch_fl_idxs = np.arange(btch_idx_strt, btch_idx_end)
 
-                    btch_fls = self.img_seg_fls[btch_fl_idxs]
+                    btch_fls = self.imgs_segs_temp[btch_fl_idxs]
+                    # btch_fls = self.img_seg_fls[btch_fl_idxs]
 
                     # - For each file in the batch files
                     t_strt = time.time()
-                    btch_fls = list(map(decode_file, btch_fls))
+
                     # TODO - Bottleneck
-                    for idx, (img_fl, seg_fl) in enumerate(btch_fls):
-
-                        # -> Read the image and apply preprocessing functions on it
-                        img = preprocess_image(load_image(img_fl))
-
-                        # -> No need to apply the preprocessing on the label, as it consists from a running index
-                        seg = load_image(seg_fl)
-
-                        img_crp, seg_crp, aug_seg_crp = augment(image=img, segmentation=seg, logger=self.logger)
+                    for idx, (img, seg) in enumerate(btch_fls):
+                        img_crp, seg_crp, aug_seg_crp = augment(
+                            image=img,
+                            segmentation=seg,
+                            non_empty_crops=NON_EMPTY_CROPS,
+                            rotation=ROTATION,
+                            affine=AFFINE,
+                            erosion=EROSION,
+                            dilation=DILATION,
+                            opening=OPENING,
+                            closing=CLOSING,
+                            elastic=ELASTIC,
+                            logger=self.logger
+                        )
                         trgt_seg_msr = get_seg_measure(
                             ground_truth=seg_crp,
-                            segmentation=aug_seg_crp
+                            segmentation=aug_seg_crp,
+                            zero_low_jaccards=ZERO_LOW_JACCARDS
                         )
 
                         # -> Add the crop into the appropriate container
@@ -121,7 +166,7 @@ class DataLoader(tf.keras.utils.Sequence):
                         trgt_seg_msrs_btch.append(trgt_seg_msr)
 
                     if PROFILE:
-                        info_log(logger=self.logger, message=f'Getting batch of {len(btch_fls)} took {get_runtime(seconds=int(time.time() - t_strt))}')
+                        info_log(logger=self.logger, message=f'Getting batch of {len(btch_fls)} took {get_runtime(seconds=time.time() - t_strt)}')
 
                     # - Convert the crops into numpy arrays
                     img_crps_btch = np.array(img_crps_btch, dtype=np.float32)
@@ -140,7 +185,7 @@ class DataLoader(tf.keras.utils.Sequence):
                     # - Enqueue the prepared batch
                     if DEBUG_LEVEL > 1:
                         info_log(logger=self.logger, message=f'{self.name} Loading batch #{btch_idx} of shape {img_crps_btch.shape} to the {self.name} queue ...')
-                    batch_queue.put(
+                    self.btch_q.put(
                         (
                             (
                                 tf.convert_to_tensor(img_crps_btch, dtype=tf.float32),
@@ -150,11 +195,14 @@ class DataLoader(tf.keras.utils.Sequence):
                         )
                     )
 
-                    if DEBUG_LEVEL:
-                        info_log(logger=self.logger, message=f'{self.name} batch #{btch_idx} of shape {img_crps_btch.shape} was successfully loaded to the {self.name} queue! {self.name} queue has {self.btch_q.qsize()} / {BATCH_QUEUE_MAXSIZE} ({100 * self.btch_q.qsize() / BATCH_QUEUE_MAXSIZE}% full) items!')
+                    if DEBUG_LEVEL > 1:
+                        info_log(logger=self.logger, message=f'{self.name} batch #{btch_idx} of shape {img_crps_btch.shape} was successfully loaded to the {self.name} queue! {self.name} queue has {self.btch_q.qsize()} / {self.btch_q_max_sz} ({100 * self.get_queue_load()}% full) items!')
 
-    def get_queue_load(self, queue: mlp.Queue):
-        return self.btch_q.qsize() / BATCH_QUEUE_MAXSIZE
+                if DEBUG_LEVEL:
+                    info_log(logger=self.logger, message=f'{self.name} queue has {self.btch_q.qsize()} / {self.btch_q_max_sz} items ({100 * self.get_queue_load():.2f}% full)!')
+
+    def get_queue_load(self):
+        return self.btch_q.qsize() / self.btch_q_max_sz
 
     def stop_data_loading(self):
         self.data_loading_prcs.join()

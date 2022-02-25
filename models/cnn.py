@@ -7,43 +7,11 @@ import tensorflow as tf
 from tensorflow import keras
 from tensorflow.keras import layers
 from configs.general_configs import (
-    DEBUG_LEVEL,
     PROFILE,
     RIBCAGE_CONFIGS_FILE_PATH
 )
 
 from utils.general_utils import aux_funcs
-# from utils.general_utils.aux_funcs import (
-#     get_runtime,
-#     info_log,
-# )
-
-
-# def get_runtime(seconds: int):
-#     hrs = int(seconds // 3600)
-#     min = int((seconds - hrs * 3600) // 60)
-#     sec = seconds - hrs * 3600 - min * 60
-#
-#     # - Format the strings
-#     hrs_str = str(hrs)
-#     if hrs_str < 10:
-#         hrs_str = '0' + hrs_str
-#     min_str = str(min)
-#     if min_str < 10:
-#         min_str = '0' + min_str
-#     sec_str = str(min)
-#     if sec < 10:
-#         sec_str = '0' + sec_str
-#
-#     return f'{hrs_str}:{min_str}:{sec_str:.2f} [H:M:S]'
-#
-#
-#
-# def info_log(logger: logging.Logger, message: str):
-#     if isinstance(logger, logging.Logger):
-#         logger.info(message)
-#     else:
-#         print(message)
 
 
 class RibCage(keras.Model):
@@ -148,7 +116,6 @@ class RibCage(keras.Model):
 
         # - Update weights
         self.optimizer.apply_gradients(zip(gradients, trainable_vars))
-
 
         # - Add images
         self.train_imgs = imgs

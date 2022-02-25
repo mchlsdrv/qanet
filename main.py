@@ -2,12 +2,14 @@ import os
 import datetime
 import pathlib
 import tensorflow as tf
+import multiprocessing as mlp
 from utils.general_utils.aux_funcs import (
     choose_gpu,
     get_logger,
     get_model,
     get_arg_parser,
-    get_file_names,
+    get_files_from_dir,
+    get_files_from_dirs,
     get_train_val_split,
     get_callbacks,
 )
@@ -21,6 +23,10 @@ from configs.general_configs import (
     LOSS,
     OPTIMIZER,
     METRICS,
+    IMAGE_DIR_REGEX,
+    SEGMENTATION_DIR_REGEX,
+    IMAGE_SUB_DIR,
+    SEGMENTATION_SUB_DIR,
 )
 
 '''
@@ -80,15 +86,28 @@ if __name__ == '__main__':
     else:
         # - Get the train and the validation file names, where the split will be determined
         # by the VALIDATION_PROPORTION variable from the configs.general_configs module
-        train_fls, val_fls = get_train_val_split(
-            data=get_file_names(
-                images_dir=args.images_dir,
-                segmentations_dir=args.segmentations_dir
-            ),
-            validation_proportion=args.validation_proportion,
-            logger=logger
-        )
-
+        if not args.data_from_single_dir:
+            train_fls, val_fls = get_train_val_split(
+                data=get_files_from_dirs(
+                        root_dir=args.root_dir,
+                        image_dir_regex=IMAGE_DIR_REGEX,
+                        segmentation_dir_regex=SEGMENTATION_DIR_REGEX,
+                        image_sub_dir=IMAGE_SUB_DIR,
+                        segmentation_sub_dir=SEGMENTATION_SUB_DIR,
+                        logger=logger
+                    ),
+                    validation_proportion=args.validation_proportion,
+                    logger=logger
+            )
+        else:
+            train_fls, val_fls = get_train_val_split(
+                data=get_files_from_dir(
+                        images_dir=args.images_dir,
+                        segmentations_dir=args.segmentations_dir
+                    ),
+                    validation_proportion=args.validation_proportion,
+                    logger=logger
+            )
         # - Create the train data loader
         train_dl = DataLoader(
             name='TRAIN',
@@ -96,14 +115,21 @@ if __name__ == '__main__':
             batch_size=args.batch_size,
             logger=logger
         )
+        # -> Start the train data loading process
+        train_data_loading_prcs = mlp.Process(target=train_dl.enqueue_batches, args=())
+        train_data_loading_prcs.start()
 
         # - Create the validation data loader
         val_dl = DataLoader(
             name='VALIDATION',
-            data_files=train_fls,
+            data_files=val_fls,
             batch_size=args.batch_size,
             logger=logger
         )
+        # -> Start the validation data loading process
+        val_data_loading_prcs = mlp.Process(target=val_dl.enqueue_batches, args=())
+        val_data_loading_prcs.start()
+
         # - Train procedure
         model.compile(
             loss=LOSS,

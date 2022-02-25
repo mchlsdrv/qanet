@@ -1,18 +1,38 @@
+import re
 import pathlib
 import tensorflow as tf
 
 
-DEBUG_LEVEL = 0
+DEBUG_LEVEL = 1
 
 # PROFILE = True
 PROFILE = False
 
 # PATHS
-IMAGES_DIR = pathlib.Path('./data/train/imgs')
+# - Path to the root data directory
+ROOT_DIR = pathlib.Path('/media/rrtammyfs/labDatabase/CellTrackingChallenge/BGUSIM/Fluo-N2DH-BGUSIM/Train')
 
-SEGMENTATIONS_DIR = pathlib.Path('./data/train/segs')
+# - Path to the images directory
+IMAGE_DIR = pathlib.Path('./data/train/imgs')
+
+# The sub folder where the actual images are placed
+IMAGE_SUB_DIR = None
+
+# - Regular expression to extract the images directories
+IMAGE_DIR_REGEX = re.compile(r'(?<![a-zA-Z_])[0-9]{2}(?![a-zA-Z_])')
+
+# - Path to the segmentations directory
+SEGMENTATION_DIR = pathlib.Path('./data/train/segs')
+
+# The sub folder where the actual segmentations are placed
+SEGMENTATION_SUB_DIR = 'SEG'
+
+# - Regular expression to extract the segmentations directories
+SEGMENTATION_DIR_REGEX = re.compile(r'(?<![a-z])[0-9]{2}_GT')
 
 OUTPUT_DIR = pathlib.Path('./output')
+
+TEMP_DIR = pathlib.Path('./temp')
 
 CONFIGS_DIR_PATH = pathlib.Path('./configs')
 
@@ -20,18 +40,20 @@ RIBCAGE_CONFIGS_FILE_PATH = pathlib.Path('./configs/ribcage_configs.yml')
 
 # CONSTANTS
 EPSILON = 1e-7
+ZERO_LOW_JACCARDS = True
 
 # DATA
 # - Crops
 CROP_SIZE = 256
-NON_EMPTY_CROPS = True
+NON_EMPTY_CROPS = False
+# NON_EMPTY_CROPS = True
 MIN_OBJECT_AREA = 400
 NON_EMPTY_CROP_THRESHOLD = 2000
 MAX_EMPTY_CROPS = 3
 
 NUMBER_INDEX_CHARACTERS = 3
 SHUFFLE_CROPS = True
-BATCH_QUEUE_MAXSIZE = 250
+BATCH_QUEUE_MAXSIZE = 10#250
 BATCH_QUEUE_DTYPES = (tf.float32, tf.float32, tf.float32)
 BATCH_QUEUE_SHAPES = ((CROP_SIZE, CROP_SIZE, 1), (CROP_SIZE, CROP_SIZE, 1), ())
 
@@ -46,15 +68,32 @@ CLAHE_CLIP_LIMIT = 30.0
 CLAHE_TILE_GRID_SIZE = (10, 10)
 
 # AUGMENTATION CONFIGS
+# ROTATION = True
+ROTATION = False
+
 # - Morphological Transforms
+EROSION = True
 EROSION_SIZES = (1, 3, 5, 7, 11)
+
+DILATION = True
 DILATION_SIZES = (1, 3, 5, 7, 11)
+
+OPENING = True
 OPENING_SIZES = (1, 3, 5, 7, 11)
+
+CLOSING = True
 CLOSING_SIZES = (1, 3, 5, 7, 11)
 
 # - Affine Transforms
+AFFINE = False
 SCALE_RANGE = (.01, .2)
 SHEER_RANGE = (.05, .2)
+
+
+# - Elastic Transforms
+ELASTIC = True
+SIGMA_RANGE = (1, 8)
+ALPHA_RANGE = (50, 100)
 
 # NN
 # > Training
@@ -64,7 +103,7 @@ METRICS = ['acc']
 
 # = VARIABLES
 EPOCHS = 10
-BATCH_SIZE = 64#32#5
+BATCH_SIZE = 10
 VAL_BATCH_SIZE = 1
 VALIDATION_PROPORTION = .2
 LEARNING_RATE = 1e-4
@@ -79,11 +118,11 @@ TENSOR_BOARD_UPDATE_FREQ = 'epoch'
 
 TENSOR_BOARD_LOG_INTERVAL = 1
 TENSOR_BOARD_SCALARS_LOG_INTERVAL = 1
-TENSOR_BOARD_IMAGES_LOG_INTERVAL = 5
+TENSOR_BOARD_IMAGES_LOG_INTERVAL = 1
 
 # -> Scatter Plot
 PLOT_SCATTER = True
-SCATTER_PLOT_LOG_INTERVAL = 25
+SCATTER_PLOT_LOG_INTERVAL = 1
 SCATTER_PLOT_FIGSIZE = (25, 15)
 
 # -> Launch Tensor Board
@@ -92,7 +131,7 @@ TENSOR_BOARD_LAUNCH = False  #True
 # - Early Stopping
 EARLY_STOPPING = False
 EARLY_STOPPING_MONITOR = 'val_loss'
-EARLY_STOPPING_PATIENCE = 10
+EARLY_STOPPING_PATIENCE = 20
 EARLY_STOPPING_MIN_DELTA = 0
 EARLY_STOPPING_MODE = 'auto'
 EARLY_STOPPING_RESTORE_BEST_WEIGHTS = True
@@ -114,6 +153,11 @@ REDUCE_LR_ON_PLATEAU_VERBOSE = 1
 
 # - Model Checkpoint
 MODEL_CHECKPOINT = True
+MODEL_CHECKPOINT_FILE_TAMPLATE = 'checkpoints/cp-{epoch:04d}.ckpt'  # <- may be used in case we want to save all teh check points, and not only the best
+MODEL_CHECKPOINT_FILE_BEST_MODEL_TAMPLATE = 'checkpoints/best_model.ckpt'  # <- overwrites the second best model weigths in case MODEL_CHECKPOINT_SAVE_BEST_ONLY = True
+MODEL_CHECKPOINT_MONITOR = 'val_loss'
 MODEL_CHECKPOINT_VERBOSE = 1
+MODEL_CHECKPOINT_SAVE_BEST_ONLY = True
+MODEL_CHECKPOINT_MODE = 'auto'
 MODEL_CHECKPOINT_SAVE_WEIGHTS_ONLY = True
-MODEL_CHECKPOINT_PROPORTION = .2
+MODEL_CHECKPOINT_SAVE_FREQ = 'epoch'

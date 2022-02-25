@@ -1,4 +1,5 @@
 import os
+import re
 import yaml
 import logging
 import logging.config
@@ -13,8 +14,9 @@ from configs.general_configs import (
 
     CROP_SIZE,
 
-    IMAGES_DIR,
-    SEGMENTATIONS_DIR,
+    ROOT_DIR,
+    IMAGE_DIR,
+    SEGMENTATION_DIR,
     OUTPUT_DIR,
 
     EPSILON,
@@ -60,9 +62,14 @@ from configs.general_configs import (
     REDUCE_LR_ON_PLATEAU_VERBOSE,
 
     MODEL_CHECKPOINT,
+    MODEL_CHECKPOINT_FILE_TAMPLATE,
+    MODEL_CHECKPOINT_FILE_BEST_MODEL_TAMPLATE,
+    MODEL_CHECKPOINT_MONITOR,
     MODEL_CHECKPOINT_VERBOSE,
+    MODEL_CHECKPOINT_SAVE_BEST_ONLY,
+    MODEL_CHECKPOINT_MODE,
     MODEL_CHECKPOINT_SAVE_WEIGHTS_ONLY,
-    MODEL_CHECKPOINT_PROPORTION,
+    MODEL_CHECKPOINT_SAVE_FREQ,
 )
 
 from utils.image_utils.preprocessings import (
@@ -152,17 +159,20 @@ def get_callbacks(epochs: int, output_dir: pathlib.Path, logger: logging.Logger 
     if MODEL_CHECKPOINT:
         callbacks.append(
             tf.keras.callbacks.ModelCheckpoint(
-                filepath=(output_dir / f'checkpoints') / 'cp-{epoch:04d}.ckpt',
+                filepath=output_dir / MODEL_CHECKPOINT_FILE_BEST_MODEL_TAMPLATE,
+                monitor=MODEL_CHECKPOINT_MONITOR,
                 verbose=MODEL_CHECKPOINT_VERBOSE,
+                save_best_only=MODEL_CHECKPOINT_SAVE_BEST_ONLY,
+                mode=MODEL_CHECKPOINT_MODE,
                 save_weights_only=MODEL_CHECKPOINT_SAVE_WEIGHTS_ONLY,
-                save_freq=int(MODEL_CHECKPOINT_PROPORTION * epochs)
+                save_freq=MODEL_CHECKPOINT_SAVE_FREQ,
             )
         )
 
     return callbacks
 
 
-def get_runtime(seconds: int):
+def get_runtime(seconds: float):
     hrs = int(seconds // 3600)
     min = int((seconds - hrs * 3600) // 60)
     sec = seconds - hrs * 3600 - min * 60
@@ -295,8 +305,10 @@ def get_arg_parser():
     # FLAGS
     # a) General parameters
     parser.add_argument('--gpu_id', type=int, choices=[gpu_id for gpu_id in range(-1, len(tf.config.list_physical_devices('GPU')))], default=-1 if len(tf.config.list_physical_devices('GPU')) > 0 else -1, help='The ID of the GPU (if there is any) to run the network on (e.g., --gpu_id 1 will run the network on GPU #1 etc.)')
-    parser.add_argument('--images_dir', type=str, default=IMAGES_DIR, help='The path to the directory where the images are stored')
-    parser.add_argument('--segmentations_dir', type=str, default=SEGMENTATIONS_DIR, help='The path to the directory where the corresponding segmentations are stored')
+    parser.add_argument('--data_from_single_dir', default=False, action='store_true', help='If the data should be taken from a single directory, or collected from several directories')
+    parser.add_argument('--root_dir', type=str, default=ROOT_DIR, help='The path to the top directory where the images and the segmentations are stored')
+    parser.add_argument('--image_dir', type=str, default=IMAGE_DIR, help='The path to the directory where the images are stored')
+    parser.add_argument('--segmentation_dir', type=str, default=SEGMENTATION_DIR, help='The path to the directory where the corresponding segmentations are stored')
     parser.add_argument('--test_data_dir', type=str, default='', help=f'Path to the test images, their segmentations and a file with the corresponding seg measures. Images should be placed in a folder called \'imgs\', the segmentations in a folder called \'segs\', and the file with the seg measures should be called \'seg_measures.pkl\', and be placed together with the two previous folders')
     parser.add_argument('--inference_data_dir', type=str, default='', help=f'Path to the images to infer, and their segmentations and a file with the corresponding seg measures. Images should be placed in a folder called \'imgs\', the segmentations in a folder called \'segs\'')
     parser.add_argument('--output_dir', type=str, default=OUTPUT_DIR, help='The path to the directory where the outputs will be placed')
@@ -317,8 +329,58 @@ def get_arg_parser():
 
     return parser
 
+    # mtch = re.match(img_dir_tmplt, '01_ST')
+    # type(mtch)
+    # isinstance(mtch, re.Match)
+    DATA_DIR = pathlib.Path('C:/Users/mchls/Desktop/University/PhD/Projects/QANet/Data/Fluo-N2DH-GOWT1/original/train')
+    DATA_DIR.is_dir()
 
-def get_file_names(images_dir: pathlib.Path, segmentations_dir: pathlib.Path):
+
+def get_files_from_dirs(root_dir: pathlib.Path, image_dir_regex, segmentation_dir_regex, image_sub_dir: str = None, segmentation_sub_dir: str = None, logger: logging.Logger = None):
+    def _append_files(root_dir: str, file_list: list):
+        for root, dirs, files in os.walk(root_dir):
+            for file in files:
+                file_list.append(f'{root}/{file}')
+
+    def _check_files():
+        valid = True
+        for idx, fl_tup in enumerate(img_seg_fls):
+            img_fl_name = pathlib.Path(fl_tup[0]).name
+            img_idx = img_fl_name[:img_fl_name.index('.')][-3:]
+
+            seg_fl_name = pathlib.Path(fl_tup[1]).name
+            seg_idx = seg_fl_name[:seg_fl_name.index('.')][-3:]
+
+            if img_idx != seg_idx:
+                img_seg_fls.pop(idx)
+
+    img_fls = []
+    seg_fls = []
+
+    for root, dirs, files in os.walk(root_dir):
+        for dir in dirs:
+            if re.match(image_dir_regex, dir) is not None:
+            # if isinstance(re.match(image_dir_regex, dir), re.Match):
+                root_dir = f'{root}/{dir}'
+                if isinstance(image_sub_dir, str):
+                    root_dir = f'{root}/{dir}/{image_sub_dir}'
+                _append_files(root_dir=root_dir, file_list=img_fls)
+
+            elif re.match(segmentation_dir_regex, dir) is not None:
+            # elif isinstance(re.match(segmentation_dir_regex, dir), re.Match):
+                root_dir = f'{root}/{dir}'
+                if isinstance(segmentation_sub_dir, str):
+                    root_dir = f'{root}/{dir}/{segmentation_sub_dir}'
+                _append_files(root_dir=root_dir, file_list=seg_fls)
+
+
+    img_seg_fls = list(zip(img_fls, seg_fls))
+    _check_files()
+
+    return img_seg_fls
+
+
+def get_files_from_dir(images_dir: pathlib.Path, segmentations_dir: pathlib.Path):
     img_fls, seg_fls = list(), list()
 
     for root, dirs, files in os.walk(images_dir):
