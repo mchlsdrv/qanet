@@ -2,13 +2,17 @@ import os
 import pathlib
 import numpy as np
 import matplotlib.pyplot as plt
+from configs.general_configs import (
+    SCATTER_PLOT_FIGSIZE,
+    SCATTER_PLOT_FONTSIZE,
+)
 plt.style.use('ggplot')
 
 
-def plot_scatter(x: np.ndarray, y: np.ndarray, figsize: tuple = (20, 10), save_file: pathlib.Path = None):
-    fig, ax = plt.subplots(figsize=figsize)
+def plot_scatter(x: np.ndarray, y: np.ndarray, save_file: pathlib.Path = None):#, figsize: tuple = (20, 10), save_file: pathlib.Path = None):
+    fig, ax = plt.subplots(figsize=SCATTER_PLOT_FIGSIZE)
 
-    plt.rc('font', size=28)
+    plt.rc('font', size=SCATTER_PLOT_FONTSIZE)
     # ax.xaxis.label.set_fontsize(18)
     ax.scatter(x, y, label='True vs Predicted')
     ax.plot([0., 1.], [0., 1.], label='Perfect Match')

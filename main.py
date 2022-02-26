@@ -139,11 +139,16 @@ if __name__ == '__main__':
 
         )
 
-        callbacks = get_callbacks(
+        # - Get the callbacks and optionally the thread which runs the tensorboard
+        callbacks, tb_prc = get_callbacks(
             epochs=args.epochs,
             output_dir=current_run_dir,
             logger=logger
         )
+
+        # - If the setting is to launch the tensorboard process automatically
+        if tb_prc is not None:
+            tb_prc.start()
 
         # - Train
         model.fit(
@@ -157,6 +162,10 @@ if __name__ == '__main__':
             callbacks=callbacks
         )
 
-        # - After the training - stop the batch threads for the train and validation data loaders
-        train_dl.stop_data_loading()
-        val_dl.stop_data_loading()
+        # - After the training - stop the batch processes for the train and validation data loaders
+        train_data_loading_prcs.join()
+        val_data_loading_prcs.join()
+
+        # - If we started the tensorboard thread - stop it after the run ends
+        if tb_prc is not None:
+            tb_prc.join()

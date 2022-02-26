@@ -203,6 +203,3 @@ class DataLoader(tf.keras.utils.Sequence):
 
     def get_queue_load(self):
         return self.btch_q.qsize() / self.btch_q_max_sz
-
-    def stop_data_loading(self):
-        self.data_loading_prcs.join()

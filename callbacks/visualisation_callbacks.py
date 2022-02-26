@@ -8,12 +8,10 @@ from utils.visualisation_utils.plotting_funcs import (
 from utils.image_utils.image_aux import (
     get_image_from_figure,
 )
-from configs.general_configs import (
-    SCATTER_PLOT_FIGSIZE
-)
-# from utils.general_utils.aux_funcs import (
-#     write_images_to_tensorboard
+# from configs.general_configs import (
+    # SCATTER_PLOT_FIGSIZE
 # )
+
 
 def write_images_to_tensorboard(writer, data: dict, step: int):
     with writer.as_default():
@@ -46,7 +44,7 @@ def write_images_to_tensorboard(writer, data: dict, step: int):
                     figure=plot_scatter(
                         x=data.get('Scatter')['x'],
                         y=data.get('Scatter')['y'],
-                        figsize=data.get('Scatter')['figsize'],
+                        # figsize=data.get('Scatter')['figsize'],
                         save_file=None
                     )
                 ),
@@ -72,10 +70,6 @@ class ScatterPlotCallback(tf.keras.callbacks.Callback):
 
     def on_epoch_end(self, epoch, logs=None):
         # 1) Get the layers
-        # print(self.model.train_epoch_trgt_seg_msrs)
-        # print(self.model.train_epoch_pred_seg_msrs)
-        # print(self.model.val_epoch_trgt_seg_msrs)
-        # print(self.model.val_epoch_pred_seg_msrs)
         if epoch % self.log_interval == 0:
             print(f'\nSaving scatter plot of the seg measures for epoch #{epoch} to: \'{self.log_dir}\'...')
 
@@ -106,41 +100,6 @@ class ScatterPlotCallback(tf.keras.callbacks.Callback):
                 ),
                 step=epoch
             )
-            # with self.train_file_writer.as_default():
-            #     save_file = None
-            #     if isinstance(self.log_dir, pathlib.Path):
-            #         save_file = self.log_dir / f'train_epoch_{epoch}.png'
-            #
-            #     fig = plot_scatter(
-            #         x=self.model.train_epoch_trgt_seg_msrs,
-            #         y=self.model.train_epoch_pred_seg_msrs,
-            #         figsize=self.figsize,
-            #         save_file=save_file
-            #     )
-            #
-            #     tf.summary.image(
-            #         f'Train (epoch #{epoch})',
-            #         get_image_from_figure(figure=fig),
-            #         step=epoch
-            #     )
-            #
-            # with self.val_file_writer.as_default():
-            #     save_file = None
-            #     if isinstance(self.log_dir, pathlib.Path):
-            #         save_file = self.log_dir / f'val_epoch_{epoch}.png'
-            #
-            #     fig = plot_scatter(
-            #         x=self.model.val_epoch_trgt_seg_msrs,
-            #         y=self.model.val_epoch_pred_seg_msrs,
-            #         figsize=self.figsize,
-            #         save_file=save_file
-            #     )
-            #
-            #     tf.summary.image(
-            #         f'Validation (epoch #{epoch})',
-            #         get_image_from_figure(figure=fig),
-            #         step=epoch
-            #     )
 
         # - Clean the seg measures history arrays
         self.model.train_epoch_trgt_seg_msrs = np.array([])

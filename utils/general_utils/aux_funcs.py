@@ -4,6 +4,7 @@ import yaml
 import logging
 import logging.config
 import threading
+import multiprocessing as mlp
 import argparse
 import pathlib
 import tensorflow as tf
@@ -121,9 +122,17 @@ def get_callbacks(epochs: int, output_dir: pathlib.Path, logger: logging.Logger 
                 )
             )
         # - Launch the tensorboard in a thread
+        tb_prc = None
+        # tb_th = None
         if TENSOR_BOARD_LAUNCH:
-            info_log(logger=logger, message=f'Launching a Tensor Board thread on logdir: \'{log_dir}\'...')
-            tb_th = launch_tensorboard(logdir=log_dir)
+            info_log(logger=logger, message=f'Launching a Tensor Board thread on logdir: \'{output_dir}\'...')
+            # tb_th = threading.Thread(
+            #     target=lambda: os.system(f'tensorboard --logdir={output_dir}'),
+            #     daemon=True
+            # )
+            tb_prc = mlp.Process(
+                target=lambda: os.system(f'tensorboard --logdir={output_dir}'),
+            )
 
     if EARLY_STOPPING:
         callbacks.append(
@@ -169,7 +178,8 @@ def get_callbacks(epochs: int, output_dir: pathlib.Path, logger: logging.Logger 
             )
         )
 
-    return callbacks
+    return callbacks, tb_prc
+    # return callbacks, tb_th
 
 
 def get_runtime(seconds: float):
@@ -328,12 +338,6 @@ def get_arg_parser():
     parser.add_argument('--no_reduce_lr_on_plateau', default=False, action='store_true', help=f'If not to use the ReduceLROnPlateau callback')
 
     return parser
-
-    # mtch = re.match(img_dir_tmplt, '01_ST')
-    # type(mtch)
-    # isinstance(mtch, re.Match)
-    DATA_DIR = pathlib.Path('C:/Users/mchls/Desktop/University/PhD/Projects/QANet/Data/Fluo-N2DH-GOWT1/original/train')
-    DATA_DIR.is_dir()
 
 
 def get_files_from_dirs(root_dir: pathlib.Path, image_dir_regex, segmentation_dir_regex, image_sub_dir: str = None, segmentation_sub_dir: str = None, logger: logging.Logger = None):
@@ -515,7 +519,7 @@ def write_images_to_tensorboard(writer, data: dict, step: int):
                     figure=plot_scatter(
                         x=data.get('Scatter')['x'],
                         y=data.get('Scatter')['y'],
-                        figsize=SCATTER_PLOT_FIGSIZE,
+                        # figsize=SCATTER_PLOT_FIGSIZE,
                         save_file=None
                     )
                 ),
