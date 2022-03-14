@@ -1,3 +1,4 @@
+import time
 import numpy as np
 import logging
 import time
@@ -40,7 +41,9 @@ from utils.general_utils.aux_funcs import (
     err_log
 )
 
+
 def random_rotation(image: np.ndarray, segmentation: np.ndarray, logger: logging.Logger = None) -> (np.ndarray, np.ndarray):
+    t_strt = time.time()
     dgrs = np.random.randint(-180, 180)
     # Rotates the image by degrees
     img_shp = image.shape
@@ -60,10 +63,13 @@ def random_rotation(image: np.ndarray, segmentation: np.ndarray, logger: logging
     rot_img = cv2.warpAffine(image, M, img_shp[:-1])
     rot_seg = cv2.warpAffine(segmentation, M, img_shp[:-1])
 
+    if PROFILE and DEBUG_LEVEL > 2:
+        info_log(logger=logger, message=f'Random rotation took {get_runtime(seconds=time.time() - t_strt)}')
     return rot_img, rot_seg
 
 
 def random_crop(image, segmentation, non_empty: bool = True, logger: logging.Logger = None):
+    t_strt = time.time()
     h, w = CROP_SIZE, CROP_SIZE
     x = np.random.randint(0, image.shape[0] - h)
 
@@ -94,56 +100,66 @@ def random_crop(image, segmentation, non_empty: bool = True, logger: logging.Log
             if DEBUG_LEVEL > 1:
                 info_log(logger=logger, message=f'The crops\' sum is {seg_crp.sum()} < {NON_EMPTY_CROP_THRESHOLD}. Trying to acquire another crop (try #{try_idx})...')
 
+    if PROFILE and DEBUG_LEVEL > 2:
+        info_log(logger=logger, message=f'Random crop took {get_runtime(seconds=time.time() - t_strt)}')
+
     return img_crp, seg_crp
 
 
 def random_erosion(segmentation, kernel=None, logger: logging.Logger = None):
     # Shrinks the labels
+    t_strt = time.time()
     krnl = kernel
     if krnl is None:
         krnl = np.random.choice(EROSION_SIZES)
-    return grey_erosion(segmentation, size=krnl)
+    seg = grey_erosion(segmentation, size=krnl)
+    if PROFILE and DEBUG_LEVEL > 2:
+        info_log(logger=logger, message=f'Erosion took {get_runtime(seconds=time.time() - t_strt)}')
+    return seg
 
 
 def random_dilation(segmentation, kernel=None, logger: logging.Logger = None):
     # "Fattens" the cell label
+    t_strt = time.time()
     krnl = kernel
     if krnl is None:
         krnl = np.random.choice(DILATION_SIZES)
-    return grey_dilation(segmentation, size=krnl)
+    seg = grey_dilation(segmentation, size=krnl)
+    if PROFILE and DEBUG_LEVEL > 2:
+        info_log(logger=logger, message=f'Dilation took {get_runtime(seconds=time.time() - t_strt)}')
+    return seg
 
 
 def random_opening(segmentation, logger: logging.Logger = None):
+    t_strt = time.time()
     # Connected labels are brought apart
     krnl = np.random.choice(OPENING_SIZES)
-    return random_dilation(random_erosion(segmentation, kernel=krnl), kernel=krnl)
+
+    seg = random_dilation(random_erosion(segmentation, kernel=krnl), kernel=krnl)
+    if PROFILE and DEBUG_LEVEL > 2:
+        info_log(logger=logger, message=f'Opening took {get_runtime(seconds=time.time() - t_strt)}')
+    return seg
 
 
 def random_closing(segmentation, logger: logging.Logger = None):
+    t_strt = time.time()
     # Disconnected labels are brought together
     krnl = np.random.choice(CLOSING_SIZES)
-    return random_erosion(random_dilation(segmentation, kernel=krnl), kernel=krnl)
-
-
-# def morphological_transform(segmentation, logger: logging.Logger = None):
-#
-#     seg = segmentation
-#     if np.random.random() > .5:
-#         seg = random_erosion(seg)
-#     if np.random.random() > .5:
-#         seg = random_dilation(seg)
-#     if np.random.random() > .5:
-#         seg = random_opening(seg)
-#     if np.random.random() > .5:
-#         seg = random_closing(seg)
-#
-#     return seg
+    seg = random_erosion(random_dilation(segmentation, kernel=krnl), kernel=krnl)
+    if PROFILE and DEBUG_LEVEL > 2:
+        info_log(logger=logger, message=f'Closing took {get_runtime(seconds=time.time() - t_strt)}')
+    return seg
 
 
 def affine_transform(segmentation, logger: logging.Logger = None):
+    t_strt = time.time()
     scl = np.random.uniform(*SCALE_RANGE, 2)
     tform = AffineTransform(scale=scl + 1, shear=np.random.uniform(*SHEER_RANGE))
-    return warp(segmentation, tform.inverse, output_shape=segmentation.shape)
+    seg = warp(segmentation, tform.inverse, output_shape=segmentation.shape)
+
+    if PROFILE and DEBUG_LEVEL > 2:
+        info_log(logger=logger, message=f'Affine transform took {get_runtime(seconds=time.time() - t_strt)}')
+    return seg
 
 
 def elastic_transform(segmentation, logger: logging.Logger = None):
@@ -153,6 +169,7 @@ def elastic_transform(segmentation, logger: logging.Logger = None):
     Proc. of the International Conference on Document Analysis and
     Recognition, 2003.
     """
+    t_strt = time.time()
     seg_shp = segmentation.shape
     rnd_st = np.random.RandomState(None)
 
@@ -165,7 +182,11 @@ def elastic_transform(segmentation, logger: logging.Logger = None):
     x, y = np.meshgrid(np.arange(seg_shp[0]), np.arange(seg_shp[1]))
     idxs = np.reshape(y + dy, (-1, 1)), np.reshape(x + dx, (-1, 1))
 
-    return map_coordinates(segmentation, idxs, order=1, mode='reflect').reshape(seg_shp)
+    seg = map_coordinates(segmentation, idxs, order=1, mode='reflect').reshape(seg_shp)
+    if PROFILE and DEBUG_LEVEL > 2:
+        info_log(logger=logger, message=f'Elastic transform took {get_runtime(seconds=time.time() - t_strt)}')
+
+    return seg
 
 
 def augment(image, segmentation, non_empty_crops: bool = True, rotation: bool = True, affine: bool = True, erosion: bool = True, dilation: bool = True, opening: bool = True, closing: bool = True, elastic: bool = True, logger: logging.Logger = None):
@@ -201,24 +222,27 @@ def augment(image, segmentation, non_empty_crops: bool = True, rotation: bool = 
     #  2) Morphological
     if erosion and np.random.random() > .5:
         spoiled_seg = random_erosion(
-            segmentation=spoiled_seg
+            segmentation=spoiled_seg,
+            logger=logger
         )
 
     if dilation and np.random.random() > .5:
         spoiled_seg = random_dilation(
-            segmentation=spoiled_seg
+            segmentation=spoiled_seg,
+            logger=logger
         )
 
     if opening and np.random.random() > .5:
         spoiled_seg = random_opening(
-            segmentation=spoiled_seg
+            segmentation=spoiled_seg,
+            logger=logger
         )
 
     if closing and np.random.random() > .5:
         spoiled_seg = random_closing(
-            segmentation=spoiled_seg
+            segmentation=spoiled_seg,
+            logger=logger
         )
-    # spoiled_seg = morphological_transform(spoiled_seg, logger=logger)
 
     #  3) Elastic
     if elastic and np.random.random() >= .5:
@@ -241,7 +265,7 @@ def augment(image, segmentation, non_empty_crops: bool = True, rotation: bool = 
         )
 
     if PROFILE and DEBUG_LEVEL > 2:
-            info_log(logger=logger, message=f'Augmentation took {get_runtime(seconds=time.time() - t_strt)}')
+            info_log(logger=logger, message=f'All augmentations took {get_runtime(seconds=time.time() - t_strt)}')
 
     return img, seg, spoiled_seg
 

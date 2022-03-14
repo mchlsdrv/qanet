@@ -1,6 +1,7 @@
 import os
 import re
 import yaml
+import pickle as pkl
 import logging
 import logging.config
 import threading
@@ -36,8 +37,8 @@ from configs.general_configs import (
     TENSOR_BOARD_IMAGES_LOG_INTERVAL,
     TENSOR_BOARD_LOG_INTERVAL,
 
-    PLOT_SCATTER,
-    SCATTER_PLOT_LOG_INTERVAL,
+    TRAIN_LOG,
+    TRAIN_LOG_INTERVAL,
     SCATTER_PLOT_FIGSIZE,
 
     TENSOR_BOARD_LAUNCH,
@@ -63,8 +64,7 @@ from configs.general_configs import (
     REDUCE_LR_ON_PLATEAU_VERBOSE,
 
     MODEL_CHECKPOINT,
-    MODEL_CHECKPOINT_FILE_TAMPLATE,
-    MODEL_CHECKPOINT_FILE_BEST_MODEL_TAMPLATE,
+    MODEL_CHECKPOINT_FILE_BEST_MODEL_TEMPLATE,
     MODEL_CHECKPOINT_MONITOR,
     MODEL_CHECKPOINT_VERBOSE,
     MODEL_CHECKPOINT_SAVE_BEST_ONLY,
@@ -73,12 +73,9 @@ from configs.general_configs import (
     MODEL_CHECKPOINT_SAVE_FREQ,
 )
 
-from utils.image_utils.preprocessings import (
-    normalize
-)
 
 from callbacks.visualisation_callbacks import (
-    ScatterPlotCallback
+    TrainLogCallback
 )
 
 from utils.visualisation_utils.plotting_funcs import (
@@ -102,6 +99,7 @@ def get_callbacks(epochs: int, output_dir: pathlib.Path, logger: logging.Logger 
     # -------------------
     # Built-in  callbacks
     # -------------------
+    tb_prc = None
     if TENSOR_BOARD:
         callbacks.append(
             tf.keras.callbacks.TensorBoard(
@@ -113,23 +111,18 @@ def get_callbacks(epochs: int, output_dir: pathlib.Path, logger: logging.Logger 
                 embeddings_freq=TENSOR_BOARD_LOG_INTERVAL,
             )
         )
-        if PLOT_SCATTER:
+        if TRAIN_LOG:
             callbacks.append(
-                ScatterPlotCallback(
+                TrainLogCallback(
                     figsize=SCATTER_PLOT_FIGSIZE,
                     log_dir=output_dir,
-                    log_interval=SCATTER_PLOT_LOG_INTERVAL,
+                    log_interval=TRAIN_LOG_INTERVAL,
+                    logger=logger
                 )
             )
         # - Launch the tensorboard in a thread
-        tb_prc = None
-        # tb_th = None
         if TENSOR_BOARD_LAUNCH:
             info_log(logger=logger, message=f'Launching a Tensor Board thread on logdir: \'{output_dir}\'...')
-            # tb_th = threading.Thread(
-            #     target=lambda: os.system(f'tensorboard --logdir={output_dir}'),
-            #     daemon=True
-            # )
             tb_prc = mlp.Process(
                 target=lambda: os.system(f'tensorboard --logdir={output_dir}'),
             )
@@ -168,7 +161,7 @@ def get_callbacks(epochs: int, output_dir: pathlib.Path, logger: logging.Logger 
     if MODEL_CHECKPOINT:
         callbacks.append(
             tf.keras.callbacks.ModelCheckpoint(
-                filepath=output_dir / MODEL_CHECKPOINT_FILE_BEST_MODEL_TAMPLATE,
+                filepath=output_dir / MODEL_CHECKPOINT_FILE_BEST_MODEL_TEMPLATE,
                 monitor=MODEL_CHECKPOINT_MONITOR,
                 verbose=MODEL_CHECKPOINT_VERBOSE,
                 save_best_only=MODEL_CHECKPOINT_SAVE_BEST_ONLY,
@@ -179,7 +172,6 @@ def get_callbacks(epochs: int, output_dir: pathlib.Path, logger: logging.Logger 
         )
 
     return callbacks, tb_prc
-    # return callbacks, tb_th
 
 
 def get_runtime(seconds: float):
@@ -304,7 +296,7 @@ def get_logger(configs_file, save_file):
 
         logger = logging.getLogger(__name__)
     except Exception as err:
-        err_log(logger=None, message=err)
+        err_log(logger=logger, message=str(err))
 
     return logger
 
@@ -340,46 +332,17 @@ def get_arg_parser():
     return parser
 
 
-def get_files_from_dirs(root_dir: pathlib.Path, image_dir_regex, segmentation_dir_regex, image_sub_dir: str = None, segmentation_sub_dir: str = None, logger: logging.Logger = None):
-    def _append_files(root_dir: str, file_list: list):
-        for root, dirs, files in os.walk(root_dir):
-            for file in files:
-                file_list.append(f'{root}/{file}')
+def get_files_from_metadata(root_dir: pathlib.Path, metadata_files_regex, logger: logging.Logger = None):
 
-    def _check_files():
-        valid = True
-        for idx, fl_tup in enumerate(img_seg_fls):
-            img_fl_name = pathlib.Path(fl_tup[0]).name
-            img_idx = img_fl_name[:img_fl_name.index('.')][-3:]
-
-            seg_fl_name = pathlib.Path(fl_tup[1]).name
-            seg_idx = seg_fl_name[:seg_fl_name.index('.')][-3:]
-
-            if img_idx != seg_idx:
-                img_seg_fls.pop(idx)
-
-    img_fls = []
-    seg_fls = []
-
+    img_seg_fls = []
     for root, dirs, files in os.walk(root_dir):
-        for dir in dirs:
-            if re.match(image_dir_regex, dir) is not None:
-            # if isinstance(re.match(image_dir_regex, dir), re.Match):
-                root_dir = f'{root}/{dir}'
-                if isinstance(image_sub_dir, str):
-                    root_dir = f'{root}/{dir}/{image_sub_dir}'
-                _append_files(root_dir=root_dir, file_list=img_fls)
-
-            elif re.match(segmentation_dir_regex, dir) is not None:
-            # elif isinstance(re.match(segmentation_dir_regex, dir), re.Match):
-                root_dir = f'{root}/{dir}'
-                if isinstance(segmentation_sub_dir, str):
-                    root_dir = f'{root}/{dir}/{segmentation_sub_dir}'
-                _append_files(root_dir=root_dir, file_list=seg_fls)
-
-
-    img_seg_fls = list(zip(img_fls, seg_fls))
-    _check_files()
+        for file in files:
+            if re.match(metadata_files_regex, file) is not None:
+                metadata_file = f'{root}/{file}'
+                with pathlib.Path(metadata_file).open(mode='rb') as pkl_in:
+                    metadata = pkl.load(pkl_in)
+                    for metadata_tuple in metadata.get('filelist'):
+                        img_seg_fls.append((f'{root}/{metadata_tuple[0]}', f'{root}/{metadata_tuple[1]}'))
 
     return img_seg_fls
 

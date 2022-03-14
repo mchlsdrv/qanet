@@ -16,7 +16,6 @@ from utils.image_utils.image_aux import (
 
 from utils.general_utils.aux_funcs import (
     get_runtime,
-    decode_file,
     info_log,
 )
 
@@ -88,6 +87,7 @@ class DataLoader(tf.keras.utils.Sequence):
     def _get_temp_data(self, temp_data_file: pathlib.Path):
         imgs, segs = list(), list()
         for idx, (img_fl, seg_fl) in enumerate(self.img_seg_fls):
+
             img = preprocess_image(load_image(img_fl))
             seg = load_image(seg_fl)
 
@@ -103,7 +103,7 @@ class DataLoader(tf.keras.utils.Sequence):
 
         return imgs_segs
 
-    def enqueue_batches(self):#, batch_queue):
+    def enqueue_batches(self):
         with tf.device('cpu'):
             while True:
                 # - Shuffle files before the next epoch
@@ -111,6 +111,7 @@ class DataLoader(tf.keras.utils.Sequence):
 
                 btch_idx_strt = 0
                 for btch_idx in range(self.__len__()):
+
                     if DEBUG_LEVEL > 1:
                         info_log(logger=self.logger, message=f'{self.name} Preparing batch thread #{btch_idx} ...')
 
@@ -134,13 +135,14 @@ class DataLoader(tf.keras.utils.Sequence):
                     btch_fl_idxs = np.arange(btch_idx_strt, btch_idx_end)
 
                     btch_fls = self.imgs_segs_temp[btch_fl_idxs]
-                    # btch_fls = self.img_seg_fls[btch_fl_idxs]
-
-                    # - For each file in the batch files
-                    t_strt = time.time()
 
                     # TODO - Bottleneck
                     for idx, (img, seg) in enumerate(btch_fls):
+                        btch_ts = np.array([])
+
+                        # - For each file in the batch files
+                        t_strt = time.time()
+
                         img_crp, seg_crp, aug_seg_crp = augment(
                             image=img,
                             segmentation=seg,
@@ -165,9 +167,6 @@ class DataLoader(tf.keras.utils.Sequence):
                         aug_seg_crps_btch.append(aug_seg_crp)
                         trgt_seg_msrs_btch.append(trgt_seg_msr)
 
-                    if PROFILE:
-                        info_log(logger=self.logger, message=f'Getting batch of {len(btch_fls)} took {get_runtime(seconds=time.time() - t_strt)}')
-
                     # - Convert the crops into numpy arrays
                     img_crps_btch = np.array(img_crps_btch, dtype=np.float32)
                     aug_seg_crps_btch = np.array(aug_seg_crps_btch, dtype=np.float32)
@@ -185,6 +184,7 @@ class DataLoader(tf.keras.utils.Sequence):
                     # - Enqueue the prepared batch
                     if DEBUG_LEVEL > 1:
                         info_log(logger=self.logger, message=f'{self.name} Loading batch #{btch_idx} of shape {img_crps_btch.shape} to the {self.name} queue ...')
+
                     self.btch_q.put(
                         (
                             (
@@ -196,7 +196,12 @@ class DataLoader(tf.keras.utils.Sequence):
                     )
 
                     if DEBUG_LEVEL > 1:
-                        info_log(logger=self.logger, message=f'{self.name} batch #{btch_idx} of shape {img_crps_btch.shape} was successfully loaded to the {self.name} queue! {self.name} queue has {self.btch_q.qsize()} / {self.btch_q_max_sz} ({100 * self.get_queue_load()}% full) items!')
+                        info_log(logger=self.logger, message=f'{self.name} batch #{btch_idx} of shape {img_crps_btch.shape} was successfully loaded to the {self.name} queue! {self.name} queue has {self.btch_q.qsize()} / {self.btch_q_max_sz} ({100 * self.get_queue_load():.2f}% full) items!')
+
+                    btch_ts = np.append(btch_ts, time.time() - t_strt)
+
+                if PROFILE:
+                    info_log(logger=self.logger, message=f'Getting batch of {len(btch_fls)} took on average {get_runtime(seconds=btch_ts.mean())}')
 
                 if DEBUG_LEVEL:
                     info_log(logger=self.logger, message=f'{self.name} queue has {self.btch_q.qsize()} / {self.btch_q_max_sz} items ({100 * self.get_queue_load():.2f}% full)!')

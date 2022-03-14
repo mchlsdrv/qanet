@@ -35,11 +35,13 @@ def plot_scatter(x: np.ndarray, y: np.ndarray, save_file: pathlib.Path = None):#
     return fig
 
 
-def plot(images, labels, figsize=(25, 10), save_file: pathlib.Path = None) -> None:
+def plot(images, labels, suptitle='', figsize=(25, 10), save_file: pathlib.Path = None) -> None:
     fig, ax = plt.subplots(1, len(images), figsize=figsize)
     for idx, (img, lbl) in enumerate(zip(images, labels)):
         ax[idx].imshow(img, cmap='gray')
         ax[idx].set_title(lbl)
+
+    fig.suptitle(suptitle)
 
     save_figure(figure=fig, save_file=save_file)
 

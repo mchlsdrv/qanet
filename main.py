@@ -4,12 +4,13 @@ import pathlib
 import tensorflow as tf
 import multiprocessing as mlp
 from utils.general_utils.aux_funcs import (
+    info_log,
     choose_gpu,
     get_logger,
     get_model,
     get_arg_parser,
     get_files_from_dir,
-    get_files_from_dirs,
+    get_files_from_metadata,
     get_train_val_split,
     get_callbacks,
 )
@@ -23,10 +24,7 @@ from configs.general_configs import (
     LOSS,
     OPTIMIZER,
     METRICS,
-    IMAGE_DIR_REGEX,
-    SEGMENTATION_DIR_REGEX,
-    IMAGE_SUB_DIR,
-    SEGMENTATION_SUB_DIR,
+    METADATA_FILES_REGEX,
 )
 
 '''
@@ -88,12 +86,9 @@ if __name__ == '__main__':
         # by the VALIDATION_PROPORTION variable from the configs.general_configs module
         if not args.data_from_single_dir:
             train_fls, val_fls = get_train_val_split(
-                data=get_files_from_dirs(
+                data=get_files_from_metadata(
                         root_dir=args.root_dir,
-                        image_dir_regex=IMAGE_DIR_REGEX,
-                        segmentation_dir_regex=SEGMENTATION_DIR_REGEX,
-                        image_sub_dir=IMAGE_SUB_DIR,
-                        segmentation_sub_dir=SEGMENTATION_SUB_DIR,
+                        metadata_files_regex=METADATA_FILES_REGEX,
                         logger=logger
                     ),
                     validation_proportion=args.validation_proportion,
@@ -108,6 +103,7 @@ if __name__ == '__main__':
                     validation_proportion=args.validation_proportion,
                     logger=logger
             )
+
         # - Create the train data loader
         train_dl = DataLoader(
             name='TRAIN',
@@ -156,16 +152,22 @@ if __name__ == '__main__':
             batch_size=args.batch_size,
             validation_data=val_dl,
             shuffle=True,
-            max_queue_size=args.batch_size,
-            workers=8,
+            # max_queue_size=args.batch_size,
             epochs=args.epochs,
             callbacks=callbacks
         )
 
         # - After the training - stop the batch processes for the train and validation data loaders
+        info_log(logger=logger, message='Joining the train process...')
         train_data_loading_prcs.join()
+        info_log(logger=logger, message='The train process was successfully joined!')
+
+        info_log(logger=logger, message='Joining the validation process...')
         val_data_loading_prcs.join()
+        info_log(logger=logger, message='The validation process was successfully joined!')
 
         # - If we started the tensorboard thread - stop it after the run ends
         if tb_prc is not None:
+            info_log(logger=logger, message='Joining the trnsorboard process...')
             tb_prc.join()
+            info_log(logger=logger, message='The tensorboard process was successfully joined!')

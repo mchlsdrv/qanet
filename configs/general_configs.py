@@ -4,8 +4,6 @@ import tensorflow as tf
 
 
 DEBUG_LEVEL = 0
-
-# PROFILE = True
 PROFILE = False
 
 # PATHS
@@ -15,20 +13,11 @@ ROOT_DIR = pathlib.Path('/media/rrtammyfs/labDatabase/CellTrackingChallenge/BGUS
 # - Path to the images directory
 IMAGE_DIR = pathlib.Path('./data/train/imgs')
 
-# The sub folder where the actual images are placed
-IMAGE_SUB_DIR = None
-
-# - Regular expression to extract the images directories
-IMAGE_DIR_REGEX = re.compile(r'(?<![a-zA-Z_])[0-9]{2}(?![a-zA-Z_])')
-
 # - Path to the segmentations directory
 SEGMENTATION_DIR = pathlib.Path('./data/train/segs')
 
-# The sub folder where the actual segmentations are placed
-SEGMENTATION_SUB_DIR = 'SEG'
-
-# - Regular expression to extract the segmentations directories
-SEGMENTATION_DIR_REGEX = re.compile(r'(?<![a-z])[0-9]{2}_GT')
+# - Regular expression to extract the images directories
+METADATA_FILES_REGEX = re.compile(r'.+(?<=metadata)_[0-9]{2}.pickle')
 
 OUTPUT_DIR = pathlib.Path('./output')
 
@@ -40,18 +29,18 @@ RIBCAGE_CONFIGS_FILE_PATH = pathlib.Path('./configs/ribcage_configs.yml')
 
 # CONSTANTS
 EPSILON = 1e-7
-ZERO_LOW_JACCARDS = True
+ZERO_LOW_JACCARDS = False
 
 # DATA
 # - Crops
 CROP_SIZE = 256
-NON_EMPTY_CROPS = False
-# NON_EMPTY_CROPS = True
-MIN_OBJECT_AREA = 400
+# -- Non-empty crops
+NON_EMPTY_CROPS = True
 NON_EMPTY_CROP_THRESHOLD = 2000
 MAX_EMPTY_CROPS = 3
-
-NUMBER_INDEX_CHARACTERS = 3
+# -- Object size
+MIN_OBJECT_AREA = 400
+# -- Shuffle
 SHUFFLE_CROPS = True
 
 # PREPROCESSING CONFIGS
@@ -60,13 +49,12 @@ STANDARDIZE_IMAGE = False
 # FILTERS CONFIGS
 # - CLipped Adaptive Histogram Equalization (CLAHE)
 # Enhances the contrast by equalizing the image intensity
-APPLY_CLAHE_FILTER = True
+APPLY_CLAHE_FILTER = False
 CLAHE_CLIP_LIMIT = 30.0
 CLAHE_TILE_GRID_SIZE = (10, 10)
 
 # AUGMENTATION CONFIGS
-# ROTATION = True
-ROTATION = False
+ROTATION = True
 
 # - Morphological Transforms
 EROSION = True
@@ -86,9 +74,8 @@ AFFINE = True
 SCALE_RANGE = (.01, .2)
 SHEER_RANGE = (.05, .2)
 
-
 # - Elastic Transforms
-ELASTIC = True
+ELASTIC = False
 SIGMA_RANGE = (1, 8)
 ALPHA_RANGE = (50, 100)
 
@@ -99,8 +86,8 @@ LOSS = tf.keras.losses.MeanSquaredError()
 METRICS = ['acc']
 
 #  Variables
-EPOCHS = 10
-BATCH_SIZE = 10
+EPOCHS = 200
+BATCH_SIZE = 256
 VAL_BATCH_SIZE = 1
 VALIDATION_PROPORTION = .2
 LEARNING_RATE = 1e-4
@@ -118,8 +105,12 @@ TENSOR_BOARD_SCALARS_LOG_INTERVAL = 1
 TENSOR_BOARD_IMAGES_LOG_INTERVAL = 25
 
 # -> Scatter Plot
-PLOT_SCATTER = True
-SCATTER_PLOT_LOG_INTERVAL = 25
+# PLOT_OUTLIERS = False
+PLOT_OUTLIERS = True
+N_OUTLIERS = 5
+OUTLIER_TH = .7
+TRAIN_LOG = True
+TRAIN_LOG_INTERVAL = 5
 SCATTER_PLOT_FIGSIZE = (25, 15)
 SCATTER_PLOT_FONTSIZE = 40
 
@@ -129,7 +120,7 @@ TENSOR_BOARD_LAUNCH = True
 # - Early Stopping
 EARLY_STOPPING = True
 EARLY_STOPPING_MONITOR = 'val_loss'
-EARLY_STOPPING_PATIENCE = 50
+EARLY_STOPPING_PATIENCE = 100
 EARLY_STOPPING_MIN_DELTA = 0
 EARLY_STOPPING_MODE = 'auto'
 EARLY_STOPPING_RESTORE_BEST_WEIGHTS = True
@@ -141,7 +132,7 @@ TERMINATE_ON_NAN = True
 # - LR Reduce
 REDUCE_LR_ON_PLATEAU = True
 REDUCE_LR_ON_PLATEAU_MONITOR = 'val_loss'
-REDUCE_LR_ON_PLATEAU_FACTOR = 0.1
+REDUCE_LR_ON_PLATEAU_FACTOR = 0.01
 REDUCE_LR_ON_PLATEAU_PATIENCE = 100
 REDUCE_LR_ON_PLATEAU_MIN_DELTA = 0.0001
 REDUCE_LR_ON_PLATEAU_COOLDOWN = 0
@@ -151,8 +142,8 @@ REDUCE_LR_ON_PLATEAU_VERBOSE = 1
 
 # - Model Checkpoint
 MODEL_CHECKPOINT = True
-MODEL_CHECKPOINT_FILE_TAMPLATE = 'checkpoints/cp-{epoch:04d}.ckpt'  # <- may be used in case we want to save all teh check points, and not only the best
-MODEL_CHECKPOINT_FILE_BEST_MODEL_TAMPLATE = 'checkpoints/best_model.ckpt'  # <- overwrites the second best model weigths in case MODEL_CHECKPOINT_SAVE_BEST_ONLY = True
+MODEL_CHECKPOINT_FILE_TEMPLATE = 'checkpoints/cp-{epoch:04d}.ckpt'  # <- may be used in case we want to save all teh check points, and not only the best
+MODEL_CHECKPOINT_FILE_BEST_MODEL_TEMPLATE = 'checkpoints/best_model.ckpt'  # <- overwrites the second best model weigths in case MODEL_CHECKPOINT_SAVE_BEST_ONLY = True
 MODEL_CHECKPOINT_MONITOR = 'val_loss'
 MODEL_CHECKPOINT_VERBOSE = 1
 MODEL_CHECKPOINT_SAVE_BEST_ONLY = True

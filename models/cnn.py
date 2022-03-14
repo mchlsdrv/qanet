@@ -8,7 +8,8 @@ from tensorflow import keras
 from tensorflow.keras import layers
 from configs.general_configs import (
     PROFILE,
-    RIBCAGE_CONFIGS_FILE_PATH
+    RIBCAGE_CONFIGS_FILE_PATH,
+    OUTLIER_TH,
 )
 
 from utils.general_utils import aux_funcs
@@ -30,15 +31,17 @@ class RibCage(keras.Model):
 
         # - Train epoch history
         self.train_imgs = None
-        self.train_pred_segs = None
+        self.train_aug_segs = None
         self.train_epoch_trgt_seg_msrs = np.array([])
         self.train_epoch_pred_seg_msrs = np.array([])
+        self.train_epoch_outliers = list()
 
         # - Validation epoch history
         self.val_imgs = None
-        self.val_pred_segs = None
+        self.val_aug_segs = None
         self.val_epoch_trgt_seg_msrs = np.array([])
         self.val_epoch_pred_seg_msrs = np.array([])
+        self.val_epoch_outliers = list()
 
     @staticmethod
     def _build_conv2d_block(filters: int, kernel_size: int):
@@ -85,7 +88,7 @@ class RibCage(keras.Model):
         for units in layer_units:
             fc_layer = self._build_fully_connected_block(units=units, drop_rate=drop_rate)(fc_layer)
 
-        output_layer = keras.layers.Dense(units=1)(fc_layer)
+        output_layer = keras.layers.Dense(units=1, activation=tf.keras.activations.sigmoid)(fc_layer)
 
         return keras.Model(inputs=[input_left_rib, input_right_rib], outputs=[output_layer])
 
@@ -108,6 +111,8 @@ class RibCage(keras.Model):
             pred_seg_msrs = self.model([imgs, aug_segs], training=True)
             loss = self.compiled_loss(trgt_seg_msrs, pred_seg_msrs)
 
+        trgt_seg_msrs = trgt_seg_msrs.numpy()
+        pred_seg_msrs = pred_seg_msrs.numpy()[:, 0]
         # - Get the weights to adjust according to the loss calculated
         trainable_vars = self.trainable_variables
 
@@ -119,13 +124,34 @@ class RibCage(keras.Model):
 
         # - Add images
         self.train_imgs = imgs
-        self.train_pred_segs = aug_segs
+        self.train_aug_segs = aug_segs
 
         # - Add the target seg measures to epoch history
-        self.train_epoch_trgt_seg_msrs = np.append(self.train_epoch_trgt_seg_msrs, trgt_seg_msrs.numpy())
+        self.train_epoch_trgt_seg_msrs = np.append(self.train_epoch_trgt_seg_msrs, trgt_seg_msrs)
 
         # - Add the modified seg measures to epoch history
-        self.train_epoch_pred_seg_msrs = np.append(self.train_epoch_pred_seg_msrs, pred_seg_msrs.numpy())
+        self.train_epoch_pred_seg_msrs = np.append(self.train_epoch_pred_seg_msrs, pred_seg_msrs)
+
+        # - Add the outliers, if theres any
+        # print(f'''
+        # # trgt_seg_msrs.shape = {trgt_seg_msrs.shape}
+        # # pred_seg_msrs.shape = {pred_seg_msrs.shape}
+        # # ''')
+        seg_msrs_diff = np.abs(trgt_seg_msrs - pred_seg_msrs)
+        # print(f'seg_msrs_diff = {seg_msrs_diff}')
+        outliers_idxs = np.argwhere(seg_msrs_diff > OUTLIER_TH).flatten()
+        # print(f'OUTLIER_TH = {OUTLIER_TH}')
+        # print(f'outlier_idx = {outlier_idxs}')
+
+        for outlier_idx in outliers_idxs:
+            self.train_epoch_outliers.append(
+                (
+                    self.train_imgs[outlier_idx],
+                    self.train_aug_segs[outlier_idx],
+                    trgt_seg_msrs[outlier_idx],
+                    pred_seg_msrs[outlier_idx]
+                )
+            )
 
         if PROFILE:
             aux_funcs.info_log(logger=self.logger, message=f'Training on batch of size {imgs.shape} took {aux_funcs.get_runtime(seconds=time.time() - t_strt)}')
@@ -142,15 +168,32 @@ class RibCage(keras.Model):
         pred_seg_msrs = self.model([imgs, aug_segs], training=True)
         loss = self.compiled_loss(trgt_seg_msrs, pred_seg_msrs)
 
-        # - Add images
+        trgt_seg_msrs = trgt_seg_msrs.numpy()
+        pred_seg_msrs = pred_seg_msrs.numpy()[:, 0]
+
+        # - Update images
         self.val_imgs = imgs
-        self.val_pred_segs = aug_segs
+        self.val_aug_segs = aug_segs
 
         # - Add the target seg measures to epoch history
-        self.val_epoch_trgt_seg_msrs = np.append(self.val_epoch_trgt_seg_msrs, trgt_seg_msrs.numpy())
+        self.val_epoch_trgt_seg_msrs = np.append(self.val_epoch_trgt_seg_msrs, trgt_seg_msrs)
 
         # - Add the modified seg measures to epoch history
-        self.val_epoch_pred_seg_msrs = np.append(self.val_epoch_pred_seg_msrs, pred_seg_msrs.numpy())
+        self.val_epoch_pred_seg_msrs = np.append(self.val_epoch_pred_seg_msrs, pred_seg_msrs)
+
+        # - Add the outliers, if theres any
+        seg_msrs_diff = np.abs(trgt_seg_msrs - pred_seg_msrs)
+        outliers_idxs = np.argwhere(seg_msrs_diff > OUTLIER_TH).flatten()
+
+        for outlier_idx in outliers_idxs:
+            self.val_epoch_outliers.append(
+                (
+                    self.val_imgs[outlier_idx],
+                    self.val_aug_segs[outlier_idx],
+                    trgt_seg_msrs[outlier_idx],
+                    pred_seg_msrs[outlier_idx]
+                )
+            )
 
         if PROFILE:
             aux_funcs.info_log(logger=self.logger, message=f'Validating on batch of size {imgs.shape} took {aux_funcs.get_runtime(seconds=time.time() - t_strt)}')
