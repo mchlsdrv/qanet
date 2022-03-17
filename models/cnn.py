@@ -84,7 +84,7 @@ class RibCage(keras.Model):
             )
 
         layer_units, drop_rate = self.ribcage_configs.get('fully_connected_block')['layer_units'], self.ribcage_configs.get('fully_connected_block')['drop_rate']
-        fc_layer = keras.layers.Flatten()(input_spine)
+        fc_layer = keras.layers.Flatten()(tmp_input_spine)
         for units in layer_units:
             fc_layer = self._build_fully_connected_block(units=units, drop_rate=drop_rate)(fc_layer)
 

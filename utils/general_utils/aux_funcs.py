@@ -29,13 +29,13 @@ from configs.general_configs import (
     LEARNING_RATE,
 
     TENSOR_BOARD,
+    TENSOR_BOARD_HISTOGRAM_FREQ
     TENSOR_BOARD_WRITE_GRAPH,
     TENSOR_BOARD_WRITE_IMAGES,
     TENSOR_BOARD_WRITE_STEPS_PER_SECOND,
     TENSOR_BOARD_UPDATE_FREQ,
     TENSOR_BOARD_SCALARS_LOG_INTERVAL,
     TENSOR_BOARD_IMAGES_LOG_INTERVAL,
-    TENSOR_BOARD_LOG_INTERVAL,
 
     TRAIN_LOG,
     TRAIN_LOG_INTERVAL,
@@ -104,11 +104,11 @@ def get_callbacks(epochs: int, output_dir: pathlib.Path, logger: logging.Logger 
         callbacks.append(
             tf.keras.callbacks.TensorBoard(
                 log_dir=output_dir,
+                histogram_freq=TENSOR_BOARD_HISTOGRAM_FREQ,
                 write_graph=TENSOR_BOARD_WRITE_GRAPH,
                 write_images=TENSOR_BOARD_WRITE_IMAGES,
                 write_steps_per_second=TENSOR_BOARD_WRITE_STEPS_PER_SECOND,
                 update_freq=TENSOR_BOARD_UPDATE_FREQ,
-                embeddings_freq=TENSOR_BOARD_LOG_INTERVAL,
             )
         )
         if TRAIN_LOG:
@@ -244,13 +244,13 @@ def get_model(input_image_dims: tuple, checkpoint_dir: pathlib.Path = None, logg
                 weights_loaded = True
         except Exception as err:
             if isinstance(logger, logging.Logger):
-                logger.exception(err)
+                logger.exception(f'Can\'t load weigths from \'{checkpoint_dir}\' due to error: {err}')
         else:
             if isinstance(logger, logging.Logger):
                 if latest_cpt is not None:
-                    logger.info(f'Weights from \'checkpoint_dir\' were loaded successfully to the \'RibCage\' model!')
+                    logger.info(f'Weights from \'{checkpoint_dir}\' were loaded successfully to the \'RibCage\' model!')
                 else:
-                    logger.info(f'No weights were found to load!')
+                    logger.info(f'No weights were found to load in \'{checkpoint_dir}\'!')
     if isinstance(logger, logging.Logger):
         logger.info(model.summary())
 

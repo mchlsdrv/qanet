@@ -4,4 +4,4 @@ conv2d_blocks:
 
 fully_connected_block:
   layer_units: [512, 1024]
-  drop_rate: 0.0
+  drop_rate: 0.5

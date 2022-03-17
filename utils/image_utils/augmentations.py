@@ -173,11 +173,17 @@ def elastic_transform(segmentation, logger: logging.Logger = None):
     seg_shp = segmentation.shape
     rnd_st = np.random.RandomState(None)
 
-    sgm = np.random.uniform(*SIGMA_RANGE)  #1, 8)
-    alph = np.random.uniform(*ALPHA_RANGE)  #50, 100)
+    # sgm = np.random.uniform(*SIGMA_RANGE)  #1, 8)
+    # alph = np.random.uniform(*ALPHA_RANGE)  #50, 100)
 
-    dx = gaussian_filter(rnd_st.rand(*seg_shp) * 2 - 1, sgm, mode='constant', cval=0) * alph
-    dy = gaussian_filter(rnd_st.rand(*seg_shp) * 2 - 1, sgm, mode='constant', cval=0) * alph
+    alph = seg_shp[1] * 2
+    sgm = seg_shp[1] * 0.15
+
+    dx = gaussian_filter((rnd_st.rand(*seg_shp) * 2 - 1), sgm) * alph
+    dy = gaussian_filter((rnd_st.rand(*seg_shp) * 2 - 1), sgm) * alph
+
+    # dx = gaussian_filter(rnd_st.rand(*seg_shp) * 2 - 1, sgm, mode='constant', cval=0) * alph
+    # dy = gaussian_filter(rnd_st.rand(*seg_shp) * 2 - 1, sgm, mode='constant', cval=0) * alph
 
     x, y = np.meshgrid(np.arange(seg_shp[0]), np.arange(seg_shp[1]))
     idxs = np.reshape(y + dy, (-1, 1)), np.reshape(x + dx, (-1, 1))
@@ -268,4 +274,3 @@ def augment(image, segmentation, non_empty_crops: bool = True, rotation: bool = 
             info_log(logger=logger, message=f'All augmentations took {get_runtime(seconds=time.time() - t_strt)}')
 
     return img, seg, spoiled_seg
-
