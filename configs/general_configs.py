@@ -7,17 +7,15 @@ DEBUG_LEVEL = 0
 PROFILE = False
 
 # PATHS
-# - Path to the root data directory
-ROOT_DIR = pathlib.Path('/media/rrtammyfs/labDatabase/CellTrackingChallenge/BGUSIM/Fluo-N2DH-BGUSIM/Train')
+# - TRAIN -
+TRAIN_DIR = pathlib.Path('/media/rrtammyfs/labDatabase/CellTrackingChallenge/BGUSIM/Fluo-N2DH-BGUSIM/Train')
+TRAIN_IMAGE_DIR = pathlib.Path('./data/train/imgs')
+TRAIN_SEG_DIR = pathlib.Path('./data/train/segs')
 
-# - Path to the images directory
-IMAGE_DIR = pathlib.Path('./data/train/imgs')
-
-# - Path to the segmentations directory
-SEGMENTATION_DIR = pathlib.Path('./data/train/segs')
-
-# - Regular expression to extract the images directories
-METADATA_FILES_REGEX = re.compile(r'.+(?<=metadata)_[0-9]{2}.pickle')
+# - TEST -
+TEST_DIR = pathlib.Path('/media/rrtammyfs/labDatabase/CellTrackingChallenge/Training/Fluo-N2DH-GOWT1')
+TEST_IMAGE_DIR = pathlib.Path('')
+TEST_SEG_DIR = pathlib.Path('')
 
 OUTPUT_DIR = pathlib.Path('./output')
 
@@ -26,6 +24,9 @@ TEMP_DIR = pathlib.Path('./temp')
 CONFIGS_DIR_PATH = pathlib.Path('./configs')
 
 RIBCAGE_CONFIGS_FILE_PATH = pathlib.Path('./configs/ribcage_configs.yml')
+
+# - Regular expression to extract the images directories
+METADATA_FILES_REGEX = re.compile(r'.+(?<=metadata)_[0-9]{2}.pickle')
 
 # CONSTANTS
 EPSILON = 1e-7
@@ -45,14 +46,14 @@ MIN_OBJECT_AREA = 400
 SHUFFLE_CROPS = False
 
 # PREPROCESSING CONFIGS
-STANDARDIZE_IMAGE = True
+STANDARDIZE_IMAGE = False
 
 # FILTERS CONFIGS
 # - CLipped Adaptive Histogram Equalization (CLAHE)
 # Enhances the contrast by equalizing the image intensity
-APPLY_CLAHE_FILTER = True
-CLAHE_CLIP_LIMIT = 30.0
-CLAHE_TILE_GRID_SIZE = (10, 10)
+APPLY_CLAHE_FILTER = False
+CLAHE_CLIP_LIMIT = 2.0
+CLAHE_TILE_GRID_SIZE = (8, 8)
 
 # AUGMENTATION CONFIGS
 # NOTE: Considerably slows down the training procedure
@@ -97,13 +98,11 @@ LEARNING_RATE = 1e-3
 # > CALLBACKS
 # - Tensor Board
 TENSOR_BOARD = True
-TENSOR_BOARD_HISTOGRAM_FREQ = 1
-TENSOR_BOARD_WRITE_GRAPH = False
 TENSOR_BOARD_WRITE_IMAGES = True
 TENSOR_BOARD_WRITE_STEPS_PER_SECOND = True
 TENSOR_BOARD_UPDATE_FREQ = 'epoch'
 TENSOR_BOARD_SCALARS_LOG_INTERVAL = 1
-TENSOR_BOARD_IMAGES_LOG_INTERVAL = 5
+TENSOR_BOARD_IMAGES_LOG_INTERVAL = 1
 
 # -> Scatter Plot
 # PLOT_OUTLIERS = False
@@ -121,8 +120,8 @@ TENSOR_BOARD_LAUNCH = True
 # - Early Stopping
 EARLY_STOPPING = True
 EARLY_STOPPING_MONITOR = 'val_loss'
-EARLY_STOPPING_PATIENCE = 20
-EARLY_STOPPING_MIN_DELTA = 0
+EARLY_STOPPING_PATIENCE = 10
+EARLY_STOPPING_MIN_DELTA = 0.001
 EARLY_STOPPING_MODE = 'auto'
 EARLY_STOPPING_RESTORE_BEST_WEIGHTS = True
 EARLY_STOPPING_VERBOSE = 1
@@ -131,13 +130,13 @@ EARLY_STOPPING_VERBOSE = 1
 TERMINATE_ON_NAN = True
 
 # - LR Reduce
-REDUCE_LR_ON_PLATEAU = True
+REDUCE_LR_ON_PLATEAU = False
 REDUCE_LR_ON_PLATEAU_MONITOR = 'val_loss'
-REDUCE_LR_ON_PLATEAU_FACTOR = 0.01
+REDUCE_LR_ON_PLATEAU_FACTOR = 0.5
 REDUCE_LR_ON_PLATEAU_PATIENCE = 5
-REDUCE_LR_ON_PLATEAU_MIN_DELTA = 0.0001
+REDUCE_LR_ON_PLATEAU_MIN_DELTA = 0.01
 REDUCE_LR_ON_PLATEAU_COOLDOWN = 0
-REDUCE_LR_ON_PLATEAU_MIN_LR = 0.0
+REDUCE_LR_ON_PLATEAU_MIN_LR = 1e-7
 REDUCE_LR_ON_PLATEAU_MODE = 'auto'
 REDUCE_LR_ON_PLATEAU_VERBOSE = 1
 

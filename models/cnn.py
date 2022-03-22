@@ -12,7 +12,8 @@ from configs.general_configs import (
     OUTLIER_TH,
 )
 
-from utils.general_utils import aux_funcs
+# from utils.general_utils import aux_funcs
+from utils import aux_funcs
 
 
 class RibCage(keras.Model):

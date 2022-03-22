@@ -12,13 +12,16 @@ import tensorflow as tf
 import numpy as np
 from models import cnn
 from configs.general_configs import (
-    DEBUG_LEVEL,
-
     CROP_SIZE,
 
-    ROOT_DIR,
-    IMAGE_DIR,
-    SEGMENTATION_DIR,
+    TRAIN_DIR,
+    TRAIN_IMAGE_DIR,
+    TRAIN_SEG_DIR,
+
+    TEST_DIR,
+    TEST_IMAGE_DIR,
+    TEST_SEG_DIR,
+
     OUTPUT_DIR,
 
     EPSILON,
@@ -29,8 +32,6 @@ from configs.general_configs import (
     LEARNING_RATE,
 
     TENSOR_BOARD,
-    TENSOR_BOARD_HISTOGRAM_FREQ
-    TENSOR_BOARD_WRITE_GRAPH,
     TENSOR_BOARD_WRITE_IMAGES,
     TENSOR_BOARD_WRITE_STEPS_PER_SECOND,
     TENSOR_BOARD_UPDATE_FREQ,
@@ -78,7 +79,8 @@ from callbacks.visualisation_callbacks import (
     TrainLogCallback
 )
 
-from utils.visualisation_utils.plotting_funcs import (
+# from utils.visualisation_utils.plotting_funcs import (
+from utils.plotting_funcs import (
     plot_scatter
 )
 
@@ -104,8 +106,6 @@ def get_callbacks(epochs: int, output_dir: pathlib.Path, logger: logging.Logger 
         callbacks.append(
             tf.keras.callbacks.TensorBoard(
                 log_dir=output_dir,
-                histogram_freq=TENSOR_BOARD_HISTOGRAM_FREQ,
-                write_graph=TENSOR_BOARD_WRITE_GRAPH,
                 write_images=TENSOR_BOARD_WRITE_IMAGES,
                 write_steps_per_second=TENSOR_BOARD_WRITE_STEPS_PER_SECOND,
                 update_freq=TENSOR_BOARD_UPDATE_FREQ,
@@ -308,11 +308,17 @@ def get_arg_parser():
     # a) General parameters
     parser.add_argument('--gpu_id', type=int, choices=[gpu_id for gpu_id in range(-1, len(tf.config.list_physical_devices('GPU')))], default=-1 if len(tf.config.list_physical_devices('GPU')) > 0 else -1, help='The ID of the GPU (if there is any) to run the network on (e.g., --gpu_id 1 will run the network on GPU #1 etc.)')
     parser.add_argument('--data_from_single_dir', default=False, action='store_true', help='If the data should be taken from a single directory, or collected from several directories')
-    parser.add_argument('--root_dir', type=str, default=ROOT_DIR, help='The path to the top directory where the images and the segmentations are stored')
-    parser.add_argument('--image_dir', type=str, default=IMAGE_DIR, help='The path to the directory where the images are stored')
-    parser.add_argument('--segmentation_dir', type=str, default=SEGMENTATION_DIR, help='The path to the directory where the corresponding segmentations are stored')
-    parser.add_argument('--test_data_dir', type=str, default='', help=f'Path to the test images, their segmentations and a file with the corresponding seg measures. Images should be placed in a folder called \'imgs\', the segmentations in a folder called \'segs\', and the file with the seg measures should be called \'seg_measures.pkl\', and be placed together with the two previous folders')
-    parser.add_argument('--inference_data_dir', type=str, default='', help=f'Path to the images to infer, and their segmentations and a file with the corresponding seg measures. Images should be placed in a folder called \'imgs\', the segmentations in a folder called \'segs\'')
+
+    parser.add_argument('--train_dir', type=str, default=TRAIN_DIR, help='The path to the top directory where the images and the segmentations are stored')
+    parser.add_argument('--train_image_dir', type=str, default=TRAIN_IMAGE_DIR, help='The path to the directory where the images are stored')
+    parser.add_argument('--train_seg_dir', type=str, default=TRAIN_SEG_DIR, help='The path to the directory where the corresponding segmentations are stored')
+
+    parser.add_argument('--test_dir', type=str, default=TEST_DIR, help=f'Path to the test images, their segmentations and a file with the corresponding seg measures. Images should be placed in a folder called \'imgs\', the segmentations in a folder called \'segs\', and the file with the seg measures should be called \'seg_measures.pkl\', and be placed together with the two previous folders')
+    parser.add_argument('--test_image_dir', type=str, default=TEST_IMAGE_DIR, help=f'Path to the test image directory')
+    parser.add_argument('--test_seg_dir', type=str, default=TEST_SEG_DIR, help=f'Path to the test segmentations directory')
+
+    parser.add_argument('--inference_img_dir', type=str, default=INFERENCE_IMAGE_DIR, help=f'Path to the images to infere dirctory')
+
     parser.add_argument('--output_dir', type=str, default=OUTPUT_DIR, help='The path to the directory where the outputs will be placed')
 
     # b) Augmentations
@@ -328,6 +334,7 @@ def get_arg_parser():
 
     # d) Flags
     parser.add_argument('--no_reduce_lr_on_plateau', default=False, action='store_true', help=f'If not to use the ReduceLROnPlateau callback')
+    parser.add_argument('--reload_data', default=False, action='store_true', help=f'If to reload data from files and overwrite the temp data')
 
     return parser
 
@@ -381,6 +388,28 @@ def get_train_val_split(data: np.ndarray, validation_proportion: float = .2, log
     info_log(logger=logger, message=f'| Number of train data files : {len(train_data)} | Number of validation data files : {len(val_data)} |')
 
     return train_data, val_data
+
+
+def get_data_files(data_dir: str, segmentations_dir: str = None, metadata_files_regex: str = None, validation_proportion: float = .2, logger: logging.Logger = None):
+    if metadata_files_regex is not None:
+        train_fls, val_fls = get_train_val_split(
+            data=get_files_from_metadata(
+                    root_dir=data_dir,
+                    metadata_files_regex=metadata_files_regex,
+                    logger=logger
+                ),
+                validation_proportion=validation_proportion,
+                logger=logger
+        )
+    else:
+        train_fls, val_fls = get_train_val_split(
+            data=get_files_from_dir(
+                    images_dir=data_dir,
+                    segmentations_dir=segmentations_dir
+                ),
+                validation_proportion=validation_proportion,
+                logger=logger
+        )
 
 
 def get_jaccard(gt_batch, seg_batch):
@@ -482,7 +511,6 @@ def write_images_to_tensorboard(writer, data: dict, step: int):
                     figure=plot_scatter(
                         x=data.get('Scatter')['x'],
                         y=data.get('Scatter')['y'],
-                        # figsize=SCATTER_PLOT_FIGSIZE,
                         save_file=None
                     )
                 ),

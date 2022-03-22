@@ -2,7 +2,8 @@ import pathlib
 import tensorflow as tf
 import numpy as np
 import logging
-from utils.visualisation_utils.plotting_funcs import (
+# from utils.visualisation_utils.plotting_funcs import (
+from utils.plotting_funcs import (
     plot_scatter,
     plot
 )
@@ -14,9 +15,7 @@ from configs.general_configs import (
 from utils.image_utils.image_aux import (
     get_image_from_figure,
 )
-from utils.general_utils import aux_funcs# import (
-    # info_log
-# )
+from utils import aux_funcs
 
 
 # - CLASSES

@@ -35,7 +35,8 @@ from utils.image_utils.image_aux import (
     add_channels_dim
 )
 
-from utils.general_utils.aux_funcs import (
+# from utils.general_utils.aux_funcs import (
+from utils.aux_funcs import (
     get_runtime,
     info_log,
     err_log

@@ -3,19 +3,19 @@ import datetime
 import pathlib
 import tensorflow as tf
 import multiprocessing as mlp
-from utils.general_utils.aux_funcs import (
+# from utils.general_utils.aux_funcs import (
+from utils.aux_funcs import (
     info_log,
     choose_gpu,
     get_logger,
     get_model,
     get_arg_parser,
-    get_files_from_dir,
-    get_files_from_metadata,
-    get_train_val_split,
     get_callbacks,
 )
-from utils.data_utils.data_funcs import (
-    DataLoader
+# from utils.data_utils.data_funcs import (
+from utils.data_utils import (
+    DataLoader,
+    get_data_files,
 )
 import logging.config
 
@@ -63,9 +63,6 @@ if __name__ == '__main__':
     choose_gpu(gpu_id=args.gpu_id, logger=logger)
     input_image_shape = (args.crop_size, args.crop_size, 1)
 
-    # - Train model
-    if isinstance(logger, logging.Logger):
-        logger.info(f'- Training the RibCage model ...')
     model, weights_loaded = get_model(
         input_image_dims=(args.crop_size, args.crop_size),
         checkpoint_dir=pathlib.Path(args.checkpoint_dir),
@@ -73,42 +70,91 @@ if __name__ == '__main__':
     )
 
     # - If we want to test the current model
-    if args.test_data_dir:
-        pass
+    if args.test_data_dir and weights_loaded:
+        # - Get the files
+        test_fls, val_fls = get_data_files(
+            data_dir=args.test_image_dir if args.data_from_single_dir else args.test_dir,
+            segmentations_dir=args.seg_dir if args.data_from_single_dir else None,
+            metadata_files_regex=None if args.data_from_single_dir else METADATA_FILES_REGEX,
+            validation_proportion=args.validation_proportion,
+            logger=logger
+        )
+        
+        # - Create the DataLoader object
+        test_dl = DataLoader(
+            name='TEST',
+            data_files=test_fls,
+            batch_size=args.batch_size,
+            reload_data=args.reload_data,
+            logger=logger
+        )
 
-        # - If we want to infer results from the current model
-    elif args.inference_data_dir:
+        # -> Start the train data loading process
+        test_data_loading_prcs = mlp.Process(target=test_dl.enqueue_batches, args=())
+        test_data_loading_prcs.start()
+
+        # - Get the callbacks and optionally the thread which runs the tensorboard
+        callbacks, tb_prc = get_callbacks(
+            epochs=args.epochs,
+            output_dir=current_run_dir,
+            logger=logger
+        )
+
+        # - If the setting is to launch the tensorboard process automatically
+        if tb_prc is not None:
+            tb_prc.start()
+
+        # - Test
+        model.evaluate(
+            test_dl,
+            verbose=1,
+            callbacks=callbacks
+        )
+
+    # - If we want to infer results from the current model
+    elif args.inference_data_dir and weights_loaded:
         pass
 
     # - If we want to train a new model
     else:
+        # - Train model
+        if isinstance(logger, logging.Logger):
+            logger.info(f'- Training the RibCage model ...')
         # - Get the train and the validation file names, where the split will be determined
         # by the VALIDATION_PROPORTION variable from the configs.general_configs module
-        if not args.data_from_single_dir:
-            train_fls, val_fls = get_train_val_split(
-                data=get_files_from_metadata(
-                        root_dir=args.root_dir,
-                        metadata_files_regex=METADATA_FILES_REGEX,
-                        logger=logger
-                    ),
-                    validation_proportion=args.validation_proportion,
-                    logger=logger
-            )
-        else:
-            train_fls, val_fls = get_train_val_split(
-                data=get_files_from_dir(
-                        images_dir=args.images_dir,
-                        segmentations_dir=args.segmentations_dir
-                    ),
-                    validation_proportion=args.validation_proportion,
-                    logger=logger
-            )
+        train_fls, val_fls = get_data_files(
+            data_dir=args.image_dir if args.data_from_single_dir else args.root_dir,
+            segmentations_dir=args.segmentations_dir if args.data_from_single_dir else None,
+            metadata_files_regex=None if args.data_from_single_dir else METADATA_FILES_REGEX,
+            validation_proportion=args.validation_proportion,
+            logger=logger
+        )
+        # if not args.data_from_single_dir:
+        #     train_fls, val_fls = get_train_val_split(
+        #         data=get_files_from_metadata(
+        #                 root_dir=args.root_dir,
+        #                 metadata_files_regex=METADATA_FILES_REGEX,
+        #                 logger=logger
+        #             ),
+        #             validation_proportion=args.validation_proportion,
+        #             logger=logger
+        #     )
+        # else:
+        #     train_fls, val_fls = get_train_val_split(
+        #         data=get_files_from_dir(
+        #                 images_dir=args.images_dir,
+        #                 segmentations_dir=args.segmentations_dir
+        #             ),
+        #             validation_proportion=args.validation_proportion,
+        #             logger=logger
+        #     )
 
         # - Create the train data loader
         train_dl = DataLoader(
             name='TRAIN',
             data_files=train_fls,
             batch_size=args.batch_size,
+            reload_data=args.reload_data,
             logger=logger
         )
         # -> Start the train data loading process
@@ -120,6 +166,7 @@ if __name__ == '__main__':
             name='VALIDATION',
             data_files=val_fls,
             batch_size=args.batch_size,
+            reload_data=args.reload_data,
             logger=logger
         )
         # -> Start the validation data loading process
@@ -152,7 +199,6 @@ if __name__ == '__main__':
             batch_size=args.batch_size,
             validation_data=val_dl,
             shuffle=True,
-            # max_queue_size=args.batch_size,
             epochs=args.epochs,
             callbacks=callbacks
         )
@@ -168,6 +214,6 @@ if __name__ == '__main__':
 
         # - If we started the tensorboard thread - stop it after the run ends
         if tb_prc is not None:
-            info_log(logger=logger, message='Joining the trnsorboard process...')
+            info_log(logger=logger, message='Joining the tensorboard process...')
             tb_prc.join()
             info_log(logger=logger, message='The tensorboard process was successfully joined!')
