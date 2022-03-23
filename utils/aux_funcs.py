@@ -22,6 +22,8 @@ from configs.general_configs import (
     TEST_IMAGE_DIR,
     TEST_SEG_DIR,
 
+    INFERENCE_IMAGE_DIR,
+
     OUTPUT_DIR,
 
     EPSILON,
@@ -317,7 +319,7 @@ def get_arg_parser():
     parser.add_argument('--test_image_dir', type=str, default=TEST_IMAGE_DIR, help=f'Path to the test image directory')
     parser.add_argument('--test_seg_dir', type=str, default=TEST_SEG_DIR, help=f'Path to the test segmentations directory')
 
-    parser.add_argument('--inference_img_dir', type=str, default=INFERENCE_IMAGE_DIR, help=f'Path to the images to infere dirctory')
+    parser.add_argument('--inference_image_dir', type=str, default=INFERENCE_IMAGE_DIR, help=f'Path to the images to infere dirctory')
 
     parser.add_argument('--output_dir', type=str, default=OUTPUT_DIR, help='The path to the directory where the outputs will be placed')
 

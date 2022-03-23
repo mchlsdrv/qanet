@@ -17,6 +17,10 @@ TEST_DIR = pathlib.Path('/media/rrtammyfs/labDatabase/CellTrackingChallenge/Trai
 TEST_IMAGE_DIR = pathlib.Path('')
 TEST_SEG_DIR = pathlib.Path('')
 
+# - TEST -
+INFERENCE_IMAGE_DIR = pathlib.Path('')
+
+# - OUTPUT -
 OUTPUT_DIR = pathlib.Path('./output')
 
 TEMP_DIR = pathlib.Path('./temp')

@@ -70,7 +70,7 @@ if __name__ == '__main__':
     )
 
     # - If we want to test the current model
-    if args.test_data_dir and weights_loaded:
+    if args.test_dir and weights_loaded:
         # - Get the files
         test_fls, val_fls = get_data_files(
             data_dir=args.test_image_dir if args.data_from_single_dir else args.test_dir,
@@ -79,7 +79,7 @@ if __name__ == '__main__':
             validation_proportion=args.validation_proportion,
             logger=logger
         )
-        
+
         # - Create the DataLoader object
         test_dl = DataLoader(
             name='TEST',
@@ -112,7 +112,7 @@ if __name__ == '__main__':
         )
 
     # - If we want to infer results from the current model
-    elif args.inference_data_dir and weights_loaded:
+    elif args.inference_image_dir and weights_loaded:
         pass
 
     # - If we want to train a new model
@@ -123,8 +123,8 @@ if __name__ == '__main__':
         # - Get the train and the validation file names, where the split will be determined
         # by the VALIDATION_PROPORTION variable from the configs.general_configs module
         train_fls, val_fls = get_data_files(
-            data_dir=args.image_dir if args.data_from_single_dir else args.root_dir,
-            segmentations_dir=args.segmentations_dir if args.data_from_single_dir else None,
+            data_dir=args.train_image_dir if args.data_from_single_dir else args.train_dir,
+            segmentations_dir=args.train_seg_dir if args.data_from_single_dir else None,
             metadata_files_regex=None if args.data_from_single_dir else METADATA_FILES_REGEX,
             validation_proportion=args.validation_proportion,
             logger=logger
