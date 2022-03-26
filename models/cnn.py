@@ -7,6 +7,7 @@ import tensorflow as tf
 from tensorflow import keras
 from tensorflow.keras import layers
 from configs.general_configs import (
+    KERNEL_REGULARIZER,
     PROFILE,
     RIBCAGE_CONFIGS_FILE_PATH,
     OUTLIER_TH,
@@ -48,7 +49,7 @@ class RibCage(keras.Model):
     def _build_conv2d_block(filters: int, kernel_size: int):
         return keras.Sequential(
             [
-                layers.Conv2D(filters=filters, kernel_size=kernel_size, padding='same'),
+                layers.Conv2D(filters=filters, kernel_size=kernel_size, padding='same', kernel_regularizer=KERNEL_REGULARIZER),
                 layers.BatchNormalization(),
                 layers.LeakyReLU(),
                 layers.MaxPool2D(padding='same')
@@ -59,7 +60,7 @@ class RibCage(keras.Model):
     def _build_fully_connected_block(units: int, drop_rate: float):
         return keras.Sequential(
             [
-                keras.layers.Dense(units=units),
+                keras.layers.Dense(units=units, kernel_regularizer=KERNEL_REGULARIZER),
                 keras.layers.BatchNormalization(),
                 keras.layers.LeakyReLU(),
                 keras.layers.Dropout(rate=drop_rate)
@@ -134,15 +135,8 @@ class RibCage(keras.Model):
         self.train_epoch_pred_seg_msrs = np.append(self.train_epoch_pred_seg_msrs, pred_seg_msrs)
 
         # - Add the outliers, if theres any
-        # print(f'''
-        # # trgt_seg_msrs.shape = {trgt_seg_msrs.shape}
-        # # pred_seg_msrs.shape = {pred_seg_msrs.shape}
-        # # ''')
         seg_msrs_diff = np.abs(trgt_seg_msrs - pred_seg_msrs)
-        # print(f'seg_msrs_diff = {seg_msrs_diff}')
         outliers_idxs = np.argwhere(seg_msrs_diff > OUTLIER_TH).flatten()
-        # print(f'OUTLIER_TH = {OUTLIER_TH}')
-        # print(f'outlier_idx = {outlier_idxs}')
 
         for outlier_idx in outliers_idxs:
             self.train_epoch_outliers.append(

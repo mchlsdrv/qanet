@@ -284,3 +284,34 @@ def get_data_files(data_dir: str, segmentations_dir: str = None, metadata_files_
             logger=logger
         )
     return train_fls, val_fls
+
+
+def get_data_loaders(main_name: str, side_name: str, data_dir: str or pathlib.Path, segmentations_dir: str or pathlib.Path, metadata_files_regex: str, split_proportion: float, batch_size: int, reload_data: bool = False, logger: logging.Logger = None):
+    main_fls, side_fls = get_data_files(
+        data_dir=data_dir, #args.test_image_dir if args.data_from_single_dir else args.test_dir,
+        segmentations_dir=segmentations_dir, #args.test_seg_dir if args.data_from_single_dir else None,
+        metadata_files_regex=metadata_files_regex, #None if args.data_from_single_dir else METADATA_FILES_REGEX,
+        validation_proportion=split_proportion, #args.validation_proportion,
+        logger=logger
+    )
+
+    # - Create the DataLoader object
+    main_dl = DataLoader(
+        name=main_name, #'TEST',
+        data_files=main_fls,
+        batch_size=batch_size,
+        reload_data=reload_data,
+        logger=logger
+    )
+
+    side_dl = None
+    if side_fls.any():
+        side_dl = DataLoader(
+            name=side_name,
+            data_files=side_fls,
+            batch_size=batch_size,
+            reload_data=reload_data,
+            logger=logger
+        )
+
+    return main_dl, side_dl

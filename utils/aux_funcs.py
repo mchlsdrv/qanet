@@ -11,6 +11,10 @@ import pathlib
 import tensorflow as tf
 import numpy as np
 from models import cnn
+
+from callbacks.visualisation_callbacks import (
+    ProgressLogCallback
+)
 from configs.general_configs import (
     CROP_SIZE,
 
@@ -37,11 +41,9 @@ from configs.general_configs import (
     TENSOR_BOARD_WRITE_IMAGES,
     TENSOR_BOARD_WRITE_STEPS_PER_SECOND,
     TENSOR_BOARD_UPDATE_FREQ,
-    TENSOR_BOARD_SCALARS_LOG_INTERVAL,
-    TENSOR_BOARD_IMAGES_LOG_INTERVAL,
 
-    TRAIN_LOG,
-    TRAIN_LOG_INTERVAL,
+    PROGRESS_LOG,
+    PROGRESS_LOG_INTERVAL,
     SCATTER_PLOT_FIGSIZE,
 
     TENSOR_BOARD_LAUNCH,
@@ -76,11 +78,6 @@ from configs.general_configs import (
     MODEL_CHECKPOINT_SAVE_FREQ,
 )
 
-
-from callbacks.visualisation_callbacks import (
-    TrainLogCallback
-)
-
 # from utils.visualisation_utils.plotting_funcs import (
 from utils.plotting_funcs import (
     plot_scatter
@@ -98,7 +95,7 @@ def decode_file(file):
 
 
 # noinspection PyTypeChecker
-def get_callbacks(epochs: int, output_dir: pathlib.Path, logger: logging.Logger = None):
+def get_callbacks(callback_type: str, output_dir: pathlib.Path, logger: logging.Logger = None):
     callbacks = []
     # -------------------
     # Built-in  callbacks
@@ -113,12 +110,13 @@ def get_callbacks(epochs: int, output_dir: pathlib.Path, logger: logging.Logger 
                 update_freq=TENSOR_BOARD_UPDATE_FREQ,
             )
         )
-        if TRAIN_LOG:
+        if PROGRESS_LOG:
             callbacks.append(
-                TrainLogCallback(
+                ProgressLogCallback(
+                    log_type=callback_type,
                     figsize=SCATTER_PLOT_FIGSIZE,
                     log_dir=output_dir,
-                    log_interval=TRAIN_LOG_INTERVAL,
+                    log_interval=PROGRESS_LOG_INTERVAL,
                     logger=logger
                 )
             )
@@ -178,15 +176,15 @@ def get_callbacks(epochs: int, output_dir: pathlib.Path, logger: logging.Logger 
 
 def get_runtime(seconds: float):
     hrs = int(seconds // 3600)
-    min = int((seconds - hrs * 3600) // 60)
-    sec = seconds - hrs * 3600 - min * 60
+    mins = int((seconds - hrs * 3600) // 60)
+    sec = seconds - hrs * 3600 - mins * 60
 
     # - Format the strings
     hrs_str = str(hrs)
     if hrs < 10:
         hrs_str = '0' + hrs_str
-    min_str = str(min)
-    if min < 10:
+    min_str = str(mins)
+    if mins < 10:
         min_str = '0' + min_str
     sec_str = f'{sec:.3}'
     if sec < 10:
@@ -246,7 +244,7 @@ def get_model(input_image_dims: tuple, checkpoint_dir: pathlib.Path = None, logg
                 weights_loaded = True
         except Exception as err:
             if isinstance(logger, logging.Logger):
-                logger.exception(f'Can\'t load weigths from \'{checkpoint_dir}\' due to error: {err}')
+                logger.exception(f'Can\'t load weighs from \'{checkpoint_dir}\' due to error: {err}')
         else:
             if isinstance(logger, logging.Logger):
                 if latest_cpt is not None:
@@ -311,15 +309,18 @@ def get_arg_parser():
     parser.add_argument('--gpu_id', type=int, choices=[gpu_id for gpu_id in range(-1, len(tf.config.list_physical_devices('GPU')))], default=-1 if len(tf.config.list_physical_devices('GPU')) > 0 else -1, help='The ID of the GPU (if there is any) to run the network on (e.g., --gpu_id 1 will run the network on GPU #1 etc.)')
     parser.add_argument('--data_from_single_dir', default=False, action='store_true', help='If the data should be taken from a single directory, or collected from several directories')
 
+    parser.add_argument('--reload_data', default=False, action='store_true', help=f'If to reload data from files and overwrite the temp data')
     parser.add_argument('--train_dir', type=str, default=TRAIN_DIR, help='The path to the top directory where the images and the segmentations are stored')
     parser.add_argument('--train_image_dir', type=str, default=TRAIN_IMAGE_DIR, help='The path to the directory where the images are stored')
     parser.add_argument('--train_seg_dir', type=str, default=TRAIN_SEG_DIR, help='The path to the directory where the corresponding segmentations are stored')
 
+    parser.add_argument('--test', default=False, action='store_true', help=f'If to perform the test of the current network')
     parser.add_argument('--test_dir', type=str, default=TEST_DIR, help=f'Path to the test images, their segmentations and a file with the corresponding seg measures. Images should be placed in a folder called \'imgs\', the segmentations in a folder called \'segs\', and the file with the seg measures should be called \'seg_measures.pkl\', and be placed together with the two previous folders')
     parser.add_argument('--test_image_dir', type=str, default=TEST_IMAGE_DIR, help=f'Path to the test image directory')
     parser.add_argument('--test_seg_dir', type=str, default=TEST_SEG_DIR, help=f'Path to the test segmentations directory')
 
-    parser.add_argument('--inference_image_dir', type=str, default=INFERENCE_IMAGE_DIR, help=f'Path to the images to infere dirctory')
+    parser.add_argument('--inference', default=False, action='store_true', help=f'If to perform the inference with the current network')
+    parser.add_argument('--inference_image_dir', type=str, default=INFERENCE_IMAGE_DIR, help=f'Path to the images to infer directory')
 
     parser.add_argument('--output_dir', type=str, default=OUTPUT_DIR, help='The path to the directory where the outputs will be placed')
 
@@ -333,16 +334,12 @@ def get_arg_parser():
     parser.add_argument('--validation_proportion', type=float, default=VALIDATION_PROPORTION, help=f'The proportion of the data which will be set aside, and be used in the process of validation')
     parser.add_argument('--checkpoint_dir', type=str, default='', help=f'The path to the directory that contains the checkpoints of the model')
     parser.add_argument('--learning_rate', type=float, default=LEARNING_RATE, help=f'The initial learning rate of the optimizer')
-
-    # d) Flags
     parser.add_argument('--no_reduce_lr_on_plateau', default=False, action='store_true', help=f'If not to use the ReduceLROnPlateau callback')
-    parser.add_argument('--reload_data', default=False, action='store_true', help=f'If to reload data from files and overwrite the temp data')
 
     return parser
 
 
-def get_files_from_metadata(root_dir: pathlib.Path, metadata_files_regex, logger: logging.Logger = None):
-
+def get_files_from_metadata(root_dir: str or pathlib.Path, metadata_files_regex, logger: logging.Logger = None):
     img_seg_fls = []
     for root, dirs, files in os.walk(root_dir):
         for file in files:
@@ -356,7 +353,7 @@ def get_files_from_metadata(root_dir: pathlib.Path, metadata_files_regex, logger
     return img_seg_fls
 
 
-def get_files_from_dir(images_dir: pathlib.Path, segmentations_dir: pathlib.Path):
+def get_files_from_dir(images_dir: str or pathlib.Path, segmentations_dir: str or pathlib.Path):
     img_fls, seg_fls = list(), list()
 
     for root, dirs, files in os.walk(images_dir):
@@ -370,7 +367,7 @@ def get_files_from_dir(images_dir: pathlib.Path, segmentations_dir: pathlib.Path
     return list(zip(img_fls, seg_fls))
 
 
-def get_train_val_split(data: np.ndarray, validation_proportion: float = .2, logger: logging.Logger = None):
+def get_train_val_split(data: list or np.ndarray, validation_proportion: float = .2, logger: logging.Logger = None):
     n_items = len(data)
     item_idxs = np.arange(n_items)
     n_val_items = int(n_items * validation_proportion)
@@ -396,21 +393,21 @@ def get_data_files(data_dir: str, segmentations_dir: str = None, metadata_files_
     if metadata_files_regex is not None:
         train_fls, val_fls = get_train_val_split(
             data=get_files_from_metadata(
-                    root_dir=data_dir,
-                    metadata_files_regex=metadata_files_regex,
-                    logger=logger
-                ),
-                validation_proportion=validation_proportion,
+                root_dir=data_dir,
+                metadata_files_regex=metadata_files_regex,
                 logger=logger
+            ),
+            validation_proportion=validation_proportion,
+            logger=logger
         )
     else:
         train_fls, val_fls = get_train_val_split(
             data=get_files_from_dir(
-                    images_dir=data_dir,
-                    segmentations_dir=segmentations_dir
-                ),
-                validation_proportion=validation_proportion,
-                logger=logger
+                images_dir=data_dir,
+                segmentations_dir=segmentations_dir
+            ),
+            validation_proportion=validation_proportion,
+            logger=logger
         )
 
 
@@ -463,7 +460,6 @@ def err_log(logger: logging.Logger, message: str):
 def write_scalars_to_tensorboard(writer, data: dict, step: int):
     with writer.as_default():
         with tf.device('/cpu:0'):
-
             # SCALARS
             # - Write the loss
             tf.summary.scalar(
@@ -518,136 +514,3 @@ def write_images_to_tensorboard(writer, data: dict, step: int):
                 ),
                 step=step
             )
-
-
-def train_model(model, data: dict, epochs: int, log_dir: pathlib.Path, logger: logging.Logger = None):
-    @tf.function
-    def train_step(images: np.ndarray, segmentations: np.ndarray, jaccards: np.ndarray):
-        # - Compute the loss according to the predictions
-        with tf.GradientTape() as tape:
-            pred_js = model([images, segmentations], training=True)
-            loss = model.compiled_loss(jaccards, pred_js)
-
-        # - Get the weights to adjust according to the loss calculated
-        trainable_vars = model.trainable_variables
-
-        # - Calculate gradients
-        gradients = tape.gradient(loss, trainable_vars)
-
-        # - Update weights
-        model.optimizer.apply_gradients(zip(gradients, trainable_vars))
-
-        # - Update the metrics
-        model.train_loss(loss)
-
-        return loss, pred_js
-
-    @tf.function
-    def val_step(images: np.ndarray, segmentations: np.ndarray, jaccards: np.ndarray):
-        # - Compute the loss according to the predictions
-        pred_js = model([images, segmentations], training=False)
-        loss = model.compiled_loss(jaccards, pred_js)
-
-        # - Update the metrics
-        model.val_loss(loss)
-
-        return loss, pred_js
-
-    # - Create tf.FileWriter classes for train and val datasets
-    train_file_writer = tf.summary.create_file_writer(str(log_dir / 'train'))
-    val_file_writer = tf.summary.create_file_writer(str(log_dir / 'validation'))
-
-    # - Main loop
-    for epoch in range(epochs):
-
-        # - Train step
-        train_losses = np.array([])
-        train_js = np.array([])
-        train_pred_js = np.array([])
-        for step, (btch_trn_imgs, btch_trn_segs, btch_trn_aug_segs, js) in enumerate(data.get('train')):
-            train_step_loss, train_step_pred_js = train_step(
-                images=btch_trn_imgs,
-                segmentations=btch_trn_aug_segs,
-                jaccards=js
-            )
-
-            # - Add the target  and the predicted seg measures to epoch history
-            train_losses = np.append(train_losses, train_step_loss)
-            train_js = np.append(train_js, js)
-            train_pred_js = np.append(train_pred_js, train_step_pred_js)
-
-        # - Validation step
-        val_losses = np.array([])
-        val_js = np.array([])
-        val_pred_js = np.array([])
-        for step, (btch_val_imgs, btch_val_segs, btch_val_aug_segs, js) in enumerate(data.get('val')):
-            val_step_loss, val_step_pred_js = val_step(
-                images=btch_val_imgs,
-                segmentations=btch_val_aug_segs,
-                jaccards=js
-            )
-
-            # - Add the target  and the predicted seg measures to epoch history
-            val_losses = np.append(val_losses, val_step_loss)
-            val_js = np.append(val_js, js)
-            val_pred_js = np.append(val_pred_js, val_step_pred_js)
-
-        info_log(
-            logger=logger,
-            message=f'Epoch: {epoch} | Train - Loss: {train_losses.mean():.4f} | Val - Loss: {val_losses.mean():.4f}'
-        )
-
-        # - Callbacks
-        if TENSOR_BOARD:
-            if epoch % TENSOR_BOARD_SCALARS_LOG_INTERVAL == 0:
-                write_scalars_to_tensorboard(
-                    writer=train_file_writer,
-                    data=dict(
-                            Loss=train_step_loss
-                    ),
-                    step=epoch
-                )
-
-                # - Plot validation scatter plot
-                write_scalars_to_tensorboard(
-                    writer=val_file_writer,
-                    data=dict(
-                            Loss=val_step_loss
-                    ),
-                    step=epoch
-                )
-
-            if epoch % TENSOR_BOARD_IMAGES_LOG_INTERVAL == 0:
-                info_log(logger=logger, message=f'\nAdding data to tensorboard for epoch #{epoch}...')
-                write_images_to_tensorboard(
-                    writer=train_file_writer,
-                    data=dict(
-                        Images=btch_trn_imgs,
-                        GroundTruth=btch_trn_segs,
-                        Segmentations=btch_trn_aug_segs,
-                        Scatter=dict(
-                            x=train_js,
-                            y=train_pred_js,
-                        )
-                    ),
-                    step=epoch
-                )
-
-                # - Plot validation scatter plot
-                write_images_to_tensorboard(
-                    writer=val_file_writer,
-                    data=dict(
-                        Images=btch_val_imgs,
-                        GroundTruth=btch_val_segs,
-                        Segmentations=btch_val_aug_segs,
-                        Scatter=dict(
-                            x=val_js,
-                            y=val_pred_js,
-                        )
-                    ),
-                    step=epoch
-                )
-
-        if MODEL_CHECKPOINT:
-            if epoch % MODEL_CHECKPOINT_CHECKPOINT_FREQUENCY == 0:
-                model.save_weights(log_dir / f'checkpoints/epoch_{epoch}.ckpt')

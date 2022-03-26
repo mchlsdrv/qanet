@@ -13,7 +13,7 @@ TRAIN_IMAGE_DIR = pathlib.Path('./data/train/imgs')
 TRAIN_SEG_DIR = pathlib.Path('./data/train/segs')
 
 # - TEST -
-TEST_DIR = pathlib.Path('/media/rrtammyfs/labDatabase/CellTrackingChallenge/Training/Fluo-N2DH-GOWT1')
+TEST_DIR = pathlib.Path('/media/rrtammyfs/labDatabase/CellTrackingChallenge/Training/Silver_GT/Fluo-N2DH-GOWT1-ST')
 TEST_IMAGE_DIR = pathlib.Path('')
 TEST_SEG_DIR = pathlib.Path('')
 
@@ -34,7 +34,7 @@ METADATA_FILES_REGEX = re.compile(r'.+(?<=metadata)_[0-9]{2}.pickle')
 
 # CONSTANTS
 EPSILON = 1e-7
-ZERO_LOW_JACCARDS = True
+ZERO_LOW_JACCARDS = False
 
 # DATA
 # - Crops
@@ -88,7 +88,17 @@ ALPHA_RANGE = (50, 100)
 
 # NN
 # > Training
-OPTIMIZER = tf.keras.optimizers.Adam
+OPTIMIZER = tf.keras.optimizers.Adam(
+    learning_rate=0.001,
+    beta_1=0.9,
+    beta_2=0.999,
+    epsilon=1e-07,
+    amsgrad=False,
+    name='Adam',
+)
+KERNEL_REGULARIZER = tf.keras.regularizers.L2(
+    l2=0.01
+)
 LOSS = tf.keras.losses.MeanSquaredError()
 METRICS = ['acc']
 
@@ -113,8 +123,8 @@ TENSOR_BOARD_IMAGES_LOG_INTERVAL = 1
 PLOT_OUTLIERS = True
 N_OUTLIERS = 5
 OUTLIER_TH = .7
-TRAIN_LOG = True
-TRAIN_LOG_INTERVAL = 5
+PROGRESS_LOG = True
+PROGRESS_LOG_INTERVAL = 5
 SCATTER_PLOT_FIGSIZE = (25, 15)
 SCATTER_PLOT_FONTSIZE = 40
 
@@ -122,7 +132,7 @@ SCATTER_PLOT_FONTSIZE = 40
 TENSOR_BOARD_LAUNCH = True
 
 # - Early Stopping
-EARLY_STOPPING = True
+EARLY_STOPPING = False
 EARLY_STOPPING_MONITOR = 'val_loss'
 EARLY_STOPPING_PATIENCE = 10
 EARLY_STOPPING_MIN_DELTA = 0.001

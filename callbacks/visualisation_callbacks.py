@@ -2,13 +2,11 @@ import pathlib
 import tensorflow as tf
 import numpy as np
 import logging
-# from utils.visualisation_utils.plotting_funcs import (
 from utils.plotting_funcs import (
     plot_scatter,
     plot
 )
 from configs.general_configs import (
-    DEBUG_LEVEL,
     PLOT_OUTLIERS,
     N_OUTLIERS
 )
@@ -19,8 +17,8 @@ from utils import aux_funcs
 
 
 # - CLASSES
-class TrainLogCallback(tf.keras.callbacks.Callback):
-    def __init__(self, figsize: tuple = (20, 10), log_dir: pathlib.Path = None, log_interval: int = 10, logger: logging.Logger = None):
+class ProgressLogCallback(tf.keras.callbacks.Callback):
+    def __init__(self, log_type: str, figsize: tuple = (20, 10), log_dir: pathlib.Path = None, log_interval: int = 10, logger: logging.Logger = None):
         super().__init__()
         self.log_dir = log_dir
         self.train_file_writer = tf.summary.create_file_writer(str(self.log_dir / 'train'))
@@ -28,15 +26,12 @@ class TrainLogCallback(tf.keras.callbacks.Callback):
         self.logger = logger
         self.figsize = figsize
         self.log_interval = log_interval
+        self.epoch = 0
+        self.end = False
+        self.log_type = log_type
 
-    def on_training_begin(self, logs=None):
-        # - Clean the seg measures history arrays
-        self.model.train_epoch_trgt_seg_msrs = np.array([])
-        self.model.train_epoch_pred_seg_msrs = np.array([])
-        self.model.val_epoch_trgt_seg_msrs = np.array([])
-        self.model.val_epoch_pred_seg_msrs = np.array([])
-
-    def write_images_to_tensorboard(self, writer, data: dict, step: int, save_file: pathlib.Path = None):
+    @staticmethod
+    def write_images_to_tensorboard(writer, data: dict, step: int, save_file: pathlib.Path = None):
         with writer.as_default():
             with tf.device('/cpu:0'):
                 # -> Write the scatter plot
@@ -73,25 +68,46 @@ class TrainLogCallback(tf.keras.callbacks.Callback):
                     step=step
                 )
 
+    def on_training_begin(self, logs=None):
+        # - Clean the seg measures history arrays
+        self.model.train_epoch_trgt_seg_msrs = np.array([])
+        self.model.train_epoch_pred_seg_msrs = np.array([])
+        self.model.val_epoch_trgt_seg_msrs = np.array([])
+        self.model.val_epoch_pred_seg_msrs = np.array([])
+
+    def on_training_end(self, logs=None):
+        self.end = True
+        self.on_epoch_end(epoch=self.epoch)
+
+    def on_test_begin(self, logs=None):
+        # - Clean the seg measures history arrays
+        self.model.val_epoch_trgt_seg_msrs = np.array([])
+        self.model.val_epoch_pred_seg_msrs = np.array([])
+
+    def on_test_end(self, logs=None):
+        self.on_epoch_end(epoch=self.epoch)
+
     def on_epoch_end(self, epoch, logs=None):
-        if epoch % self.log_interval == 0:
+        self.epoch = epoch
+        if epoch % self.log_interval == 0 or self.end or self.log_type == 'test':
             aux_funcs.info_log(logger=self.logger, message=f'\nSaving scatter plot of the seg measures for epoch #{epoch} to: \'{self.log_dir}\'...')
 
             # - Write to tensorboard
             # -- Train log
-            self.write_images_to_tensorboard(
-                writer=self.train_file_writer,
-                data=dict(
-                    Images=self.model.train_imgs,
-                    Segmentations=self.model.train_aug_segs,
-                    Scatter=dict(
-                        x=self.model.train_epoch_trgt_seg_msrs,
-                        y=self.model.train_epoch_pred_seg_msrs,
-                        save_file=self.log_dir / f'train/plots/scatter_plot_step_{epoch}.png'
-                    )
-                ),
-                step=epoch
-            )
+            if self.log_type == 'train':
+                self.write_images_to_tensorboard(
+                    writer=self.train_file_writer,
+                    data=dict(
+                        Images=self.model.train_imgs,
+                        Segmentations=self.model.train_aug_segs,
+                        Scatter=dict(
+                            x=self.model.train_epoch_trgt_seg_msrs,
+                            y=self.model.train_epoch_pred_seg_msrs,
+                            save_file=self.log_dir / f'train/plots/scatter_plot_step_{epoch}.png'
+                        )
+                    ),
+                    step=epoch
+                )
 
             # -- Validation log
             self.write_images_to_tensorboard(
@@ -102,7 +118,7 @@ class TrainLogCallback(tf.keras.callbacks.Callback):
                     Scatter=dict(
                         x=self.model.val_epoch_trgt_seg_msrs,
                         y=self.model.val_epoch_pred_seg_msrs,
-                        save_file=self.log_dir / f'validation/plots/scatter_plot_step_{epoch}.png'
+                        save_file=self.log_dir / f'validation/plots/scatter_plot_step_{epoch}.png' if self.log_type == 'train' else self.log_dir / f'test/plots/scatter_plot_step_{epoch}.png'
                     )
                 ),
                 step=epoch
@@ -111,22 +127,23 @@ class TrainLogCallback(tf.keras.callbacks.Callback):
             # - Save the outlier images locally
             if PLOT_OUTLIERS:
                 aux_funcs.info_log(logger=self.logger, message=f'Adding {N_OUTLIERS} outlier train and validation plots to {self.log_dir} directory...')
-                for idx, outlier in enumerate(self.model.train_epoch_outliers):
-                    plot(
-                        images=[outlier[0], outlier[1]],
-                        labels=['', ''],
-                        suptitle=f'Epoch: {epoch}, Seg Measures: Target - {outlier[2]:.2f}, Predicted - {outlier[3]:.2f}',
-                        save_file=self.log_dir / f'train/outliers/epoch_{epoch}_{idx}.png'
-                    )
-                    if idx > N_OUTLIERS:
-                        break
+                if self.log_type == 'train':
+                    for idx, outlier in enumerate(self.model.train_epoch_outliers):
+                        plot(
+                            images=[outlier[0], outlier[1]],
+                            labels=['', ''],
+                            suptitle=f'Epoch: {epoch}, Seg Measures: Target - {outlier[2]:.2f}, Predicted - {outlier[3]:.2f}',
+                            save_file=self.log_dir / f'train/outliers/epoch_{epoch}_{idx}.png'
+                        )
+                        if idx > N_OUTLIERS:
+                            break
 
                 for idx, outlier in enumerate(self.model.val_epoch_outliers):
                     plot(
                         images=[outlier[0], outlier[1]],
                         labels=['', ''],
                         suptitle=f'Epoch: {epoch}, Seg Measures: Target - {outlier[2]:.2f}, Predicted - {outlier[3]:.2f}',
-                        save_file=self.log_dir / f'validation/outliers/epoch_{epoch}_{idx}.png'
+                        save_file=self.log_dir / f'validation/outliers/epoch_{epoch}_{idx}.png' if self.log_type == 'train' else self.log_dir / f'test/outliers/epoch_{epoch}_{idx}.png'
                     )
                     if idx > N_OUTLIERS:
                         break
@@ -134,7 +151,8 @@ class TrainLogCallback(tf.keras.callbacks.Callback):
         # - Clean the seg measures history arrays
         self.model.train_epoch_trgt_seg_msrs = np.array([])
         self.model.train_epoch_pred_seg_msrs = np.array([])
-        self.model.train_epoch_outliers= list()
+        self.model.train_epoch_outliers = list()
+
         self.model.val_epoch_trgt_seg_msrs = np.array([])
         self.model.val_epoch_pred_seg_msrs = np.array([])
-        self.model.val_epoch_outliers= list()
+        self.model.val_epoch_outliers = list()
