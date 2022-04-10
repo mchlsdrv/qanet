@@ -1,6 +1,7 @@
 import re
 import pathlib
 import tensorflow as tf
+from activations.special import Swish
 
 
 DEBUG_LEVEL = 0
@@ -18,6 +19,7 @@ TEST_IMAGE_DIR = pathlib.Path('')
 TEST_SEG_DIR = pathlib.Path('')
 
 # - TEST -
+INFERENCE_DIR = pathlib.Path('./data/Fluo-N2DH-GOWT1-Inference')
 INFERENCE_IMAGE_DIR = pathlib.Path('')
 
 # - OUTPUT -
@@ -41,13 +43,14 @@ ZERO_LOW_JACCARDS = False
 CROP_SIZE = 256
 
 # -- Non-empty crops
-NON_EMPTY_CROPS = True
-NON_EMPTY_CROP_THRESHOLD = 2000
-MAX_EMPTY_CROPS = 3
+# Used for cleaning empty segmentations, i.e., with only 0. The cleaning is performed by summing the binary image, and if the
+# sum is lower than the threshold - the image, along with its' segmentation will not be included
+NON_EMPTY_IMAGE_THRESHOLD = 100
+
 # -- Object size
-MIN_OBJECT_AREA = 400
+MIN_OBJECT_AREA = 15
 # -- Shuffle
-SHUFFLE_CROPS = False
+SHUFFLE_CROPS = True
 
 # PREPROCESSING CONFIGS
 STANDARDIZE_IMAGE = False
@@ -87,6 +90,8 @@ SIGMA_RANGE = (1, 8)
 ALPHA_RANGE = (50, 100)
 
 # NN
+ACTIVATION_LAYER = Swish()  # keras.layers.LeakyReLU()
+
 # > Training
 OPTIMIZER = tf.keras.optimizers.Adam(
     learning_rate=0.001,
@@ -157,7 +162,7 @@ REDUCE_LR_ON_PLATEAU_VERBOSE = 1
 # - Model Checkpoint
 MODEL_CHECKPOINT = True
 MODEL_CHECKPOINT_FILE_TEMPLATE = 'checkpoints/cp-{epoch:04d}.ckpt'  # <- may be used in case we want to save all teh check points, and not only the best
-MODEL_CHECKPOINT_FILE_BEST_MODEL_TEMPLATE = 'checkpoints/best_model.ckpt'  # <- overwrites the second best model weigths in case MODEL_CHECKPOINT_SAVE_BEST_ONLY = True
+MODEL_CHECKPOINT_FILE_BEST_MODEL_TEMPLATE = 'checkpoints/best_model.ckpt'  # <- overwrites the second best model weights in case MODEL_CHECKPOINT_SAVE_BEST_ONLY = True
 MODEL_CHECKPOINT_MONITOR = 'val_loss'
 MODEL_CHECKPOINT_VERBOSE = 1
 MODEL_CHECKPOINT_SAVE_BEST_ONLY = True

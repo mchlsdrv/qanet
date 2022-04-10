@@ -6,6 +6,7 @@ import tensorflow as tf
 import multiprocessing as mlp
 from utils.aux_funcs import (
     info_log,
+    err_log,
     choose_gpu,
     get_logger,
     get_model,
@@ -13,8 +14,6 @@ from utils.aux_funcs import (
     get_callbacks,
 )
 from utils.data_utils import (
-    # DataLoader,
-    # get_data_files,
     get_data_loaders,
 )
 import logging.config
@@ -63,14 +62,15 @@ if __name__ == '__main__':
     choose_gpu(gpu_id=args.gpu_id, logger=logger)
     input_image_shape = (args.crop_size, args.crop_size, 1)
 
-    # - Get the model
+    # MODEL
+    # -1- Build the model and optionally load the weights
     model, weights_loaded = get_model(
         input_image_dims=(args.crop_size, args.crop_size),
         checkpoint_dir=pathlib.Path(args.checkpoint_dir),
         logger=logger
     )
 
-    # - Compile the model
+    # -2- Compile the model
     model.compile(
         loss=LOSS,
         optimizer=OPTIMIZER,  # (learning_rate=args.learning_rate),
@@ -82,7 +82,7 @@ if __name__ == '__main__':
     # - Data loading processes
     main_data_loading_prcs = side_data_loading_prcs = None
 
-    # - Chose the procedure
+    # - Chose the procedure name
     if args.inference:
         procedure_name = 'inference'
     elif args.test:
@@ -90,41 +90,29 @@ if __name__ == '__main__':
     else:
         procedure_name = 'train'
 
+    # PROCEDURE
     # -1- If we want to infer results from the current model
+    print(f'weights_loaded: {weights_loaded}')
     if args.inference and weights_loaded:
-        # - Get the files
-        # inference_fls, _ = get_data_files(
-        #     data_dir=args.inference_image_dir if args.data_from_single_dir else args.inference_dir,
-        #     segmentations_dir=args.inference_seg_dir if args.data_from_single_dir else None,
-        #     metadata_files_regex=None if args.data_from_single_dir else METADATA_FILES_REGEX,
-        #     validation_proportion=0.,
-        #     logger=logger
-        # )
-        #
-        # # - Create the DataLoader object
-        # inference_dl = DataLoader(
-        #     name='INFERENCE',
-        #     data_files=inference_fls,
-        #     batch_size=args.batch_size,
-        #     reload_data=args.reload_data,
-        #     logger=logger
-        # )
-        #
 
+        # - Get the directory where the inference data is located at
         infer_data_dir = args.inference_image_dir if args.data_from_single_dir else args.inference_dir
         infer_seg_dir = args.inference_seg_dir if args.data_from_single_dir else None
 
         if isinstance(logger, logging.Logger):
             logger.info(f'- Inferring the images at {infer_data_dir}')
 
+        # - Get the inference data loader
         infer_dl, _ = get_data_loaders(
             main_name=procedure_name,
             side_name='',
-            data_dir=infer_data_dir,  # args.inference_image_dir if args.data_from_single_dir else args.inference_dir,
-            segmentations_dir=infer_seg_dir,  # args.inference_seg_dir if args.data_from_single_dir else None,
+            data_dir=infer_data_dir,
+            segmentations_dir=infer_seg_dir,
             metadata_files_regex=None if args.data_from_single_dir else METADATA_FILES_REGEX,
             split_proportion=0.,
-            batch_size=args.batch_size,
+            batch_size=2,
+            crop_images=True,
+            augment_images=False,
             reload_data=args.reload_data,
             logger=logger
         )
@@ -133,78 +121,39 @@ if __name__ == '__main__':
         main_data_loading_prcs = mlp.Process(target=infer_dl.enqueue_batches, args=())
         main_data_loading_prcs.start()
 
-        # - Get the callbacks and optionally the thread which runs the tensorboard
-        callbacks, tb_prc = get_callbacks(
-            callback_type=procedure_name,
-            output_dir=current_run_dir,
-            logger=logger
-        )
-
-        # - If the setting is to launch the tensorboard process automatically
-        if tb_prc is not None:
-            tb_prc.start()
+        tb_prc = None
 
         # - Inference -
-        preds = model.predict(
-            infer_dl,
-            verbose=1,
-            callbacks=callbacks
+        preds = model.infer(
+            infer_dl
         )
+        print(preds)
         print(f'''
         PREDICTIONS:
-            mean: {preds.mean:.2f} +/- {preds.std:.4f}
+            mean: {preds.mean():.2f} +/- {preds.std():.4f}
         ''')
 
     # -2- If we want to train a new model
     elif not args.test and not args.inference:
-        # - Train model
-        train_data_dir = args.train_image_dir if args.data_from_single_dir else args.train_dir,
+
+        # - Get the directory where the train data is located at
+        train_data_dir = args.train_image_dir if args.data_from_single_dir else args.train_dir
         train_seg_dir = args.train_seg_dir if args.data_from_single_dir else None
+
         if isinstance(logger, logging.Logger):
             logger.info(f'- Training the \'RibCage\' model on data from {train_data_dir}')
-        # - Get the train and the validation file names, where the split will be determined
-        # by the VALIDATION_PROPORTION variable from the configs.general_configs module
-        # train_fls, val_fls = get_data_files(
-        #     data_dir=args.train_image_dir if args.data_from_single_dir else args.train_dir,
-        #     segmentations_dir=args.train_seg_dir if args.data_from_single_dir else None,
-        #     metadata_files_regex=None if args.data_from_single_dir else METADATA_FILES_REGEX,
-        #     validation_proportion=args.validation_proportion,
-        #     logger=logger
-        # )
-        #
-        # # - Create the train data loader
-        # train_dl = DataLoader(
-        #     name='TRAIN',
-        #     data_files=train_fls,
-        #     batch_size=args.batch_size,
-        #     reload_data=args.reload_data,
-        #     logger=logger
-        # )
-        #
-        # # -> Start the train data loading process
-        # train_data_loading_prcs = mlp.Process(target=train_dl.enqueue_batches, args=())
-        # train_data_loading_prcs.start()
-        #
-        # # - Create the validation data loader
-        # val_dl = DataLoader(
-        #     name='VALIDATION',
-        #     data_files=val_fls,
-        #     batch_size=args.batch_size,
-        #     reload_data=args.reload_data,
-        #     logger=logger
-        # )
-        # # -> Start the validation data loading process
-        # val_data_loading_prcs = mlp.Process(target=val_dl.enqueue_batches, args=())
-        # val_data_loading_prcs.start()
-        #
+
+        # - Get the train and the validation data loaders
         train_dl, val_dl = get_data_loaders(
             main_name=procedure_name,
             side_name='val',
-            data_dir=train_data_dir,  # args.train_image_dir if args.data_from_single_dir else args.train_dir,
-            segmentations_dir=train_seg_dir,  # args.train_seg_dir if args.data_from_single_dir else None,
+            data_dir=train_data_dir,
+            segmentations_dir=train_seg_dir,
             metadata_files_regex=None if args.data_from_single_dir else METADATA_FILES_REGEX,
             split_proportion=args.validation_proportion,
             batch_size=args.batch_size,
+            crop_images=True,
+            augment_images=True,
             reload_data=args.reload_data,
             logger=logger
         )
@@ -240,39 +189,25 @@ if __name__ == '__main__':
 
     # -2- If we want to test the current model
     elif args.test and weights_loaded:
-        # - Get the files
-        # TODO: create a function that returns the DataLoader
-        # test_fls, val_fls = get_data_files(
-        #     data_dir=args.test_image_dir if args.data_from_single_dir else args.test_dir,
-        #     segmentations_dir=args.test_seg_dir if args.data_from_single_dir else None,
-        #     metadata_files_regex=None if args.data_from_single_dir else METADATA_FILES_REGEX,
-        #     validation_proportion=args.validation_proportion,
-        #     logger=logger
-        # )
-        #
-        # # - Create the DataLoader object
-        # test_dl = DataLoader(
-        #     name='TEST',
-        #     data_files=test_fls,
-        #     batch_size=args.batch_size,
-        #     reload_data=args.reload_data,
-        #     logger=logger
-        # )
 
+        # - Get the directory where the test data is located at
         data_dir = args.test_image_dir if args.data_from_single_dir else args.test_dir
         seg_dir = args.test_seg_dir if args.data_from_single_dir else None
 
         if isinstance(logger, logging.Logger):
             logger.info(f' - Testing the images at {data_dir}')
 
+        # - Get the test data loader
         test_dl, _ = get_data_loaders(
             main_name=procedure_name,
             side_name='',
-            data_dir=data_dir,  # args.test_image_dir if args.data_from_single_dir else args.test_dir,
-            segmentations_dir=seg_dir,  # args.test_seg_dir if args.data_from_single_dir else None,
+            data_dir=data_dir,
+            segmentations_dir=seg_dir,
             metadata_files_regex=None if args.data_from_single_dir else METADATA_FILES_REGEX,
             split_proportion=args.validation_proportion,
             batch_size=args.batch_size,
+            crop_images=True,
+            augment_images=True,
             reload_data=args.reload_data,
             logger=logger
         )
@@ -299,7 +234,7 @@ if __name__ == '__main__':
         )
 
     else:
-        logger.err_log(f'Could not run the {procedure_name} because the model does not exist!')
+        err_log(logger=logger, message=f'Could not run the {procedure_name} because the model does not exist!')
         sys.exit(1)
 
     # - After the training - stop the batch processes for the main and side data loaders
@@ -318,3 +253,5 @@ if __name__ == '__main__':
         info_log(logger=logger, message='Joining the tensorboard process...')
         tb_prc.join()
         info_log(logger=logger, message='The tensorboard process was successfully joined!')
+
+    sys.exit(0)

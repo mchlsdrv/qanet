@@ -2,7 +2,8 @@ import cv2
 from configs.general_configs import (
     APPLY_CLAHE_FILTER,
     STANDARDIZE_IMAGE,
-    EPSILON
+    EPSILON,
+    DEBUG_LEVEL,
 )
 
 from utils.image_utils.filters import (
@@ -38,19 +39,31 @@ def convert_to_grayscale(image):
 
 
 def preprocess_image(image):
+    if DEBUG_LEVEL > 2:
+        print(f'> Preprocessing image...')
     # - Convert the BGR image into a gray scale
+    if DEBUG_LEVEL > 2:
+        print(f'> Converting to grayscale...')
     img = convert_to_grayscale(image)
 
     # - Standardization the image
+    if DEBUG_LEVEL > 2:
+        print(f'> Standardizing...')
     if STANDARDIZE_IMAGE:
         img = standardize(img)
 
     # - Apply the CLAHE (Contrast Limited Adaptive Histogram Equalisation) to improve the contrast
     # returns a 2D image (HxW)
     if APPLY_CLAHE_FILTER:
+        if DEBUG_LEVEL > 2:
+            print(f'> CLAHE...')
         img = clahe_filter(img)
 
     # - Turn image from 0-255 to 0.-1. float representation
+    if DEBUG_LEVEL > 2:
+        print(f'> Converting to float...')
     img = float_representation(img)
 
+    if DEBUG_LEVEL > 2:
+        print(f'> Done Preprocessing image...')
     return img

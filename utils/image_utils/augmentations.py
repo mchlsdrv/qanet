@@ -1,4 +1,3 @@
-import time
 import numpy as np
 import logging
 import time
@@ -23,23 +22,17 @@ from configs.general_configs import (
     CLOSING_SIZES,
     SCALE_RANGE,
     SHEER_RANGE,
-    SIGMA_RANGE,
-    ALPHA_RANGE,
     CROP_SIZE,
-    NON_EMPTY_CROPS,
-    NON_EMPTY_CROP_THRESHOLD,
-    MAX_EMPTY_CROPS,
 )
 from utils.image_utils.image_aux import (
     get_crop,
     add_channels_dim
 )
 
-# from utils.general_utils.aux_funcs import (
 from utils.aux_funcs import (
     get_runtime,
     info_log,
-    err_log
+    err_log,
 )
 
 
@@ -69,37 +62,68 @@ def random_rotation(image: np.ndarray, segmentation: np.ndarray, logger: logging
     return rot_img, rot_seg
 
 
-def random_crop(image, segmentation, non_empty: bool = True, logger: logging.Logger = None):
-    t_strt = time.time()
-    h, w = CROP_SIZE, CROP_SIZE
-    x = np.random.randint(0, image.shape[0] - h)
+def get_random_left_corner(image, crop_width: int, crop_height: int, logger: logging.Logger = None):
+    image_width, image_height = image.shape[0], image.shape[1]
 
-    # - y coordinate
-    y = np.random.randint(0, image.shape[1] - w)
+    img = image
+    # - If the image is in BGR format
+    if len(img.shape) > 2 and img.shape[-1] > 1:
+        img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+
+        blr = cv2.GaussianBlur(img, (5, 5), cv2.BORDER_DEFAULT)
+        ret, img = cv2.threshold(blr, 200, 255, cv2.THRESH_BINARY_INV)
+
+    # - If the image is a multiclass grayscale image
+    elif len(np.unique(img)) > 2:
+        idxs = np.argwhere(img > 0)
+        x, y = idxs[:, 0], idxs[:, 1]
+        img[(x, y)] = 1
+
+    # - Images should be of type UINT8
+    img = img.astype(np.uint8)
+
+    # - Find the contours
+    contours, hierarchies = cv2.findContours(img, cv2.RETR_LIST, cv2.CHAIN_APPROX_SIMPLE)
+
+    # - Find the centroids of the contours
+    centroids = []
+    for contour in contours:
+        M = cv2.moments(contour)
+        if M['m00'] != 0:
+            cx = int(M['m10'] / M['m00'])
+            cy = int(M['m01'] / M['m00'])
+            centroids.append((cx, cy))
+
+    # - Choose a random centroid
+    try:
+        rnd_cntr = centroids[np.random.choice(np.arange(len(centroids)))]
+        rnd_cntr_x, rnd_cntr_y = rnd_cntr
+
+        # - Find the minimum and the maximum between which we can randomly choose the x and y coordinates, so that the centroid will fall inside the square
+        # --> Minimum
+        x_min, y_min = rnd_cntr_x - crop_width if rnd_cntr_x - crop_width >= 0 else 0, rnd_cntr_y - crop_height if rnd_cntr_y - crop_height >= 0 else 0
+
+        # --> Maximum
+        x_residual, y_residual = (rnd_cntr_x + crop_width) - image_width, (rnd_cntr_y + crop_height) - image_height
+        x_max, y_max = rnd_cntr_x if x_residual <= 0 else rnd_cntr_x - x_residual, rnd_cntr_y if y_residual <= 0 else rnd_cntr_y - y_residual
+
+        rnd_x, rnd_y = np.random.randint(x_min, x_max), np.random.randint(y_min, y_max)
+
+    except ValueError as err:
+        err_log(logger=logger, message=f'\nCould not crop the image based on contours! Falling back to the basic crops!')
+        rnd_x, rnd_y = np.random.randint(0, image_width - crop_width), np.random.randint(0, image_height - crop_height)
+
+    return rnd_x, rnd_y
+
+
+def random_crop(image, segmentation, logger: logging.Logger = None):
+    t_strt = time.time()
+
+    x, y = get_random_left_corner(image=segmentation, crop_width=CROP_SIZE, crop_height=CROP_SIZE)
 
     # 2) Randomly crop the image and the label
     img_crp = get_crop(image=image, x=x, y=y, crop_shape=(CROP_SIZE, CROP_SIZE))
     seg_crp = get_crop(image=segmentation, x=x, y=y, crop_shape=(CROP_SIZE, CROP_SIZE))
-
-    if non_empty and seg_crp.sum() < NON_EMPTY_CROP_THRESHOLD:
-        # 1) Produce random x, y coordinates with size of crop_shape
-        for try_idx in range(MAX_EMPTY_CROPS):
-            # - x coordinate
-            x = np.random.randint(0, image.shape[0] - h)
-
-            # - y coordinate
-            y = np.random.randint(0, image.shape[1] - w)
-
-            # 2) Randomly crop the image and the label
-            img_crp = get_crop(image=image, x=x, y=y, crop_shape=(CROP_SIZE, CROP_SIZE))
-            seg_crp = get_crop(image=segmentation, x=x, y=y, crop_shape=(CROP_SIZE, CROP_SIZE))
-
-            # 3) Check if one of the following happens:
-            # - the crop contains some foreground
-            if seg_crp.sum() > NON_EMPTY_CROP_THRESHOLD:
-                break
-            if DEBUG_LEVEL > 1:
-                info_log(logger=logger, message=f'The crops\' sum is {seg_crp.sum()} < {NON_EMPTY_CROP_THRESHOLD}. Trying to acquire another crop (try #{try_idx})...')
 
     if PROFILE and DEBUG_LEVEL > 2:
         info_log(logger=logger, message=f'Random crop took {get_runtime(seconds=time.time() - t_strt)}')
@@ -174,17 +198,11 @@ def elastic_transform(segmentation, logger: logging.Logger = None):
     seg_shp = segmentation.shape
     rnd_st = np.random.RandomState(None)
 
-    # sgm = np.random.uniform(*SIGMA_RANGE)  #1, 8)
-    # alph = np.random.uniform(*ALPHA_RANGE)  #50, 100)
-
     alph = seg_shp[1] * 2
     sgm = seg_shp[1] * 0.15
 
     dx = gaussian_filter((rnd_st.rand(*seg_shp) * 2 - 1), sgm) * alph
     dy = gaussian_filter((rnd_st.rand(*seg_shp) * 2 - 1), sgm) * alph
-
-    # dx = gaussian_filter(rnd_st.rand(*seg_shp) * 2 - 1, sgm, mode='constant', cval=0) * alph
-    # dy = gaussian_filter(rnd_st.rand(*seg_shp) * 2 - 1, sgm, mode='constant', cval=0) * alph
 
     x, y = np.meshgrid(np.arange(seg_shp[0]), np.arange(seg_shp[1]))
     idxs = np.reshape(y + dy, (-1, 1)), np.reshape(x + dx, (-1, 1))
@@ -196,10 +214,10 @@ def elastic_transform(segmentation, logger: logging.Logger = None):
     return seg
 
 
-def augment(image, segmentation, non_empty_crops: bool = True, rotation: bool = True, affine: bool = True, erosion: bool = True, dilation: bool = True, opening: bool = True, closing: bool = True, elastic: bool = True, logger: logging.Logger = None):
+def augment(image, segmentation, rotation: bool = True, affine: bool = True, erosion: bool = True, dilation: bool = True, opening: bool = True, closing: bool = True, elastic: bool = True, logger: logging.Logger = None):
     t_strt = time.time()
+    img, seg = image, segmentation
 
-    img, seg = image[:, :, 0], segmentation[:, :, 0]
     # I. Image + segmentation
     #  1) Random rotation (whole of the image)
     if rotation:
@@ -208,14 +226,6 @@ def augment(image, segmentation, non_empty_crops: bool = True, rotation: bool = 
             segmentation=segmentation,
             logger=logger
         )
-
-    #  2) Random crop
-    img, seg = random_crop(
-        image=img,
-        segmentation=seg,
-        non_empty=non_empty_crops,
-        logger=logger
-    )
 
     # II. Segmentation only
     spoiled_seg = seg
@@ -272,6 +282,6 @@ def augment(image, segmentation, non_empty_crops: bool = True, rotation: bool = 
         )
 
     if PROFILE and DEBUG_LEVEL > 2:
-            info_log(logger=logger, message=f'All augmentations took {get_runtime(seconds=time.time() - t_strt)}')
+        info_log(logger=logger, message=f'All augmentations took {get_runtime(seconds=time.time() - t_strt)}')
 
     return img, seg, spoiled_seg

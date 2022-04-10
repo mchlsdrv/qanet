@@ -26,6 +26,7 @@ from configs.general_configs import (
     TEST_IMAGE_DIR,
     TEST_SEG_DIR,
 
+    INFERENCE_DIR,
     INFERENCE_IMAGE_DIR,
 
     OUTPUT_DIR,
@@ -320,6 +321,7 @@ def get_arg_parser():
     parser.add_argument('--test_seg_dir', type=str, default=TEST_SEG_DIR, help=f'Path to the test segmentations directory')
 
     parser.add_argument('--inference', default=False, action='store_true', help=f'If to perform the inference with the current network')
+    parser.add_argument('--inference_dir', type=str, default=INFERENCE_DIR, help=f'Path to the images to infer. Images should be placed in a folder called \'imgs\', the segmentations in a folder called \'segs\', and the file with the seg measures should be called \'seg_measures.pkl\', and be placed together with the two previous folders')
     parser.add_argument('--inference_image_dir', type=str, default=INFERENCE_IMAGE_DIR, help=f'Path to the images to infer directory')
 
     parser.add_argument('--output_dir', type=str, default=OUTPUT_DIR, help='The path to the directory where the outputs will be placed')

@@ -9,7 +9,7 @@ from configs.general_configs import (
 plt.style.use('ggplot')
 
 
-def plot_scatter(x: np.ndarray, y: np.ndarray, save_file: pathlib.Path = None):#, figsize: tuple = (20, 10), save_file: pathlib.Path = None):
+def plot_scatter(x: np.ndarray, y: np.ndarray, save_file: pathlib.Path = None):
     fig, ax = plt.subplots(figsize=SCATTER_PLOT_FIGSIZE)
 
     plt.rc('font', size=SCATTER_PLOT_FONTSIZE)

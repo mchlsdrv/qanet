@@ -1,4 +1,5 @@
 import yaml
+from tqdm import tqdm
 import logging
 import time
 import pathlib
@@ -8,12 +9,12 @@ from tensorflow import keras
 from tensorflow.keras import layers
 from configs.general_configs import (
     KERNEL_REGULARIZER,
+    ACTIVATION_LAYER,
     PROFILE,
     RIBCAGE_CONFIGS_FILE_PATH,
     OUTLIER_TH,
 )
 
-# from utils.general_utils import aux_funcs
 from utils import aux_funcs
 
 
@@ -22,7 +23,7 @@ class RibCage(keras.Model):
         super().__init__()
         self.input_image_dims = input_image_dims
         self.logger = logger
-
+        self.activation_layer = ACTIVATION_LAYER
         # - Open the models' configurations file
         self.ribcage_configs = None
         with RIBCAGE_CONFIGS_FILE_PATH.open(mode='r') as config_file:
@@ -45,24 +46,24 @@ class RibCage(keras.Model):
         self.val_epoch_pred_seg_msrs = np.array([])
         self.val_epoch_outliers = list()
 
-    @staticmethod
-    def _build_conv2d_block(filters: int, kernel_size: int):
+    # @staticmethod
+    def _build_conv2d_block(self, filters: int, kernel_size: int):
         return keras.Sequential(
             [
                 layers.Conv2D(filters=filters, kernel_size=kernel_size, padding='same', kernel_regularizer=KERNEL_REGULARIZER),
                 layers.BatchNormalization(),
-                layers.LeakyReLU(),
+                self.activation_layer,
                 layers.MaxPool2D(padding='same')
             ]
         )
 
-    @staticmethod
-    def _build_fully_connected_block(units: int, drop_rate: float):
+    # @staticmethod
+    def _build_fully_connected_block(self, units: int, drop_rate: float):
         return keras.Sequential(
             [
                 keras.layers.Dense(units=units, kernel_regularizer=KERNEL_REGULARIZER),
                 keras.layers.BatchNormalization(),
-                keras.layers.LeakyReLU(),
+                self.activation_layer,
                 keras.layers.Dropout(rate=drop_rate)
             ]
         )
@@ -72,21 +73,21 @@ class RibCage(keras.Model):
 
         input_left_rib = tmp_input_left_rib = keras.Input(self.input_image_dims + (1, ), name='input_left_rib')
         input_right_rib = tmp_input_right_rib = keras.Input(self.input_image_dims + (1, ), name='input_right_rib')
-        input_spine = tmp_input_spine = keras.layers.Concatenate()([input_left_rib, input_right_rib])
+        input_spine = keras.layers.Concatenate()([input_left_rib, input_right_rib])
 
         for filters, kernel_size in zip(block_filters, block_kernel_sizes):
             tmp_input_left_rib = self._build_conv2d_block(filters=filters, kernel_size=kernel_size)(tmp_input_left_rib)
             tmp_input_right_rib = self._build_conv2d_block(filters=filters, kernel_size=kernel_size)(tmp_input_right_rib)
-            tmp_input_spine = keras.layers.Concatenate()(
+            input_spine = keras.layers.Concatenate()(
                 [
                     tmp_input_left_rib,
                     tmp_input_right_rib,
-                    self._build_conv2d_block(filters=filters, kernel_size=kernel_size)(tmp_input_spine)
+                    self._build_conv2d_block(filters=filters, kernel_size=kernel_size)(input_spine)
                 ]
             )
 
         layer_units, drop_rate = self.ribcage_configs.get('fully_connected_block')['layer_units'], self.ribcage_configs.get('fully_connected_block')['drop_rate']
-        fc_layer = keras.layers.Flatten()(tmp_input_spine)
+        fc_layer = keras.layers.Flatten()(input_spine)
         for units in layer_units:
             fc_layer = self._build_fully_connected_block(units=units, drop_rate=drop_rate)(fc_layer)
 
@@ -103,7 +104,7 @@ class RibCage(keras.Model):
     def summary(self):
         return self.model.summary()
 
-    def train_step(self, data):
+    def train_step(self, data) -> dict:
         t_strt = time.time()
         # - Get the data of the current epoch
         (imgs, aug_segs), trgt_seg_msrs = data
@@ -154,7 +155,7 @@ class RibCage(keras.Model):
         # - Return the mapping metric names to current value
         return {metric.name: metric.result() for metric in self.metrics}
 
-    def test_step(self, data):
+    def test_step(self, data) -> dict:
         t_strt = time.time()
         # - Get the data of the current epoch
         (imgs, aug_segs), trgt_seg_msrs = data
@@ -194,3 +195,22 @@ class RibCage(keras.Model):
             aux_funcs.info_log(logger=self.logger, message=f'Validating on batch of size {imgs.shape} took {aux_funcs.get_runtime(seconds=time.time() - t_strt)}')
 
         return {metric.name: metric.result() for metric in self.metrics}
+
+    def infer(self, data_loader) -> np.ndarray:
+        t_strt = time.time()
+
+        results = np.array([])
+
+        # - Get the data of the current epoch
+        for (imgs, segs), _ in tqdm(data_loader):
+            # - Get the predictions
+            pred_seg_msrs = self.model([imgs, segs], training=False)
+            pred_seg_msrs = pred_seg_msrs.numpy()[:, 0]
+
+            # - Append the predicted seg measures to the results
+            results = np.append(results, pred_seg_msrs)
+
+        if PROFILE:
+            aux_funcs.info_log(logger=self.logger, message=f'Inference on data of {len(data_loader)} batches {aux_funcs.get_runtime(seconds=time.time() - t_strt)}')
+
+        return results

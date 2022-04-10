@@ -4,6 +4,7 @@ import tensorflow as tf
 import cv2
 import matplotlib.pyplot as plt
 from configs.general_configs import (
+    DEBUG_LEVEL,
     EPSILON,
     MIN_OBJECT_AREA,
 )
@@ -22,6 +23,8 @@ def add_channels_dim(image: np.ndarray):
 
 
 def load_image(image_file):
+    if DEBUG_LEVEL > 2:
+        print(f'Loading \'{image_file}\'')
     img = cv2.imread(image_file, cv2.IMREAD_UNCHANGED)
     if len(img.shape) < 3:
         img = add_channels_dim(image=img)
