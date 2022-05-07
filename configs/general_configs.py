@@ -1,7 +1,10 @@
 import re
 import pathlib
 import tensorflow as tf
-from activations.special import Swish
+from custom.activations import (
+    Swish
+)
+# from activations.special import Swish
 
 
 DEBUG_LEVEL = 0
@@ -42,23 +45,19 @@ ZERO_LOW_JACCARDS = False
 # - Crops
 CROP_SIZE = 256
 
-# -- Non-empty crops
-# Used for cleaning empty segmentations, i.e., with only 0. The cleaning is performed by summing the binary image, and if the
-# sum is lower than the threshold - the image, along with its' segmentation will not be included
-NON_EMPTY_IMAGE_THRESHOLD = 100
-
 # -- Object size
-MIN_OBJECT_AREA = 15
+MIN_OBJECT_AREA = 150
+
 # -- Shuffle
 SHUFFLE_CROPS = True
 
 # PREPROCESSING CONFIGS
-STANDARDIZE_IMAGE = False
+STANDARDIZE_IMAGE = True
 
 # FILTERS CONFIGS
 # - CLipped Adaptive Histogram Equalization (CLAHE)
 # Enhances the contrast by equalizing the image intensity
-APPLY_CLAHE_FILTER = False
+APPLY_CLAHE_FILTER = True
 CLAHE_CLIP_LIMIT = 2.0
 CLAHE_TILE_GRID_SIZE = (8, 8)
 
@@ -126,6 +125,9 @@ TENSOR_BOARD_IMAGES_LOG_INTERVAL = 1
 # -> Scatter Plot
 # PLOT_OUTLIERS = False
 PLOT_OUTLIERS = True
+PLOT_TRAIN_DATA_BATCHES = False
+PLOT_VALIDATION_DATA_BATCHES = True
+LOSS_DELTA_TH = 0.01
 N_OUTLIERS = 5
 OUTLIER_TH = .7
 PROGRESS_LOG = True

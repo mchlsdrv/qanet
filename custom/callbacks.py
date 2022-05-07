@@ -2,15 +2,19 @@ import pathlib
 import tensorflow as tf
 import numpy as np
 import logging
-from utils.plotting_funcs import (
-    plot_scatter,
-    plot
-)
 from configs.general_configs import (
+    PLOT_TRAIN_DATA_BATCHES,
+    PLOT_VALIDATION_DATA_BATCHES,
+    LOSS_DELTA_TH,
     PLOT_OUTLIERS,
     N_OUTLIERS
 )
-from utils.image_utils.image_aux import (
+from utils.plotting_funcs import (
+plot_scatter,
+plot
+)
+# from utils.image_utils.image_aux import (
+from utils.image_funcs import (
     get_image_from_figure,
 )
 from utils import aux_funcs
@@ -132,7 +136,7 @@ class ProgressLogCallback(tf.keras.callbacks.Callback):
                         plot(
                             images=[outlier[0], outlier[1]],
                             labels=['', ''],
-                            suptitle=f'Epoch: {epoch}, Seg Measures: Target - {outlier[2]:.2f}, Predicted - {outlier[3]:.2f}',
+                            suptitle=f'Epoch: {epoch}, Seg Measures: Target - {outlier[2]:.2f}, Predicted - {outlier[3]:.2f}, Pixel Sum - {outlier[1].sum():.0f}',
                             save_file=self.log_dir / f'train/outliers/epoch_{epoch}_{idx}.png'
                         )
                         if idx > N_OUTLIERS:
@@ -142,11 +146,34 @@ class ProgressLogCallback(tf.keras.callbacks.Callback):
                     plot(
                         images=[outlier[0], outlier[1]],
                         labels=['', ''],
-                        suptitle=f'Epoch: {epoch}, Seg Measures: Target - {outlier[2]:.2f}, Predicted - {outlier[3]:.2f}',
+                        suptitle=f'Epoch: {epoch}, Seg Measures: Target - {outlier[2]:.2f}, Predicted - {outlier[3]:.2f}, Pixel Sum - {outlier[1].sum()}',
                         save_file=self.log_dir / f'validation/outliers/epoch_{epoch}_{idx}.png' if self.log_type == 'train' else self.log_dir / f'test/outliers/epoch_{epoch}_{idx}.png'
                     )
                     if idx > N_OUTLIERS:
                         break
+
+            if PLOT_TRAIN_DATA_BATCHES:
+                if self.model.train_loss_delta > LOSS_DELTA_TH:
+                    aux_funcs.info_log(logger=self.logger, message=f'Adding train data batches plots to {self.log_dir} directory...')
+                    if self.log_type == 'train':
+                        for idx, (img, seg, trgt_seg_msr, pred_seg_msr) in enumerate(zip(self.model.train_imgs, self.model.train_aug_segs, self.model.train_trgt_seg_msrs, self.model.train_pred_seg_msrs)):
+                            plot(
+                                images=[img, seg],
+                                labels=['', ''],
+                                suptitle=f'Epoch: {epoch}, Seg Measures: Target - {trgt_seg_msr:.2f}, Predicted - {pred_seg_msr:.2f}, Pixel Sum - {seg.sum():.0f}',
+                                save_file=self.log_dir / f'train/batch/epoch_{epoch}_{idx}.png'
+                            )
+
+            if PLOT_VALIDATION_DATA_BATCHES:
+                if self.model.val_loss_delta > LOSS_DELTA_TH:
+                    aux_funcs.info_log(logger=self.logger, message=f'Adding validation data batches plots to {self.log_dir} directory...')
+                    for idx, (img, seg, trgt_seg_msr, pred_seg_msr) in enumerate(zip(self.model.val_imgs, self.model.val_aug_segs, self.model.val_trgt_seg_msrs, self.model.val_pred_seg_msrs)):
+                        plot(
+                            images=[img, seg],
+                            labels=['', ''],
+                            suptitle=f'Epoch: {epoch}, Seg Measures: Target - {trgt_seg_msr:.2f}, Predicted - {pred_seg_msr:.2f}, Pixel Sum - {seg.sum():.0f}',
+                            save_file=self.log_dir / f'validation/batch/epoch_{epoch}_{idx}.png'
+                        )
 
         # - Clean the seg measures history arrays
         self.model.train_epoch_trgt_seg_msrs = np.array([])

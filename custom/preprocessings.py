@@ -6,11 +6,12 @@ from configs.general_configs import (
     DEBUG_LEVEL,
 )
 
-from utils.image_utils.filters import (
+# from utils.image_utils.filters import (
+from custom.filters import (
     clahe_filter
 )
 
-from utils.image_utils.image_aux import (
+from utils.image_funcs import (
     add_channels_dim
 )
 

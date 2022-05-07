@@ -1,4 +1,5 @@
 import os
+import albumentations as A
 import re
 import pickle as pkl
 import numpy as np
@@ -7,20 +8,26 @@ import multiprocessing as mlp
 import time
 import tensorflow as tf
 import logging
+from tqdm import tqdm
 from copy import copy
 
-from utils.image_utils.preprocessings import (
+# from utils.image_utils.preprocessings import (
+from custom.preprocessings import (
     preprocess_image,
 )
 
-from utils.image_utils.image_aux import (
-    get_seg_measure,
-    load_image,
-)
-
-from utils.image_utils.augmentations import (
+# from utils.image_utils.augmentations import (
+from custom.augmentations import (
     random_crop,
     augment,
+)
+
+# from utils.image_utils.image_aux import (
+from utils.image_funcs import (
+add_channels_dim,
+get_contours,
+get_seg_measure,
+load_image,
 )
 
 from utils.aux_funcs import (
@@ -33,7 +40,6 @@ from configs.general_configs import (
     DEBUG_LEVEL,
     PROFILE,
     ZERO_LOW_JACCARDS,
-    NON_EMPTY_IMAGE_THRESHOLD,
     SHUFFLE_CROPS,
     ROTATION,
     AFFINE,
@@ -55,15 +61,25 @@ class DataLoader(tf.keras.utils.Sequence):
         self.logger = logger
         self.crop_images = crop_images
         self.augment_images = augment_images
-
+        self.augs = A.Compose([
+                A.Cutout(
+                        num_holes=8,
+                        max_h_size=16,
+                        max_w_size=16,
+                        fill_value=0,
+                        p=0.5
+                ),
+                # A.CLAHE()
+            ]
+        )
         tmp_dt_fl = TEMP_DIR / f'{self.name}_imgs_segs_temp.npy'
         # - Load the temporal data
         if tmp_dt_fl.is_file() and not reload_data:
-            info_log(logger=self.logger, message=f'Loading temp data from \'{tmp_dt_fl}\'...')
+            info_log(logger=self.logger, message=f'Loading temp {self.name} data from \'{tmp_dt_fl}\'...')
             self.imgs_segs_temp = np.load(str(tmp_dt_fl))
         # - Or produce and save it
         else:
-            info_log(logger=self.logger, message=f'Creating the temp data file from the files, and saving at \'{tmp_dt_fl}\'...')
+            info_log(logger=self.logger, message=f'Creating the temp data file from the {self.name} file, and saving it at \'{tmp_dt_fl}\'...')
             self.imgs_segs_temp = self._get_temp_data(temp_data_file=tmp_dt_fl)
 
         self._clean_blanks()
@@ -96,6 +112,9 @@ class DataLoader(tf.keras.utils.Sequence):
         return self.btch_q.get()
 
     def _clean_blanks(self):
+        """
+        Cleans all the images there theres no data, i.e., blank or only random noise
+        """
         clean_data = []
         for idx, (img, seg) in enumerate(self.imgs_segs_temp):
             bin_seg = copy(seg)
@@ -109,7 +128,14 @@ class DataLoader(tf.keras.utils.Sequence):
             # - Mark the entries at the indices that correspond to the label as '1', to produce a binary label
             bin_seg[(seg_pix_xs, seg_pix_ys)] = 1
 
-            if bin_seg.sum() > NON_EMPTY_IMAGE_THRESHOLD:
+            # - Images should be of type UINT8
+            bin_seg = bin_seg.astype(np.uint8)
+
+            # - Find the contours in the image
+            _, centroids = get_contours(image=bin_seg)
+
+            # - If the image has at least a single contour (i.e., it is not blank or noise) - add it to the data
+            if centroids:
                 clean_data.append((img, seg))
 
         self.imgs_segs_temp = np.array(clean_data)
@@ -117,8 +143,8 @@ class DataLoader(tf.keras.utils.Sequence):
     def _get_temp_data(self, temp_data_file: pathlib.Path):
         info_log(logger=self.logger, message=f'Creating temp data...')
         imgs, segs = list(), list()
-        for idx, (img_fl, seg_fl) in enumerate(self.img_seg_fls):
-            info_log(logger=self.logger, message=f'Working on \'{img_fl}\' and \'{seg_fl}\' ({idx} / {len(self.img_seg_fls)})')
+        # info_log(logger=self.logger, message=f'Working on \'{img_fl}\' and \'{seg_fl}\' ({idx} / {len(self.img_seg_fls)})')
+        for img_fl, seg_fl in tqdm(self.img_seg_fls):
             img = preprocess_image(load_image(img_fl))
             seg = load_image(seg_fl)
 
@@ -202,7 +228,8 @@ class DataLoader(tf.keras.utils.Sequence):
                                 elastic=ELASTIC,
                                 logger=self.logger
                             )
-
+                            img = self.augs(image=img).get('image')
+                            img = add_channels_dim(img)
                         # - Calculate the seg measure of the ground truth image with the augmented image
                         trgt_seg_msr = get_seg_measure(
                             ground_truth=seg,

@@ -4,6 +4,8 @@ import datetime
 import pathlib
 import tensorflow as tf
 import multiprocessing as mlp
+import logging.config
+
 from utils.aux_funcs import (
     info_log,
     err_log,
@@ -13,10 +15,10 @@ from utils.aux_funcs import (
     get_arg_parser,
     get_callbacks,
 )
+
 from utils.data_utils import (
     get_data_loaders,
 )
-import logging.config
 
 from configs.general_configs import (
     CONFIGS_DIR_PATH,
@@ -76,65 +78,25 @@ if __name__ == '__main__':
         optimizer=OPTIMIZER,  # (learning_rate=args.learning_rate),
         run_eagerly=True,
         metrics=METRICS
-
     )
 
     # - Data loading processes
     main_data_loading_prcs = side_data_loading_prcs = None
 
     # - Chose the procedure name
-    if args.inference:
+    if args.train:
+        procedure_name = 'train'
+    elif args.inference:
         procedure_name = 'inference'
     elif args.test:
         procedure_name = 'test'
     else:
-        procedure_name = 'train'
+        procedure_name = 'UNKNOWN PROCEDURE'
 
     # PROCEDURE
-    # -1- If we want to infer results from the current model
-    print(f'weights_loaded: {weights_loaded}')
-    if args.inference and weights_loaded:
-
-        # - Get the directory where the inference data is located at
-        infer_data_dir = args.inference_image_dir if args.data_from_single_dir else args.inference_dir
-        infer_seg_dir = args.inference_seg_dir if args.data_from_single_dir else None
-
-        if isinstance(logger, logging.Logger):
-            logger.info(f'- Inferring the images at {infer_data_dir}')
-
-        # - Get the inference data loader
-        infer_dl, _ = get_data_loaders(
-            main_name=procedure_name,
-            side_name='',
-            data_dir=infer_data_dir,
-            segmentations_dir=infer_seg_dir,
-            metadata_files_regex=None if args.data_from_single_dir else METADATA_FILES_REGEX,
-            split_proportion=0.,
-            batch_size=2,
-            crop_images=True,
-            augment_images=False,
-            reload_data=args.reload_data,
-            logger=logger
-        )
-
-        # -> Start the train data loading process
-        main_data_loading_prcs = mlp.Process(target=infer_dl.enqueue_batches, args=())
-        main_data_loading_prcs.start()
-
-        tb_prc = None
-
-        # - Inference -
-        preds = model.infer(
-            infer_dl
-        )
-        print(preds)
-        print(f'''
-        PREDICTIONS:
-            mean: {preds.mean():.2f} +/- {preds.std():.4f}
-        ''')
-
-    # -2- If we want to train a new model
-    elif not args.test and not args.inference:
+    tb_prc = None
+    # -1- If we want to train a new model
+    if args.train:
 
         # - Get the directory where the train data is located at
         train_data_dir = args.train_image_dir if args.data_from_single_dir else args.train_dir
@@ -187,51 +149,92 @@ if __name__ == '__main__':
             callbacks=callbacks
         )
 
-    # -2- If we want to test the current model
-    elif args.test and weights_loaded:
+    # -2- If we want to infer or to test the current model, we must have a trained model
+    elif weights_loaded:
 
-        # - Get the directory where the test data is located at
-        data_dir = args.test_image_dir if args.data_from_single_dir else args.test_dir
-        seg_dir = args.test_seg_dir if args.data_from_single_dir else None
+        # -2.1- If we want to infer results from the current model
+        if args.inference:
 
-        if isinstance(logger, logging.Logger):
-            logger.info(f' - Testing the images at {data_dir}')
+            # - Get the directory where the inference data is located at
+            infer_data_dir = args.inference_image_dir if args.data_from_single_dir else args.inference_dir
+            infer_seg_dir = args.inference_seg_dir if args.data_from_single_dir else None
 
-        # - Get the test data loader
-        test_dl, _ = get_data_loaders(
-            main_name=procedure_name,
-            side_name='',
-            data_dir=data_dir,
-            segmentations_dir=seg_dir,
-            metadata_files_regex=None if args.data_from_single_dir else METADATA_FILES_REGEX,
-            split_proportion=args.validation_proportion,
-            batch_size=args.batch_size,
-            crop_images=True,
-            augment_images=True,
-            reload_data=args.reload_data,
-            logger=logger
-        )
-        # -> Start the data loading process
-        main_data_loading_prcs = mlp.Process(target=test_dl.enqueue_batches, args=())
-        main_data_loading_prcs.start()
+            if isinstance(logger, logging.Logger):
+                logger.info(f'- Inferring the images at {infer_data_dir}')
 
-        # - Get the callbacks and optionally the thread which runs the tensorboard
-        callbacks, tb_prc = get_callbacks(
-            callback_type=procedure_name,
-            output_dir=current_run_dir,
-            logger=logger
-        )
+            # - Get the inference data loader
+            infer_dl, _ = get_data_loaders(
+                main_name=procedure_name,
+                side_name='',
+                data_dir=infer_data_dir,
+                segmentations_dir=infer_seg_dir,
+                metadata_files_regex=None if args.data_from_single_dir else METADATA_FILES_REGEX,
+                split_proportion=0.,
+                batch_size=2,
+                crop_images=True,
+                augment_images=False,
+                reload_data=args.reload_data,
+                logger=logger
+            )
 
-        # - If the setting is to launch the tensorboard process automatically
-        if tb_prc is not None:
-            tb_prc.start()
+            # -> Start the data loading process
+            main_data_loading_prcs = mlp.Process(target=infer_dl.enqueue_batches, args=())
+            main_data_loading_prcs.start()
 
-        # - Test -
-        model.evaluate(
-            test_dl,
-            verbose=1,
-            callbacks=callbacks
-        )
+            # - Inference -
+            preds = model.infer(
+                infer_dl
+            )
+            print(preds)
+            print(f'''
+            PREDICTIONS:
+                mean: {preds.mean():.2f} +/- {preds.std():.4f}
+            ''')
+
+        # -2.2- If we want to test the current model
+        if args.test:
+            # - Get the directory where the test data is located at
+            data_dir = args.test_image_dir if args.data_from_single_dir else args.test_dir
+            seg_dir = args.test_seg_dir if args.data_from_single_dir else None
+
+            if isinstance(logger, logging.Logger):
+                logger.info(f' - Testing the images at {data_dir}')
+
+            # - Get the test data loader
+            test_dl, _ = get_data_loaders(
+                main_name=procedure_name,
+                side_name='',
+                data_dir=data_dir,
+                segmentations_dir=seg_dir,
+                metadata_files_regex=None if args.data_from_single_dir else METADATA_FILES_REGEX,
+                split_proportion=args.validation_proportion,
+                batch_size=args.batch_size,
+                crop_images=True,
+                augment_images=True,
+                reload_data=args.reload_data,
+                logger=logger
+            )
+            # -> Start the data loading process
+            main_data_loading_prcs = mlp.Process(target=test_dl.enqueue_batches, args=())
+            main_data_loading_prcs.start()
+
+            # - Get the callbacks and optionally the thread which runs the tensorboard
+            callbacks, tb_prc = get_callbacks(
+                callback_type=procedure_name,
+                output_dir=current_run_dir,
+                logger=logger
+            )
+
+            # - If the setting is to launch the tensorboard process automatically
+            if tb_prc is not None:
+                tb_prc.start()
+
+            # - Test -
+            model.evaluate(
+                test_dl,
+                verbose=1,
+                callbacks=callbacks
+            )
 
     else:
         err_log(logger=logger, message=f'Could not run the {procedure_name} because the model does not exist!')

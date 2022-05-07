@@ -10,9 +10,13 @@ import argparse
 import pathlib
 import tensorflow as tf
 import numpy as np
-from models import cnn
+from custom.models import (
+    RibCage
+)
+# from models import cnn
 
-from callbacks.visualisation_callbacks import (
+# from callbacks.visualisation_callbacks import (
+from custom.callbacks import (
     ProgressLogCallback
 )
 from configs.general_configs import (
@@ -84,7 +88,8 @@ from utils.plotting_funcs import (
     plot_scatter
 )
 
-from utils.image_utils.image_aux import (
+# from utils.image_utils.image_aux import (
+from utils.image_funcs import (
     get_image_from_figure
 )
 
@@ -235,7 +240,7 @@ def launch_tensorboard(logdir):
 def get_model(input_image_dims: tuple, checkpoint_dir: pathlib.Path = None, logger: logging.Logger = None):
     weights_loaded = False
 
-    model = cnn.RibCage(input_image_dims=input_image_dims)
+    model = RibCage(input_image_dims=input_image_dims)
 
     if checkpoint_dir.is_dir:
         try:
@@ -311,6 +316,7 @@ def get_arg_parser():
     parser.add_argument('--data_from_single_dir', default=False, action='store_true', help='If the data should be taken from a single directory, or collected from several directories')
 
     parser.add_argument('--reload_data', default=False, action='store_true', help=f'If to reload data from files and overwrite the temp data')
+    parser.add_argument('--train', default=False, action='store_true', help=f'If to perform the train of the current network')
     parser.add_argument('--train_dir', type=str, default=TRAIN_DIR, help='The path to the top directory where the images and the segmentations are stored')
     parser.add_argument('--train_image_dir', type=str, default=TRAIN_IMAGE_DIR, help='The path to the directory where the images are stored')
     parser.add_argument('--train_seg_dir', type=str, default=TRAIN_SEG_DIR, help='The path to the directory where the corresponding segmentations are stored')

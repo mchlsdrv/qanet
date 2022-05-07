@@ -15,7 +15,9 @@ from configs.general_configs import (
     OUTLIER_TH,
 )
 
-from utils import aux_funcs
+from utils import (
+    aux_funcs
+)
 
 
 class RibCage(keras.Model):
@@ -33,15 +35,23 @@ class RibCage(keras.Model):
         self.model = self.build_model()
 
         # - Train epoch history
+        self.train_loss_prev = 1.
+        self.train_loss_delta = 0.
         self.train_imgs = None
         self.train_aug_segs = None
+        self.train_trgt_seg_msrs = None
+        self.train_pred_seg_msrs = None
         self.train_epoch_trgt_seg_msrs = np.array([])
         self.train_epoch_pred_seg_msrs = np.array([])
         self.train_epoch_outliers = list()
 
         # - Validation epoch history
+        self.val_loss_prev = 1.
+        self.val_loss_delta = 0.
         self.val_imgs = None
         self.val_aug_segs = None
+        self.val_trgt_seg_msrs = None
+        self.val_pred_seg_msrs = None
         self.val_epoch_trgt_seg_msrs = np.array([])
         self.val_epoch_pred_seg_msrs = np.array([])
         self.val_epoch_outliers = list()
@@ -122,12 +132,17 @@ class RibCage(keras.Model):
         # - Calculate gradients
         gradients = tape.gradient(loss, trainable_vars)
 
+        self.train_loss_delta = loss - self.train_loss_prev
+        self.train_loss_prev = loss
+
         # - Update weights
         self.optimizer.apply_gradients(zip(gradients, trainable_vars))
 
         # - Add images
-        self.train_imgs = imgs
-        self.train_aug_segs = aug_segs
+        self.train_imgs = imgs.numpy()
+        self.train_aug_segs = aug_segs.numpy()
+        self.train_trgt_seg_msrs = trgt_seg_msrs
+        self.train_pred_seg_msrs = pred_seg_msrs
 
         # - Add the target seg measures to epoch history
         self.train_epoch_trgt_seg_msrs = np.append(self.train_epoch_trgt_seg_msrs, trgt_seg_msrs)
@@ -142,8 +157,8 @@ class RibCage(keras.Model):
         for outlier_idx in outliers_idxs:
             self.train_epoch_outliers.append(
                 (
-                    self.train_imgs[outlier_idx],
-                    self.train_aug_segs[outlier_idx],
+                    np.array(self.train_imgs[outlier_idx]),
+                    np.array(self.train_aug_segs[outlier_idx]),
                     trgt_seg_msrs[outlier_idx],
                     pred_seg_msrs[outlier_idx]
                 )
@@ -164,12 +179,17 @@ class RibCage(keras.Model):
         pred_seg_msrs = self.model([imgs, aug_segs], training=True)
         loss = self.compiled_loss(trgt_seg_msrs, pred_seg_msrs)
 
+        self.val_loss_delta = loss - self.val_loss_prev
+        self.val_loss_prev = loss
+
         trgt_seg_msrs = trgt_seg_msrs.numpy()
         pred_seg_msrs = pred_seg_msrs.numpy()[:, 0]
 
         # - Update images
-        self.val_imgs = imgs
-        self.val_aug_segs = aug_segs
+        self.val_imgs = imgs.numpy()
+        self.val_aug_segs = aug_segs.numpy()
+        self.val_trgt_seg_msrs = trgt_seg_msrs
+        self.val_pred_seg_msrs = pred_seg_msrs
 
         # - Add the target seg measures to epoch history
         self.val_epoch_trgt_seg_msrs = np.append(self.val_epoch_trgt_seg_msrs, trgt_seg_msrs)
@@ -184,8 +204,8 @@ class RibCage(keras.Model):
         for outlier_idx in outliers_idxs:
             self.val_epoch_outliers.append(
                 (
-                    self.val_imgs[outlier_idx],
-                    self.val_aug_segs[outlier_idx],
+                    np.array(self.val_imgs[outlier_idx]),
+                    np.array(self.val_aug_segs[outlier_idx]),
                     trgt_seg_msrs[outlier_idx],
                     pred_seg_msrs[outlier_idx]
                 )

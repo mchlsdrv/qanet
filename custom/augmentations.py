@@ -24,9 +24,12 @@ from configs.general_configs import (
     SHEER_RANGE,
     CROP_SIZE,
 )
-from utils.image_utils.image_aux import (
+
+# from utils.image_utils.image_aux import (
+from utils.image_funcs import (
     get_crop,
-    add_channels_dim
+    get_contours,
+    add_channels_dim,
 )
 
 from utils.aux_funcs import (
@@ -82,25 +85,21 @@ def get_random_left_corner(image, crop_width: int, crop_height: int, logger: log
     # - Images should be of type UINT8
     img = img.astype(np.uint8)
 
-    # - Find the contours
-    contours, hierarchies = cv2.findContours(img, cv2.RETR_LIST, cv2.CHAIN_APPROX_SIMPLE)
+    # - Find the contours in the image
+    contours, centroids = get_contours(image=img)
 
-    # - Find the centroids of the contours
-    centroids = []
-    for contour in contours:
-        M = cv2.moments(contour)
-        if M['m00'] != 0:
-            cx = int(M['m10'] / M['m00'])
-            cy = int(M['m01'] / M['m00'])
-            centroids.append((cx, cy))
+    # - If theres at least one centroid
+    if centroids:
+        # -*- Choose a random centroid
+        # rnd_cntr = centroids[np.random.choice(np.arange(len(centroids)))]
+        rnd_cntr_x, rnd_cntr_y = centroids[np.random.choice(np.arange(len(centroids)))]
 
-    # - Choose a random centroid
-    try:
-        rnd_cntr = centroids[np.random.choice(np.arange(len(centroids)))]
-        rnd_cntr_x, rnd_cntr_y = rnd_cntr
-
-        # - Find the minimum and the maximum between which we can randomly choose the x and y coordinates, so that the centroid will fall inside the square
+        # -*- Find the minimum and the maximum between which we can randomly choose the x and y coordinates,
+        # so that the centroid will fall inside the square to the top-left of the chosen centroid
         # --> Minimum
+        crop_width = crop_width // 2
+        crop_height = crop_height // 2
+
         x_min, y_min = rnd_cntr_x - crop_width if rnd_cntr_x - crop_width >= 0 else 0, rnd_cntr_y - crop_height if rnd_cntr_y - crop_height >= 0 else 0
 
         # --> Maximum
@@ -109,8 +108,14 @@ def get_random_left_corner(image, crop_width: int, crop_height: int, logger: log
 
         rnd_x, rnd_y = np.random.randint(x_min, x_max), np.random.randint(y_min, y_max)
 
-    except ValueError as err:
-        err_log(logger=logger, message=f'\nCould not crop the image based on contours! Falling back to the basic crops!')
+        if rnd_x + CROP_SIZE > image_height:
+            rnd_x = rnd_x - (rnd_x + CROP_SIZE - image_height)
+
+        if rnd_y + CROP_SIZE > image_height:
+            rnd_y = rnd_y - (rnd_y + CROP_SIZE - image_height)
+
+    else:
+        info_log(logger=logger, message=f'\nCould not crop the image based on contours! Falling back to the random crops!')
         rnd_x, rnd_y = np.random.randint(0, image_width - crop_width), np.random.randint(0, image_height - crop_height)
 
     return rnd_x, rnd_y
@@ -242,20 +247,18 @@ def augment(image, segmentation, rotation: bool = True, affine: bool = True, ero
             segmentation=spoiled_seg,
             logger=logger
         )
-
-    if dilation and np.random.random() > .5:
-        spoiled_seg = random_dilation(
-            segmentation=spoiled_seg,
-            logger=logger
-        )
-
-    if opening and np.random.random() > .5:
+    elif opening and np.random.random() > .5:
         spoiled_seg = random_opening(
             segmentation=spoiled_seg,
             logger=logger
         )
 
-    if closing and np.random.random() > .5:
+    if dilation and np.random.random() > .4:
+        spoiled_seg = random_dilation(
+            segmentation=spoiled_seg,
+            logger=logger
+        )
+    elif closing and np.random.random() > .5:
         spoiled_seg = random_closing(
             segmentation=spoiled_seg,
             logger=logger

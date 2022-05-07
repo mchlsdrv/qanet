@@ -4,7 +4,8 @@ from configs.general_configs import (
     CLAHE_CLIP_LIMIT,
     CLAHE_TILE_GRID_SIZE,
 )
-from utils.image_utils.image_aux import (
+# from utils.image_utils.image_aux import (
+from utils.image_funcs import (
     add_channels_dim
 )
 

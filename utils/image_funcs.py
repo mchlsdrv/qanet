@@ -10,6 +10,22 @@ from configs.general_configs import (
 )
 
 
+def get_contours(image: np.ndarray):
+
+    # - Find the contours
+    contours, hierarchies = cv2.findContours(image, cv2.RETR_LIST, cv2.CHAIN_APPROX_SIMPLE)
+
+    # - Find the centroids of the contours
+    centroids = []
+    for contour in contours:
+        M = cv2.moments(contour)
+        if M['m00'] != 0:
+            cx = int(M['m10'] / M['m00'])
+            cy = int(M['m01'] / M['m00'])
+            centroids.append((cx, cy))
+    return contours, centroids
+
+
 def get_crop(image: np.ndarray, x: int, y: int, crop_shape: tuple):
     return image[x:x+crop_shape[0], y:y+crop_shape[1]]
 
