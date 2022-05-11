@@ -5,6 +5,8 @@ import pathlib
 import tensorflow as tf
 import multiprocessing as mlp
 import logging.config
+import wandb
+
 
 from utils.aux_funcs import (
     info_log,
@@ -43,6 +45,8 @@ TS = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
 
 if __name__ == '__main__':
 
+    wandb.init(project="QANet", entity="bio-vision-lab")
+
     # - Get the argument parser
     parser = get_arg_parser()
     args = parser.parse_args()
@@ -62,12 +66,12 @@ if __name__ == '__main__':
 
     # - Configure the GPU to run on
     choose_gpu(gpu_id=args.gpu_id, logger=logger)
-    input_image_shape = (args.crop_size, args.crop_size, 1)
+    input_image_shape = (args.image_size, args.image_size, 1)
 
     # MODEL
     # -1- Build the model and optionally load the weights
     model, weights_loaded = get_model(
-        input_image_dims=(args.crop_size, args.crop_size),
+        input_image_dims=(args.image_size, args.image_size),
         checkpoint_dir=pathlib.Path(args.checkpoint_dir),
         logger=logger
     )
@@ -114,19 +118,19 @@ if __name__ == '__main__':
             metadata_files_regex=None if args.data_from_single_dir else METADATA_FILES_REGEX,
             split_proportion=args.validation_proportion,
             batch_size=args.batch_size,
-            crop_images=True,
-            augment_images=True,
+            image_size=args.image_size,
+            spoil_segmentations=True,
             reload_data=args.reload_data,
             logger=logger
         )
 
         # -> Start the train data loading process
-        main_data_loading_prcs = mlp.Process(target=train_dl.enqueue_batches, args=())
-        main_data_loading_prcs.start()
+        # main_data_loading_prcs = mlp.Process(target=train_dl.enqueue_batches, args=())
+        # main_data_loading_prcs.start()
 
         # -> Start the validation data loading process
-        side_data_loading_prcs = mlp.Process(target=val_dl.enqueue_batches, args=())
-        side_data_loading_prcs.start()
+        # side_data_loading_prcs = mlp.Process(target=val_dl.enqueue_batches, args=())
+        # side_data_loading_prcs.start()
 
         # - Get the callbacks and optionally the thread which runs the tensorboard
         callbacks, tb_prc = get_callbacks(
@@ -134,6 +138,10 @@ if __name__ == '__main__':
             output_dir=current_run_dir,
             logger=logger
         )
+        wandb.config = {
+          "epochs": args.epochs,
+          "batch_size": args.batch_size
+        }
 
         # - If the setting is to launch the tensorboard process automatically
         if tb_prc is not None:
@@ -165,12 +173,13 @@ if __name__ == '__main__':
             # - Get the inference data loader
             infer_dl, _ = get_data_loaders(
                 main_name=procedure_name,
-                side_name='',
+                side_name='inference',
                 data_dir=infer_data_dir,
                 segmentations_dir=infer_seg_dir,
                 metadata_files_regex=None if args.data_from_single_dir else METADATA_FILES_REGEX,
                 split_proportion=0.,
                 batch_size=2,
+                image_size=args.image_size,
                 crop_images=True,
                 augment_images=False,
                 reload_data=args.reload_data,
@@ -203,12 +212,13 @@ if __name__ == '__main__':
             # - Get the test data loader
             test_dl, _ = get_data_loaders(
                 main_name=procedure_name,
-                side_name='',
+                side_name='test',
                 data_dir=data_dir,
                 segmentations_dir=seg_dir,
                 metadata_files_regex=None if args.data_from_single_dir else METADATA_FILES_REGEX,
                 split_proportion=args.validation_proportion,
                 batch_size=args.batch_size,
+                image_size=args.image_size,
                 crop_images=True,
                 augment_images=True,
                 reload_data=args.reload_data,
@@ -230,11 +240,14 @@ if __name__ == '__main__':
                 tb_prc.start()
 
             # - Test -
+            print(f'Evaluating')
+            print(f'Evaluating: {test_dl}')
             model.evaluate(
                 test_dl,
                 verbose=1,
                 callbacks=callbacks
             )
+            print(f'Evaluating')
 
     else:
         err_log(logger=logger, message=f'Could not run the {procedure_name} because the model does not exist!')

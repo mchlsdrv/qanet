@@ -4,7 +4,6 @@ import tensorflow as tf
 from custom.activations import (
     Swish
 )
-# from activations.special import Swish
 
 
 DEBUG_LEVEL = 0
@@ -43,34 +42,31 @@ ZERO_LOW_JACCARDS = False
 
 # DATA
 # - Crops
-CROP_SIZE = 256
+IMAGE_SIZE = 256
 
 # -- Object size
 MIN_OBJECT_AREA = 150
 
 # -- Shuffle
-SHUFFLE_CROPS = True
+SHUFFLE = True
 
 # PREPROCESSING CONFIGS
-STANDARDIZE_IMAGE = True
+STANDARDIZE_IMAGE = False
 
 # FILTERS CONFIGS
 # - CLipped Adaptive Histogram Equalization (CLAHE)
 # Enhances the contrast by equalizing the image intensity
-APPLY_CLAHE_FILTER = True
+APPLY_CLAHE_FILTER = False
 CLAHE_CLIP_LIMIT = 2.0
 CLAHE_TILE_GRID_SIZE = (8, 8)
 
 # AUGMENTATION CONFIGS
-# NOTE: Considerably slows down the training procedure
-ROTATION = False
-
 # - Morphological Transforms
 EROSION = True
-EROSION_SIZES = (1, 3, 5)
+EROSION_SIZES = (10, 20, 30, 40, 50)
 
 DILATION = True
-DILATION_SIZES = (1, 3, 5)
+DILATION_SIZES = (10, 20, 30, 40, 50)
 
 OPENING = True
 OPENING_SIZES = (1, 3, 5)
@@ -104,7 +100,7 @@ KERNEL_REGULARIZER = tf.keras.regularizers.L2(
     l2=0.01
 )
 LOSS = tf.keras.losses.MeanSquaredError()
-METRICS = ['acc']
+METRICS = []
 
 #  Variables
 EPOCHS = 200
@@ -151,7 +147,7 @@ EARLY_STOPPING_VERBOSE = 1
 TERMINATE_ON_NAN = True
 
 # - LR Reduce
-REDUCE_LR_ON_PLATEAU = False
+REDUCE_LR_ON_PLATEAU = True
 REDUCE_LR_ON_PLATEAU_MONITOR = 'val_loss'
 REDUCE_LR_ON_PLATEAU_FACTOR = 0.5
 REDUCE_LR_ON_PLATEAU_PATIENCE = 5

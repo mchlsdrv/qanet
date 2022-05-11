@@ -2,6 +2,7 @@ import pathlib
 import tensorflow as tf
 import numpy as np
 import logging
+import wandb
 from configs.general_configs import (
     PLOT_TRAIN_DATA_BATCHES,
     PLOT_VALIDATION_DATA_BATCHES,
@@ -20,6 +21,31 @@ from utils.image_funcs import (
 from utils import aux_funcs
 
 
+
+
+# this is the order in which my classes will be displayed
+# this is a revese map of the integer class id to the string class label
+
+def log_bboxes(image, mask, true_seg_measure, pred_seg_measure):
+    class_labels = {}
+    class_ids = np.unique(mask)[1:]
+    for cls_id in class_ids:
+        class_labels[int(cls_id)] = f'Cell #{cls_id}'
+    # log to wandb: raw image, predictions, and dictionary of class labels for each class id
+    mask_image = wandb.Image(
+        image,
+        masks={
+            "predictions":
+                {
+                    "mask_data": mask,
+                    "class_labels": class_labels
+                }
+            },
+        # caption=f'Seg Measure ({procedure}): True - {true_seg_measure:.2f}, Predicted - {pred_seg_measure:.2f}'
+        )
+    return mask_image
+
+
 # - CLASSES
 class ProgressLogCallback(tf.keras.callbacks.Callback):
     def __init__(self, log_type: str, figsize: tuple = (20, 10), log_dir: pathlib.Path = None, log_interval: int = 10, logger: logging.Logger = None):
@@ -36,41 +62,46 @@ class ProgressLogCallback(tf.keras.callbacks.Callback):
 
     @staticmethod
     def write_images_to_tensorboard(writer, data: dict, step: int, save_file: pathlib.Path = None):
-        with writer.as_default():
-            with tf.device('/cpu:0'):
-                # -> Write the scatter plot
-                tf.summary.image(
-                    '1 - Scatter',
-                    get_image_from_figure(
-                        figure=plot_scatter(
-                            x=data.get('Scatter')['x'],
-                            y=data.get('Scatter')['y'],
-                            save_file=save_file
-                        )
-                    ),
-                    step=step
-                )
+        if data.get('Scatter')['x'].any() and data.get('Scatter')['y'].any():
+            with writer.as_default():
+                with tf.device('/cpu:0'):
+                    # -> Write the scatter plot
+                    tf.summary.image(
+                        '1 - Scatter',
+                        get_image_from_figure(
+                            figure=plot_scatter(
+                                x=data.get('Scatter')['x'],
+                                y=data.get('Scatter')['y'],
+                                save_file=save_file
+                            )
+                        ),
+                        step=step
+                    )
 
-                # - Write the images
-                # -> Normalize the images
-                imgs = data.get('Images')
-                disp_imgs = imgs - tf.reduce_min(imgs, axis=(1, 2, 3), keepdims=True)
-                disp_imgs = disp_imgs / tf.reduce_max(disp_imgs, axis=(1, 2, 3), keepdims=True)
-                tf.summary.image(
-                    '2 - Images',
-                    disp_imgs,
-                    max_outputs=1,
-                    step=step
-                )
+                    # - Write the images
+                    # -> Normalize the images
+                    imgs = data.get('Images')
+                    if len(imgs.shape) < 4:
+                        imgs = np.expand_dims(imgs, -1)
+                    imgs = imgs - tf.reduce_min(imgs, axis=(1, 2, 3), keepdims=True)
+                    imgs = imgs / tf.reduce_max(imgs, axis=(1, 2, 3), keepdims=True)
+                    tf.summary.image(
+                        '2 - Images',
+                        imgs,
+                        max_outputs=1,
+                        step=step
+                    )
 
-                # -> Write the segmentations
-                disp_segs = data.get('Segmentations')
-                tf.summary.image(
-                    '3 - Segmentations',
-                    disp_segs,
-                    max_outputs=1,
-                    step=step
-                )
+                    # -> Write the segmentations
+                    segs = data.get('Segmentations')
+                    if len(segs.shape) < 4:
+                        segs = np.expand_dims(segs, -1)
+                    tf.summary.image(
+                        '3 - Segmentations',
+                        segs,
+                        max_outputs=1,
+                        step=step
+                    )
 
     def on_training_begin(self, logs=None):
         # - Clean the seg measures history arrays
@@ -79,17 +110,17 @@ class ProgressLogCallback(tf.keras.callbacks.Callback):
         self.model.val_epoch_trgt_seg_msrs = np.array([])
         self.model.val_epoch_pred_seg_msrs = np.array([])
 
-    def on_training_end(self, logs=None):
-        self.end = True
-        self.on_epoch_end(epoch=self.epoch)
+    # def on_training_end(self, logs=None):
+    #     self.end = True
+    #     self.on_epoch_end(epoch=self.epoch)
 
     def on_test_begin(self, logs=None):
         # - Clean the seg measures history arrays
         self.model.val_epoch_trgt_seg_msrs = np.array([])
         self.model.val_epoch_pred_seg_msrs = np.array([])
 
-    def on_test_end(self, logs=None):
-        self.on_epoch_end(epoch=self.epoch)
+    # def on_test_end(self, logs=None):
+    #     self.on_epoch_end(epoch=self.epoch)
 
     def on_epoch_end(self, epoch, logs=None):
         self.epoch = epoch

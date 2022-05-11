@@ -20,7 +20,7 @@ from custom.callbacks import (
     ProgressLogCallback
 )
 from configs.general_configs import (
-    CROP_SIZE,
+    IMAGE_SIZE,
 
     TRAIN_DIR,
     TRAIN_IMAGE_DIR,
@@ -333,7 +333,7 @@ def get_arg_parser():
     parser.add_argument('--output_dir', type=str, default=OUTPUT_DIR, help='The path to the directory where the outputs will be placed')
 
     # b) Augmentations
-    parser.add_argument('--crop_size', type=int, default=CROP_SIZE, help='The size of the images that will be used for network training and inference. If not specified - the image size will be determined by the value in general_configs.py file.')
+    parser.add_argument('--image_size', type=int, default=IMAGE_SIZE, help='The size of the images that will be used for network training and inference. If not specified - the image size will be determined by the value in general_configs.py file.')
 
     # c) Network
     parser.add_argument('--epochs', type=int, default=EPOCHS, help='Number of epochs to train the model')

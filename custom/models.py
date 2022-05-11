@@ -1,4 +1,5 @@
 import yaml
+import wandb
 from tqdm import tqdm
 import logging
 import time
@@ -17,6 +18,13 @@ from configs.general_configs import (
 
 from utils import (
     aux_funcs
+)
+
+from custom.callbacks import (
+    log_bboxes,
+)
+from utils.plotting_funcs import (
+    plot_scatter
 )
 
 
@@ -131,8 +139,10 @@ class RibCage(keras.Model):
 
         # - Calculate gradients
         gradients = tape.gradient(loss, trainable_vars)
+        wandb.log({"train loss": loss})
 
         self.train_loss_delta = loss - self.train_loss_prev
+        wandb.log({"train loss delta": self.train_loss_delta})
         self.train_loss_prev = loss
 
         # - Update weights
@@ -144,6 +154,20 @@ class RibCage(keras.Model):
         self.train_trgt_seg_msrs = trgt_seg_msrs
         self.train_pred_seg_msrs = pred_seg_msrs
 
+        train_segs = []
+        for idx, (img, seg, trgt_seg_msr, pred_seg_msr) in enumerate(zip(self.train_imgs, self.train_aug_segs, self.train_trgt_seg_msrs, self.train_pred_seg_msrs)):
+            train_segs.append(log_bboxes(image=img, mask=seg, true_seg_measure=trgt_seg_msr, pred_seg_measure=pred_seg_msr))
+            if idx == 5:
+                break
+            # train_segs = log_bboxes(image=self.train_imgs[0], mask=self.train_aug_segs[0], true_seg_measure=self.train_trgt_seg_msrs[0], pred_seg_measure=self.train_pred_seg_msrs[0], procedure='train')
+        wandb.log(data={"Train Segmentations": train_segs})
+
+        # train_scatter_plot = plot_scatter(
+        #     x=trgt_seg_msrs,
+        #     y=pred_seg_msrs,
+        # )
+        # wandb.log(data={"True vs Predicted Seg Measure (train)": train_scatter_plot})
+
         # - Add the target seg measures to epoch history
         self.train_epoch_trgt_seg_msrs = np.append(self.train_epoch_trgt_seg_msrs, trgt_seg_msrs)
 
@@ -154,15 +178,20 @@ class RibCage(keras.Model):
         seg_msrs_diff = np.abs(trgt_seg_msrs - pred_seg_msrs)
         outliers_idxs = np.argwhere(seg_msrs_diff > OUTLIER_TH).flatten()
 
-        for outlier_idx in outliers_idxs:
-            self.train_epoch_outliers.append(
-                (
-                    np.array(self.train_imgs[outlier_idx]),
-                    np.array(self.train_aug_segs[outlier_idx]),
-                    trgt_seg_msrs[outlier_idx],
-                    pred_seg_msrs[outlier_idx]
-                )
-            )
+        train_outlier_segs = []
+        for idx, (img, seg, trgt_seg_msr, pred_seg_msr) in enumerate(zip(self.train_imgs[outliers_idxs], self.train_aug_segs[outliers_idxs], trgt_seg_msrs[outliers_idxs], pred_seg_msrs[outliers_idxs])):
+            train_outlier_segs.append(log_bboxes(image=img, mask=seg, true_seg_measure=trgt_seg_msr, pred_seg_measure=pred_seg_msr))
+        wandb.log(data={"Train Outliers": train_outlier_segs})
+
+        # for outlier_idx in outliers_idxs:
+        #     self.train_epoch_outliers.append(
+        #         (
+        #             np.array(self.train_imgs[outlier_idx]),
+        #             np.array(self.train_aug_segs[outlier_idx]),
+        #             trgt_seg_msrs[outlier_idx],
+        #             pred_seg_msrs[outlier_idx]
+        #         )
+        #     )
 
         if PROFILE:
             aux_funcs.info_log(logger=self.logger, message=f'Training on batch of size {imgs.shape} took {aux_funcs.get_runtime(seconds=time.time() - t_strt)}')
@@ -171,6 +200,7 @@ class RibCage(keras.Model):
         return {metric.name: metric.result() for metric in self.metrics}
 
     def test_step(self, data) -> dict:
+        # print('fff')
         t_strt = time.time()
         # - Get the data of the current epoch
         (imgs, aug_segs), trgt_seg_msrs = data
@@ -178,8 +208,10 @@ class RibCage(keras.Model):
         # - Compute the loss according to the predictions
         pred_seg_msrs = self.model([imgs, aug_segs], training=True)
         loss = self.compiled_loss(trgt_seg_msrs, pred_seg_msrs)
+        wandb.log({"val loss": loss})
 
         self.val_loss_delta = loss - self.val_loss_prev
+        wandb.log({"val loss delta": self.val_loss_delta})
         self.val_loss_prev = loss
 
         trgt_seg_msrs = trgt_seg_msrs.numpy()
@@ -190,7 +222,20 @@ class RibCage(keras.Model):
         self.val_aug_segs = aug_segs.numpy()
         self.val_trgt_seg_msrs = trgt_seg_msrs
         self.val_pred_seg_msrs = pred_seg_msrs
+        # val_segs = log_bboxes(image=self.val_imgs[0], mask=self.val_aug_segs[0], true_seg_measure=self.val_trgt_seg_msrs[0], pred_seg_measure=self.val_pred_seg_msrs[0], procedure='validation')
+        val_segs = []
+        for idx, (img, seg, trgt_seg_msr, pred_seg_msr) in enumerate(zip(self.val_imgs, self.val_aug_segs, self.val_trgt_seg_msrs, self.val_pred_seg_msrs)):
+            val_segs.append(log_bboxes(image=img, mask=seg, true_seg_measure=trgt_seg_msr, pred_seg_measure=pred_seg_msr))
+            if idx == 5:
+                break
+            # train_segs = log_bboxes(image=self.train_imgs[0], mask=self.train_aug_segs[0], true_seg_measure=self.train_trgt_seg_msrs[0], pred_seg_measure=self.train_pred_seg_msrs[0], procedure='train')
+        wandb.log(data={"Validation Segmentations": val_segs})
 
+        # val_scatter_plot = plot_scatter(
+        #     x=trgt_seg_msrs,
+        #     y=pred_seg_msrs,
+        # )
+        # wandb.log(data={"True vs Predicted Seg Measure (validation)": val_scatter_plot})
         # - Add the target seg measures to epoch history
         self.val_epoch_trgt_seg_msrs = np.append(self.val_epoch_trgt_seg_msrs, trgt_seg_msrs)
 
@@ -201,15 +246,19 @@ class RibCage(keras.Model):
         seg_msrs_diff = np.abs(trgt_seg_msrs - pred_seg_msrs)
         outliers_idxs = np.argwhere(seg_msrs_diff > OUTLIER_TH).flatten()
 
-        for outlier_idx in outliers_idxs:
-            self.val_epoch_outliers.append(
-                (
-                    np.array(self.val_imgs[outlier_idx]),
-                    np.array(self.val_aug_segs[outlier_idx]),
-                    trgt_seg_msrs[outlier_idx],
-                    pred_seg_msrs[outlier_idx]
-                )
-            )
+        val_outlier_segs = []
+        for idx, (img, seg, trgt_seg_msr, pred_seg_msr) in enumerate(zip(self.val_imgs[outliers_idxs], self.val_aug_segs[outliers_idxs], trgt_seg_msrs[outliers_idxs], pred_seg_msrs[outliers_idxs])):
+            val_outlier_segs.append(log_bboxes(image=img, mask=seg, true_seg_measure=trgt_seg_msr, pred_seg_measure=pred_seg_msr))
+        wandb.log(data={"Validation Outliers": val_outlier_segs})
+        # for outlier_idx in outliers_idxs:
+        #     self.val_epoch_outliers.append(
+        #         (
+        #             np.array(self.val_imgs[outlier_idx]),
+        #             np.array(self.val_aug_segs[outlier_idx]),
+        #             trgt_seg_msrs[outlier_idx],
+        #             pred_seg_msrs[outlier_idx]
+        #         )
+        #     )
 
         if PROFILE:
             aux_funcs.info_log(logger=self.logger, message=f'Validating on batch of size {imgs.shape} took {aux_funcs.get_runtime(seconds=time.time() - t_strt)}')

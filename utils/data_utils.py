@@ -8,26 +8,25 @@ import multiprocessing as mlp
 import time
 import tensorflow as tf
 import logging
+import cv2
 from tqdm import tqdm
 from copy import copy
-
-# from utils.image_utils.preprocessings import (
 from custom.preprocessings import (
     preprocess_image,
 )
 
-# from utils.image_utils.augmentations import (
 from custom.augmentations import (
-    random_crop,
-    augment,
+    train_augmentations,
+    validation_augmentations,
+    mask_augmentations,
+    # spoil_segmentation,
 )
 
-# from utils.image_utils.image_aux import (
 from utils.image_funcs import (
-add_channels_dim,
-get_contours,
-get_seg_measure,
-load_image,
+    add_channels_dim,
+    get_contours,
+    get_seg_measure,
+    load_image,
 )
 
 from utils.aux_funcs import (
@@ -40,38 +39,22 @@ from configs.general_configs import (
     DEBUG_LEVEL,
     PROFILE,
     ZERO_LOW_JACCARDS,
-    SHUFFLE_CROPS,
-    ROTATION,
-    AFFINE,
-    EROSION,
-    DILATION,
-    OPENING,
-    CLOSING,
-    ELASTIC
+    SHUFFLE,
 )
 
 
 class DataLoader(tf.keras.utils.Sequence):
-    def __init__(self, name: str, data_files: list, batch_size: int, crop_images: bool, augment_images: bool, reload_data: bool = False, logger: logging.Logger = None):
+    def __init__(self, name: str, data_files: list, batch_size: int, image_size: int, augmentation_func: A.core.composition.Compose, spoil_segmentations: bool, reload_data: bool = False, logger: logging.Logger = None):
 
         # FILES
         self.name = name
         self.img_seg_fls = data_files
-        self.n_fls = len(self.img_seg_fls)
         self.logger = logger
-        self.crop_images = crop_images
-        self.augment_images = augment_images
-        self.augs = A.Compose([
-                A.Cutout(
-                        num_holes=8,
-                        max_h_size=16,
-                        max_w_size=16,
-                        fill_value=0,
-                        p=0.5
-                ),
-                # A.CLAHE()
-            ]
-        )
+        self.image_size = image_size
+        self.augmentation_func = augmentation_func
+        self.spoil_segmentations = spoil_segmentations
+        self.mask_augmentations = mask_augmentations()
+
         tmp_dt_fl = TEMP_DIR / f'{self.name}_imgs_segs_temp.npy'
         # - Load the temporal data
         if tmp_dt_fl.is_file() and not reload_data:
@@ -82,13 +65,16 @@ class DataLoader(tf.keras.utils.Sequence):
             info_log(logger=self.logger, message=f'Creating the temp data file from the {self.name} file, and saving it at \'{tmp_dt_fl}\'...')
             self.imgs_segs_temp = self._get_temp_data(temp_data_file=tmp_dt_fl)
 
+
         self._clean_blanks()
+
+        self.n_fls = len(self.imgs_segs_temp)
 
         info_log(logger=self.logger, message=f'Number of clean {self.name} samples: {self.imgs_segs_temp.shape}')
 
         # BATCH
         # - If the batch size is larger then the number of files - configure it as the number of files
-        self.btch_sz = batch_size if batch_size <= self.n_fls else self.n_fls
+        self.batch_size = batch_size if batch_size <= self.n_fls else self.n_fls
 
         # BATCH QUEUE
         # - The maximal queue size is as the number of batches
@@ -99,17 +85,29 @@ class DataLoader(tf.keras.utils.Sequence):
         """
         > Returns the number of batches
         """
-        return int(np.floor(self.n_fls / self.btch_sz))
+        return int(np.floor(self.n_fls / self.batch_size))
 
     def __getitem__(self, index):
         """
         > Returns a batch of in a form of tuple:
             (image crops, segmentation crops, augmented segmentation crops, target seg measure of the crops)
         """
-        if DEBUG_LEVEL > 1:
-            info_log(logger=self.logger, message=f'Dequeueing item for {self.name} procedure...')
+        # - Get the start index
+        btch_idx_strt = index * self.batch_size
 
-        return self.btch_q.get()
+        # - Get the end index
+        btch_idx_end = btch_idx_strt + self.batch_size - 1
+
+        # -1- If there are enough files to fit in the batch
+        # print(f'{btch_idx_end} >? {self.n_fls} = {btch_idx_end >= self.n_fls}')
+        if btch_idx_end >= self.n_fls:
+            # print('>>>')
+            # -2- If there are no batch_size files left
+            btch_idx_end = btch_idx_strt + (self.n_fls - btch_idx_strt) - 2
+            # print(f'{btch_idx_end} >? {self.n_fls} = {btch_idx_end >= self.n_fls}')
+        # print(f'[{btch_idx_strt}:{btch_idx_end}]')
+        return self.get_batch(index_start=btch_idx_strt, index_end=btch_idx_end)
+        # return self.btch_q.get()
 
     def _clean_blanks(self):
         """
@@ -163,9 +161,78 @@ class DataLoader(tf.keras.utils.Sequence):
 
         return imgs_segs
 
+    def get_batch(self, index_start, index_end):
+        # print('data loader...')
+        # - Shuffle files before the next epoch
+
+        img_btch = list()
+        seg_btch = list()
+        spoiled_seg_btch = list()
+        trgt_seg_msrs_btch = list()
+
+        # - Get batch files
+        # - Get the file indices for the current batch thread.
+        #   * Each thread gets only the indices which he returns
+        btch_fl_idxs = np.arange(index_start, index_end)
+
+        btch_fls = self.imgs_segs_temp[btch_fl_idxs]
+
+        # TODO - Bottleneck
+        for idx, (img, seg) in enumerate(btch_fls):
+            btch_ts = np.array([])
+
+            # - For each file in the batch files
+            t_strt = time.time()
+
+            img, seg = img[:, :, 0], seg[:, :, 0]
+
+            # - Augmentation
+            res = self.augmentation_func(image=img, mask=seg)
+            img, aug_seg = res.get('image'), res.get('mask')
+
+            spoiled_seg = aug_seg  # <= if we don't want to augment the images (i.e., in the process of inference), the augmented segmentation is the same as the ground truth
+            if self.spoil_segmentations:
+                res = self.mask_augmentations(image=img, mask=aug_seg)
+                spoiled_seg = res.get('mask')
+
+            # - Calculate the seg measure of the ground truth image with the augmented image
+            trgt_seg_msr = get_seg_measure(
+                ground_truth=aug_seg,
+                segmentation=spoiled_seg,
+                zero_low_jaccards=ZERO_LOW_JACCARDS
+            )
+
+            # -> Add the image into the appropriate container
+            img_btch.append(img)
+            spoiled_seg_btch.append(spoiled_seg)
+            trgt_seg_msrs_btch.append(trgt_seg_msr)
+
+        # - Convert the crops into numpy arrays
+        img_btch = np.array(img_btch, dtype=np.float32)
+        spoiled_seg_btch = np.array(spoiled_seg_btch, dtype=np.float32)
+        trgt_seg_msrs_btch = np.array(trgt_seg_msrs_btch, dtype=np.float32)
+
+        # - Shuffle batch crops
+        if SHUFFLE:
+            rnd_idxs = np.arange(img_btch.shape[0])
+            np.random.shuffle(rnd_idxs)
+
+            img_btch = img_btch[rnd_idxs]
+            spoiled_seg_btch = spoiled_seg_btch[rnd_idxs]
+            trgt_seg_msrs_btch = trgt_seg_msrs_btch[rnd_idxs]
+
+        # - Enqueue the prepared batch
+        if DEBUG_LEVEL > 1:
+            info_log(logger=self.logger, message=f'{self.name} Loading batch #{btch_idx} of shape {img_btch.shape} to the {self.name} queue ...')
+
+        return (tf.convert_to_tensor(img_btch, dtype=tf.float32), tf.convert_to_tensor(spoiled_seg_btch, dtype=tf.float32)), tf.convert_to_tensor(trgt_seg_msrs_btch, dtype=tf.float32)
+
+
+
     def enqueue_batches(self):
         with tf.device('cpu'):
             while True:
+                # print('data loader...')
                 # - Shuffle files before the next epoch
                 np.random.shuffle(self.imgs_segs_temp)
 
@@ -177,17 +244,15 @@ class DataLoader(tf.keras.utils.Sequence):
 
                     img_btch = list()
                     seg_btch = list()
-                    aug_seg_btch = list()
+                    spoiled_seg_btch = list()
                     trgt_seg_msrs_btch = list()
 
                     # - Get batch files
-                    lck_wait_strt = time.time()
-
                     # - Get the end index
-                    btch_idx_end = btch_idx_strt + self.btch_sz - 1
+                    btch_idx_end = btch_idx_strt + self.batch_size - 1
                     # -1- If there are enough files to fit in the batch
                     if btch_idx_end >= self.n_fls:
-                        # -2- If there are no btch_sz files left
+                        # -2- If there are no batch_size files left
                         btch_idx_end = btch_idx_strt + (self.n_fls - btch_idx_strt) - 1
 
                     # - Get the file indices for the current batch thread.
@@ -205,55 +270,42 @@ class DataLoader(tf.keras.utils.Sequence):
 
                         img, seg = img[:, :, 0], seg[:, :, 0]
 
-                        # - Random crop
-                        if self.crop_images:
-                            img, seg = random_crop(
-                                image=img,
-                                segmentation=seg,
-                                logger=self.logger
-                            )
-
                         # - Augmentation
-                        aug_seg = seg  # <= if we don't want to augment the images (i.e., in the process of inference), the augmented segmentation is the same as the ground truth
-                        if self.augment_images:
-                            img, seg, aug_seg = augment(
-                                image=img,
-                                segmentation=seg,
-                                rotation=ROTATION,
-                                affine=AFFINE,
-                                erosion=EROSION,
-                                dilation=DILATION,
-                                opening=OPENING,
-                                closing=CLOSING,
-                                elastic=ELASTIC,
+                        res = self.augmentation_func(image=img, mask=seg)
+                        img, aug_seg = res.get('image'), res.get('mask')
+
+                        spoiled_seg = aug_seg  # <= if we don't want to augment the images (i.e., in the process of inference), the augmented segmentation is the same as the ground truth
+                        if self.spoil_segmentations:
+                            # res = self.mask_augmentations(image=img, mask=aug_seg)
+                            # spoiled_seg = res.get('mask')
+                            spoiled_seg = spoil_segmentation(
+                                segmentation=aug_seg,
                                 logger=self.logger
                             )
-                            img = self.augs(image=img).get('image')
-                            img = add_channels_dim(img)
                         # - Calculate the seg measure of the ground truth image with the augmented image
                         trgt_seg_msr = get_seg_measure(
-                            ground_truth=seg,
-                            segmentation=aug_seg,
+                            ground_truth=aug_seg,
+                            segmentation=spoiled_seg,
                             zero_low_jaccards=ZERO_LOW_JACCARDS
                         )
 
                         # -> Add the image into the appropriate container
                         img_btch.append(img)
-                        aug_seg_btch.append(aug_seg)
+                        spoiled_seg_btch.append(aug_seg)
                         trgt_seg_msrs_btch.append(trgt_seg_msr)
 
                     # - Convert the crops into numpy arrays
                     img_btch = np.array(img_btch, dtype=np.float32)
-                    aug_seg_btch = np.array(aug_seg_btch, dtype=np.float32)
+                    spoiled_seg_btch = np.array(spoiled_seg_btch, dtype=np.float32)
                     trgt_seg_msrs_btch = np.array(trgt_seg_msrs_btch, dtype=np.float32)
 
                     # - Shuffle batch crops
-                    if SHUFFLE_CROPS:
+                    if SHUFFLE:
                         rnd_idxs = np.arange(img_btch.shape[0])
                         np.random.shuffle(rnd_idxs)
 
                         img_btch = img_btch[rnd_idxs]
-                        aug_seg_btch = aug_seg_btch[rnd_idxs]
+                        spoiled_seg_btch = spoiled_seg_btch[rnd_idxs]
                         trgt_seg_msrs_btch = trgt_seg_msrs_btch[rnd_idxs]
 
                     # - Enqueue the prepared batch
@@ -264,7 +316,9 @@ class DataLoader(tf.keras.utils.Sequence):
                         (
                             (
                                 tf.convert_to_tensor(img_btch, dtype=tf.float32),
-                                tf.convert_to_tensor(aug_seg_btch, dtype=tf.float32)
+                                # img_btch,
+                                tf.convert_to_tensor(spoiled_seg_btch, dtype=tf.float32)
+                                # spoiled_seg_btch
                             ),
                             tf.convert_to_tensor(trgt_seg_msrs_btch, dtype=tf.float32)
                         )
@@ -358,7 +412,7 @@ def get_data_files(data_dir: str, segmentations_dir: str = None, metadata_files_
     return train_fls, val_fls
 
 
-def get_data_loaders(main_name: str, side_name: str, data_dir: str or pathlib.Path, segmentations_dir: str or pathlib.Path, metadata_files_regex: str, split_proportion: float, batch_size: int, crop_images: bool = False, augment_images: bool = False, reload_data: bool = False, logger: logging.Logger = None):
+def get_data_loaders(main_name: str, side_name: str, data_dir: str or pathlib.Path, segmentations_dir: str or pathlib.Path, metadata_files_regex: str, split_proportion: float, batch_size: int, image_size: int, spoil_segmentations: bool = False, reload_data: bool = False, logger: logging.Logger = None):
     main_fls, side_fls = get_data_files(
         data_dir=data_dir,
         segmentations_dir=segmentations_dir,
@@ -372,8 +426,9 @@ def get_data_loaders(main_name: str, side_name: str, data_dir: str or pathlib.Pa
         name=main_name,
         data_files=main_fls,
         batch_size=batch_size,
-        crop_images=crop_images,
-        augment_images=augment_images,
+        image_size=image_size,
+        augmentation_func=train_augmentations(),
+        spoil_segmentations=spoil_segmentations,
         reload_data=reload_data,
         logger=logger
     )
@@ -384,8 +439,9 @@ def get_data_loaders(main_name: str, side_name: str, data_dir: str or pathlib.Pa
             name=side_name,
             data_files=side_fls,
             batch_size=batch_size,
-            crop_images=crop_images,
-            augment_images=augment_images,
+            image_size=image_size,
+            augmentation_func=validation_augmentations(),
+            spoil_segmentations=spoil_segmentations,
             reload_data=reload_data,
             logger=logger
         )
