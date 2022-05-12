@@ -253,21 +253,4 @@ if __name__ == '__main__':
         err_log(logger=logger, message=f'Could not run the {procedure_name} because the model does not exist!')
         sys.exit(1)
 
-    # - After the training - stop the batch processes for the main and side data loaders
-    info_log(logger=logger, message='Joining the main data loading process...')
-    main_data_loading_prcs.join()
-    info_log(logger=logger, message='The main data loading process was successfully joined!')
-
-    # - Join the side data loading process, is there is one
-    if side_data_loading_prcs is not None:
-        info_log(logger=logger, message='Joining the side data loading process...')
-        side_data_loading_prcs.join()
-        info_log(logger=logger, message='The side process was successfully joined!')
-
-    # - If we started the tensorboard thread - stop it after the run ends
-    if tb_prc is not None:
-        info_log(logger=logger, message='Joining the tensorboard process...')
-        tb_prc.join()
-        info_log(logger=logger, message='The tensorboard process was successfully joined!')
-
     sys.exit(0)

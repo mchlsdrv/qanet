@@ -26,11 +26,12 @@ from utils import aux_funcs
 # this is the order in which my classes will be displayed
 # this is a revese map of the integer class id to the string class label
 
-def log_bboxes(image, mask, true_seg_measure, pred_seg_measure):
-    class_labels = {}
+def log_masks(image, mask, true_seg_measure, pred_seg_measure):
     class_ids = np.unique(mask)[1:]
+    class_labels = {}
     for cls_id in class_ids:
-        class_labels[int(cls_id)] = f'Cell #{cls_id}'
+        if int(cls_id) > 0:
+            class_labels[int(cls_id)] = f'Cell #{int(cls_id)}'
     # log to wandb: raw image, predictions, and dictionary of class labels for each class id
     mask_image = wandb.Image(
         image,

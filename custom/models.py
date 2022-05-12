@@ -21,7 +21,7 @@ from utils import (
 )
 
 from custom.callbacks import (
-    log_bboxes,
+    log_masks,
 )
 from utils.plotting_funcs import (
     plot_scatter
@@ -43,6 +43,7 @@ class RibCage(keras.Model):
         self.model = self.build_model()
 
         # - Train epoch history
+        self.train_losses = []
         self.train_loss_prev = 1.
         self.train_loss_delta = 0.
         self.train_imgs = None
@@ -54,6 +55,7 @@ class RibCage(keras.Model):
         self.train_epoch_outliers = list()
 
         # - Validation epoch history
+        self.val_losses = []
         self.val_loss_prev = 1.
         self.val_loss_delta = 0.
         self.val_imgs = None
@@ -156,7 +158,7 @@ class RibCage(keras.Model):
 
         train_segs = []
         for idx, (img, seg, trgt_seg_msr, pred_seg_msr) in enumerate(zip(self.train_imgs, self.train_aug_segs, self.train_trgt_seg_msrs, self.train_pred_seg_msrs)):
-            train_segs.append(log_bboxes(image=img, mask=seg, true_seg_measure=trgt_seg_msr, pred_seg_measure=pred_seg_msr))
+            train_segs.append(log_masks(image=img, mask=seg, true_seg_measure=trgt_seg_msr, pred_seg_measure=pred_seg_msr))
             if idx == 5:
                 break
             # train_segs = log_bboxes(image=self.train_imgs[0], mask=self.train_aug_segs[0], true_seg_measure=self.train_trgt_seg_msrs[0], pred_seg_measure=self.train_pred_seg_msrs[0], procedure='train')
@@ -180,7 +182,7 @@ class RibCage(keras.Model):
 
         train_outlier_segs = []
         for idx, (img, seg, trgt_seg_msr, pred_seg_msr) in enumerate(zip(self.train_imgs[outliers_idxs], self.train_aug_segs[outliers_idxs], trgt_seg_msrs[outliers_idxs], pred_seg_msrs[outliers_idxs])):
-            train_outlier_segs.append(log_bboxes(image=img, mask=seg, true_seg_measure=trgt_seg_msr, pred_seg_measure=pred_seg_msr))
+            train_outlier_segs.append(log_masks(image=img, mask=seg, true_seg_measure=trgt_seg_msr, pred_seg_measure=pred_seg_msr))
         wandb.log(data={"Train Outliers": train_outlier_segs})
 
         # for outlier_idx in outliers_idxs:
@@ -225,7 +227,7 @@ class RibCage(keras.Model):
         # val_segs = log_bboxes(image=self.val_imgs[0], mask=self.val_aug_segs[0], true_seg_measure=self.val_trgt_seg_msrs[0], pred_seg_measure=self.val_pred_seg_msrs[0], procedure='validation')
         val_segs = []
         for idx, (img, seg, trgt_seg_msr, pred_seg_msr) in enumerate(zip(self.val_imgs, self.val_aug_segs, self.val_trgt_seg_msrs, self.val_pred_seg_msrs)):
-            val_segs.append(log_bboxes(image=img, mask=seg, true_seg_measure=trgt_seg_msr, pred_seg_measure=pred_seg_msr))
+            val_segs.append(log_masks(image=img, mask=seg, true_seg_measure=trgt_seg_msr, pred_seg_measure=pred_seg_msr))
             if idx == 5:
                 break
             # train_segs = log_bboxes(image=self.train_imgs[0], mask=self.train_aug_segs[0], true_seg_measure=self.train_trgt_seg_msrs[0], pred_seg_measure=self.train_pred_seg_msrs[0], procedure='train')
@@ -248,7 +250,7 @@ class RibCage(keras.Model):
 
         val_outlier_segs = []
         for idx, (img, seg, trgt_seg_msr, pred_seg_msr) in enumerate(zip(self.val_imgs[outliers_idxs], self.val_aug_segs[outliers_idxs], trgt_seg_msrs[outliers_idxs], pred_seg_msrs[outliers_idxs])):
-            val_outlier_segs.append(log_bboxes(image=img, mask=seg, true_seg_measure=trgt_seg_msr, pred_seg_measure=pred_seg_msr))
+            val_outlier_segs.append(log_masks(image=img, mask=seg, true_seg_measure=trgt_seg_msr, pred_seg_measure=pred_seg_msr))
         wandb.log(data={"Validation Outliers": val_outlier_segs})
         # for outlier_idx in outliers_idxs:
         #     self.val_epoch_outliers.append(
