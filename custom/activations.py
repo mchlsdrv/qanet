@@ -4,7 +4,7 @@ from keras.utils import tf_utils
 
 
 class Swish(Layer):
-  """Continuous activation function
+    """Continuous activation function
   It allows a small gradient when the unit is not active:
   ```
     f(x) = x*sigmoid(x)
@@ -22,13 +22,13 @@ class Swish(Layer):
     Same shape as the input.
   """
 
-  def __init__(self):
-    super().__init__()
-    self.supports_masking = True
+    def __init__(self):
+        super().__init__()
+        self.supports_masking = True
 
-  def call(self, inputs):
-    return tf.keras.activations.swish(inputs)
+    def call(self, inputs):
+        return tf.keras.activations.swish(inputs)
 
-  @tf_utils.shape_type_conversion
-  def compute_output_shape(self, input_shape):
-    return input_shape
+    @tf_utils.shape_type_conversion
+    def compute_output_shape(self, input_shape):
+        return input_shape

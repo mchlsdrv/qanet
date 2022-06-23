@@ -4,48 +4,16 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
-from configs.general_configs import (
-    SCATTER_PLOT_FIGSIZE,
-    SCATTER_PLOT_FONTSIZE,
-)
+sns.set(font_scale=2)
 plt.style.use('ggplot')
 
 
 def plot_scatter(x: np.ndarray, y: np.ndarray, save_file: pathlib.Path = None):
     D = pd.DataFrame(dict(true=x, predicted=y))
-    with sns.axes_style('darkgrid'):
-        g = sns.jointplot(x='true', y='predicted', data=D, height=15, space=0.02, kind='reg', color='red', label='Seg Measure - True vs Predicted')
-        g.ax_joint.plot(np.linspace(0, 1), np.linspace(0, 1), ':g', label='perfect match')
-        g.figure.legend()
-
-    # g.savefig(save_file)
-
+    g = sns.jointplot(x='true', y='predicted', data=D, height=15, space=0.02, kind='reg')
+    g.ax_joint.plot(np.linspace(0, 1), np.linspace(0, 1), ':g', label='Perfect estimation')
+    g.figure.legend()
     return g.figure
-#
-# def plot_scatter(x: np.ndarray, y: np.ndarray, save_file: pathlib.Path = None):
-#     fig, ax = plt.subplots(figsize=SCATTER_PLOT_FIGSIZE)
-#
-#     plt.rc('font', size=SCATTER_PLOT_FONTSIZE)
-#     # ax.xaxis.label.set_fontsize(18)
-#     ax.scatter(x, y, label='True vs Predicted')
-#     ax.plot([0., 1.], [0., 1.], label='Perfect Match')
-#     ax.set(
-#         title='Seg-Measure - Ground Truth vs Predicted',
-#
-#         xlabel='Ground Truth',
-#         xlim=[0., 1.],
-#         xticks=np.arange(0., 1.1, 0.1),
-#
-#         ylabel='Predicted',
-#         ylim=[0., 1.],
-#         yticks=np.arange(0., 1.1, 0.1)
-#     )
-#
-#     plt.legend()
-#
-#     save_figure(figure=fig, save_file=save_file)
-#
-#     return fig
 
 
 def plot(images, labels, suptitle='', figsize=(25, 10), save_file: pathlib.Path = None) -> None:

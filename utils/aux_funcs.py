@@ -1,5 +1,7 @@
 import os
 import re
+from functools import partial
+
 import yaml
 import pickle as pkl
 import logging
@@ -13,9 +15,7 @@ import numpy as np
 from custom.models import (
     RibCage
 )
-# from models import cnn
 
-# from callbacks.visualisation_callbacks import (
 from custom.callbacks import (
     ProgressLogCallback
 )
@@ -23,19 +23,13 @@ from configs.general_configs import (
     IMAGE_SIZE,
 
     TRAIN_DIR,
-    TRAIN_IMAGE_DIR,
-    TRAIN_SEG_DIR,
 
     TEST_DIR,
-    TEST_IMAGE_DIR,
-    TEST_SEG_DIR,
 
     INFERENCE_DIR,
-    INFERENCE_IMAGE_DIR,
 
     OUTPUT_DIR,
 
-    EPSILON,
     EPOCHS,
     BATCH_SIZE,
     VAL_BATCH_SIZE,
@@ -80,7 +74,7 @@ from configs.general_configs import (
     MODEL_CHECKPOINT_SAVE_BEST_ONLY,
     MODEL_CHECKPOINT_MODE,
     MODEL_CHECKPOINT_SAVE_WEIGHTS_ONLY,
-    MODEL_CHECKPOINT_SAVE_FREQ,
+    MODEL_CHECKPOINT_SAVE_FREQ, CHECKPOINT_DIR, OPTIMIZER, OPTIMIZER_RHO, OPTIMIZER_BETA_1, OPTIMIZER_BETA_2, OPTIMIZER_MOMENTUM, KERNEL_REGULARIZER_TYPE, KERNEL_REGULARIZER_L1, KERNEL_REGULARIZER_L2, KERNEL_REGULARIZER_FACTOR, KERNEL_REGULARIZER_MODE, ACTIVATION,
 )
 
 # from utils.visualisation_utils.plotting_funcs import (
@@ -237,10 +231,10 @@ def launch_tensorboard(logdir):
     return tensorboard_th
 
 
-def get_model(input_image_dims: tuple, checkpoint_dir: pathlib.Path = None, logger: logging.Logger = None):
+def get_model(model_configs, checkpoint_dir: pathlib.Path = None, logger: logging.Logger = None):
     weights_loaded = False
 
-    model = RibCage(input_image_dims=input_image_dims)
+    model = RibCage(model_configs=model_configs, logger=logger)
 
     if checkpoint_dir.is_dir:
         try:
@@ -263,17 +257,65 @@ def get_model(input_image_dims: tuple, checkpoint_dir: pathlib.Path = None, logg
     return model, weights_loaded
 
 
+def get_optimizer(algorithm: str, args: dict):
+    optimizer = None
+    if algorithm == 'adam':
+        optimizer = partial(
+            tf.keras.optimizers.Adam,
+            beta_1=args.get('beta_1'),
+            beta_2=args.get('beta_2'),
+            amsgrad=args.get('amsgrad'),
+        )
+    elif algorithm == 'nadam':
+        optimizer = partial(
+            tf.keras.optimizers.Nadam,
+            beta_1=args.get('beta_1'),
+            beta_2=args.get('beta_2'),
+        )
+    elif algorithm == 'adamax':
+        optimizer = partial(
+            tf.keras.optimizers.Adamax,
+            beta_1=args.get('beta_1'),
+            beta_2=args.get('beta_2'),
+        )
+    elif algorithm == 'adagrad':
+        optimizer = tf.keras.optimizers.Adagrad
+    elif algorithm == 'adadelta':
+        optimizer = partial(
+            tf.keras.optimizers.Adadelta,
+            rho=args.get('rho'),
+        )
+    elif algorithm == 'sgd':
+        optimizer = partial(
+            tf.keras.optimizers.SGD,
+            momentum=args.get('momentum'),
+            nesterov=args.get('nesterov'),
+        )
+    elif algorithm == 'rms_prop':
+        optimizer = partial(
+            tf.keras.optimizers.RMSprop,
+            rho=args.get('rho'),
+            momentum=args.get('momentum'),
+            centered=args.get('centered'),
+        )
+    return optimizer(learning_rate=args.get('learning_rate'))
+
+
 def choose_gpu(gpu_id: int = 0, logger: logging.Logger = None):
     gpus = tf.config.list_physical_devices('GPU')
     if gpus:
         try:
             if gpu_id > -1:
-                tf.config.set_visible_devices(gpus[gpu_id], 'GPU')
+                # print(device_lib.list_local_devices())
+                # os.environ["CUDA_VISIBLE_DEVICES"] = str(gpu_id)
+                tf.config.set_visible_devices([gpus[gpu_id]], 'GPU')
                 physical_gpus = tf.config.list_physical_devices('GPU')
+                logical_gpus = tf.config.list_logical_devices('GPU')
+                # print(device_lib.list_local_devices())
                 if isinstance(logger, logging.Logger):
                     logger.info(f'''
                 ====================================================
-                > Running on: {physical_gpus}
+                > Running on: {logical_gpus} (GPU #{gpu_id})
                 ====================================================
                 ''')
             else:
@@ -316,19 +358,15 @@ def get_arg_parser():
     parser.add_argument('--data_from_single_dir', default=False, action='store_true', help='If the data should be taken from a single directory, or collected from several directories')
 
     parser.add_argument('--reload_data', default=False, action='store_true', help=f'If to reload data from files and overwrite the temp data')
+
     parser.add_argument('--train', default=False, action='store_true', help=f'If to perform the train of the current network')
     parser.add_argument('--train_dir', type=str, default=TRAIN_DIR, help='The path to the top directory where the images and the segmentations are stored')
-    parser.add_argument('--train_image_dir', type=str, default=TRAIN_IMAGE_DIR, help='The path to the directory where the images are stored')
-    parser.add_argument('--train_seg_dir', type=str, default=TRAIN_SEG_DIR, help='The path to the directory where the corresponding segmentations are stored')
 
     parser.add_argument('--test', default=False, action='store_true', help=f'If to perform the test of the current network')
     parser.add_argument('--test_dir', type=str, default=TEST_DIR, help=f'Path to the test images, their segmentations and a file with the corresponding seg measures. Images should be placed in a folder called \'imgs\', the segmentations in a folder called \'segs\', and the file with the seg measures should be called \'seg_measures.pkl\', and be placed together with the two previous folders')
-    parser.add_argument('--test_image_dir', type=str, default=TEST_IMAGE_DIR, help=f'Path to the test image directory')
-    parser.add_argument('--test_seg_dir', type=str, default=TEST_SEG_DIR, help=f'Path to the test segmentations directory')
 
     parser.add_argument('--inference', default=False, action='store_true', help=f'If to perform the inference with the current network')
     parser.add_argument('--inference_dir', type=str, default=INFERENCE_DIR, help=f'Path to the images to infer. Images should be placed in a folder called \'imgs\', the segmentations in a folder called \'segs\', and the file with the seg measures should be called \'seg_measures.pkl\', and be placed together with the two previous folders')
-    parser.add_argument('--inference_image_dir', type=str, default=INFERENCE_IMAGE_DIR, help=f'Path to the images to infer directory')
 
     parser.add_argument('--output_dir', type=str, default=OUTPUT_DIR, help='The path to the directory where the outputs will be placed')
 
@@ -340,10 +378,48 @@ def get_arg_parser():
     parser.add_argument('--batch_size', type=int, default=BATCH_SIZE, help='The number of samples in each batch')
     parser.add_argument('--val_batch_size', type=int, default=VAL_BATCH_SIZE, help='The number of samples in each validation batch')
     parser.add_argument('--validation_proportion', type=float, default=VALIDATION_PROPORTION, help=f'The proportion of the data which will be set aside, and be used in the process of validation')
-    parser.add_argument('--checkpoint_dir', type=str, default='', help=f'The path to the directory that contains the checkpoints of the model')
+    parser.add_argument('--checkpoint_dir', type=str, default=CHECKPOINT_DIR, help=f'The path to the directory that contains the checkpoints of the model')
     parser.add_argument('--learning_rate', type=float, default=LEARNING_RATE, help=f'The initial learning rate of the optimizer')
     parser.add_argument('--no_reduce_lr_on_plateau', default=False, action='store_true', help=f'If not to use the ReduceLROnPlateau callback')
 
+    # - OPTIMIZERS
+    # optimizer
+    parser.add_argument('--optimizer', type=str, choices=['sgd', 'adam', 'nadam', 'adadelta', 'adamax', 'adagrad', 'rms_prop'], default=OPTIMIZER,  help=f'The optimizer to use')
+
+    parser.add_argument('--optimizer_rho', type=float, default=OPTIMIZER_RHO, help=f'The decay rate (Adadelta, RMSprop)')
+
+    parser.add_argument('--optimizer_beta_1', type=float, default=OPTIMIZER_BETA_1, help=f'The exponential decay rate for the 1st moment estimates (Adam, Nadam, Adamax)')
+    parser.add_argument('--optimizer_beta_2', type=float, default=OPTIMIZER_BETA_2, help=f'The exponential decay rate for the 2st moment estimates (Adam, Nadam, Adamax)')
+    parser.add_argument('--optimizer_amsgrad', default=False, action='store_true', help=f'If to use the Amsgrad function (Adam, Nadam, Adamax)')
+
+    parser.add_argument('--optimizer_momentum', type=float, default=OPTIMIZER_MOMENTUM, help=f'The momentum (SGD, RMSprop)')
+    parser.add_argument('--optimizer_nesterov', default=False, action='store_true', help=f'If to use the Nesterov momentum (SGD)')
+    parser.add_argument('--optimizer_centered', default=False, action='store_true', help=f'If True, gradients are normalized by the estimated variance of the gradient; if False, by the un-centered second moment. Setting this to True may help with training, but is slightly more expensive in terms of computation and memory. (RMSprop)')
+
+    # - ACTIVATIONS
+    parser.add_argument('--activation', type=str, choices=['swish', 'relu', 'leaky_relu'], default=ACTIVATION,  help=f'The activation to use')
+
+    # - CALLBACKS
+    parser.add_argument('--drop_block', default=False, action='store_true', help=f'If to use the drop_block in the network')
+    parser.add_argument('--drop_block_keep_prob', type=float, help=f'The probability to keep the block')
+    parser.add_argument('--drop_block_block_size', type=int, help=f'The size of the block to drop')
+
+    parser.add_argument('--kernel_regularizer_type', type=str, choices=['l1', 'l2', 'l1l2'], default=KERNEL_REGULARIZER_TYPE, help=f'The type of the regularization')
+    parser.add_argument('--kernel_regularizer_l1', type=float, default=KERNEL_REGULARIZER_L1, help=f'The strength of the L1 regularization')
+    parser.add_argument('--kernel_regularizer_l2', type=float, default=KERNEL_REGULARIZER_L2, help=f'The strength of the L2 regularization')
+    parser.add_argument('--kernel_regularizer_factor', type=float, default=KERNEL_REGULARIZER_FACTOR, help=f'The strength of the orthogonal regularization')
+    parser.add_argument('--kernel_regularizer_mode', type=str, choices=['rows', 'columns'], default=KERNEL_REGULARIZER_MODE, help=f"The mode ('columns' or 'rows') of the orthogonal regularization")
+
+    parser.add_argument('--early_stopping', default=False, action='store_true', help=f'If to use the early stopping callback')
+    parser.add_argument('--early_stopping_patience', type=int, default=EARLY_STOPPING_PATIENCE, help=f'The number of epochs to wait for improvement')
+    parser.add_argument('--early_stopping_min_delta', type=float, default=EARLY_STOPPING_MIN_DELTA, help=f'The minimal value to count as improvement')
+
+    parser.add_argument('--reduce_lr_on_plateau', default=False, action='store_true', help=f'If to use the learning rate reduction on plateau')
+    parser.add_argument('--reduce_lr_on_plateau_patience', type=int, default=REDUCE_LR_ON_PLATEAU_PATIENCE, help=f'The number of epochs to wait for improvement')
+    parser.add_argument('--reduce_lr_on_plateau_factor', type=float, default=REDUCE_LR_ON_PLATEAU_FACTOR, help=f'The factor to reduce the lr by')
+    parser.add_argument('--reduce_lr_on_plateau_min_delta', type=float, default=REDUCE_LR_ON_PLATEAU_MIN_DELTA, help=f'The minimal value to count as improvement')
+    parser.add_argument('--reduce_lr_on_plateau_min_lr', type=float, default=REDUCE_LR_ON_PLATEAU_MIN_LR, help=f'The minimal value of lr after which the training should terminate')
+    parser.add_argument('--reduce_lr_on_plateau_cooldown', type=int, default=REDUCE_LR_ON_PLATEAU_COOLDOWN, help=f'The number of improved epochs to restart the count')
     return parser
 
 
@@ -417,38 +493,6 @@ def get_data_files(data_dir: str, segmentations_dir: str = None, metadata_files_
             validation_proportion=validation_proportion,
             logger=logger
         )
-
-
-def get_jaccard(gt_batch, seg_batch):
-    """
-    Receives two batches one of the predicted segmentations and the other of the
-    ground truth segmentations, and returns the Jaccard measure i.e., the intersection
-    over union (J = I / U)
-    :gt_batch: The ground truth segmentation batch in format NHWC
-    :seg_batch: The predicted segmentation batch in format NHWC
-    :return:
-        1) J - np.array of jaccard measures
-        2) I - np.array of the intersection quantities
-        3) U - np.array of the union quantities
-    """
-    # - Transform the gt_batch image into a binary format
-    if np.max(gt_batch) > 1:
-        gt_batch = np.array(gt_batch > 0, dtype=np.int16)
-
-    # - Transform the seg_batch image into a binary format
-    if np.max(seg_batch) > 1:
-        seg_batch = np.array(seg_batch > 0, dtype=np.int16)
-
-    # - Calculate the intersection of the images
-    I = np.logical_and(gt_batch, seg_batch).sum(axis=(1, 2))
-
-    # - Calculate the union of the images
-    U = np.logical_or(gt_batch, seg_batch).sum(axis=(1, 2))
-
-    # - Calculate the Jaccard coefficient
-    J = I / (U + EPSILON)
-
-    return J, I, U
 
 
 def info_log(logger: logging.Logger, message: str):

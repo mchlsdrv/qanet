@@ -3,31 +3,28 @@ import sys
 import datetime
 import pathlib
 import tensorflow as tf
-import multiprocessing as mlp
 import logging.config
 import wandb
-
+from custom.augmentations import validation_augmentations
 
 from utils.aux_funcs import (
-    info_log,
     err_log,
     choose_gpu,
     get_logger,
     get_model,
     get_arg_parser,
-    get_callbacks,
+    get_callbacks, get_optimizer,
 )
 
 from utils.data_utils import (
-    get_data_loaders,
+    get_data_loaders, DataLoader, get_data_files,
 )
 
 from configs.general_configs import (
     CONFIGS_DIR_PATH,
     LOSS,
-    OPTIMIZER,
     METRICS,
-    METADATA_FILES_REGEX,
+    METADATA_FILES_REGEX, ORIGINAL_IMAGE_SHAPE, ORIGINAL_IMAGE_MIN_VAL, ORIGINAL_IMAGE_MAX_VAL,
 )
 
 '''
@@ -41,7 +38,6 @@ by changing the value of TF_CPP_MIN_LOG_LEVEL:
 '''
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
 TS = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-
 
 if __name__ == '__main__':
 
@@ -71,7 +67,24 @@ if __name__ == '__main__':
     # MODEL
     # -1- Build the model and optionally load the weights
     model, weights_loaded = get_model(
-        input_image_dims=(args.image_size, args.image_size),
+        model_configs=dict(
+            input_image_dims=(args.image_size, args.image_size),
+            drop_block=dict(
+                use=args.drop_block,
+                keep_prob=args.drop_block_keep_prob,
+                block_size=args.drop_block_block_size
+            ),
+            kernel_regularizer=dict(
+                type=args.kernel_regularizer_type,
+                l1=args.kernel_regularizer_l1,
+                l2=args.kernel_regularizer_l2,
+                factor=args.kernel_regularizer_factor,
+                mode=args.kernel_regularizer_mode
+            ),
+            activation=dict(
+                type=args.activation,
+            )
+        ),
         checkpoint_dir=pathlib.Path(args.checkpoint_dir),
         logger=logger
     )
@@ -79,43 +92,36 @@ if __name__ == '__main__':
     # -2- Compile the model
     model.compile(
         loss=LOSS,
-        optimizer=OPTIMIZER,  # (learning_rate=args.learning_rate),
+        optimizer=get_optimizer(
+            algorithm=args.optimizer,
+            args=dict(
+                learning_rate=args.learning_rate,
+                rho=args.optimizer_rho,
+                beta_1=args.optimizer_beta_1,
+                beta_2=args.optimizer_beta_2,
+                amsgrad=args.optimizer_amsgrad,
+                momentum=args.optimizer_momentum,
+                nesterov=args.optimizer_nesterov,
+                centered=args.optimizer_centered,
+            )
+        ),
         run_eagerly=True,
         metrics=METRICS
     )
-
-    # - Data loading processes
-    main_data_loading_prcs = side_data_loading_prcs = None
-
-    # - Chose the procedure name
-    if args.train:
-        procedure_name = 'train'
-    elif args.inference:
-        procedure_name = 'inference'
-    elif args.test:
-        procedure_name = 'test'
-    else:
-        procedure_name = 'UNKNOWN PROCEDURE'
 
     # PROCEDURE
     tb_prc = None
     # -1- If we want to train a new model
     if args.train:
-
-        # - Get the directory where the train data is located at
-        train_data_dir = args.train_image_dir if args.data_from_single_dir else args.train_dir
-        train_seg_dir = args.train_seg_dir if args.data_from_single_dir else None
-
-        if isinstance(logger, logging.Logger):
-            logger.info(f'- Training the \'RibCage\' model on data from {train_data_dir}')
-
         # - Get the train and the validation data loaders
         train_dl, val_dl = get_data_loaders(
-            main_name=procedure_name,
-            side_name='val',
-            data_dir=train_data_dir,
-            segmentations_dir=train_seg_dir,
-            metadata_files_regex=None if args.data_from_single_dir else METADATA_FILES_REGEX,
+            data_dir=args.train_dir,
+            metadata_configs=dict(
+                regex=METADATA_FILES_REGEX,
+                shape=ORIGINAL_IMAGE_SHAPE,
+                min_val=ORIGINAL_IMAGE_MIN_VAL,
+                max_val=ORIGINAL_IMAGE_MAX_VAL
+            ),
             split_proportion=args.validation_proportion,
             batch_size=args.batch_size,
             image_size=args.image_size,
@@ -124,23 +130,15 @@ if __name__ == '__main__':
             logger=logger
         )
 
-        # -> Start the train data loading process
-        # main_data_loading_prcs = mlp.Process(target=train_dl.enqueue_batches, args=())
-        # main_data_loading_prcs.start()
-
-        # -> Start the validation data loading process
-        # side_data_loading_prcs = mlp.Process(target=val_dl.enqueue_batches, args=())
-        # side_data_loading_prcs.start()
-
         # - Get the callbacks and optionally the thread which runs the tensorboard
         callbacks, tb_prc = get_callbacks(
-            callback_type=procedure_name,
+            callback_type='train',
             output_dir=current_run_dir,
             logger=logger
         )
         wandb.config = {
-          "epochs": args.epochs,
-          "batch_size": args.batch_size
+            "epochs": args.epochs,
+            "batch_size": args.batch_size
         }
 
         # - If the setting is to launch the tensorboard process automatically
@@ -162,33 +160,29 @@ if __name__ == '__main__':
 
         # -2.1- If we want to infer results from the current model
         if args.inference:
-
-            # - Get the directory where the inference data is located at
-            infer_data_dir = args.inference_image_dir if args.data_from_single_dir else args.inference_dir
-            infer_seg_dir = args.inference_seg_dir if args.data_from_single_dir else None
-
-            if isinstance(logger, logging.Logger):
-                logger.info(f'- Inferring the images at {infer_data_dir}')
-
             # - Get the inference data loader
-            infer_dl, _ = get_data_loaders(
-                main_name=procedure_name,
-                side_name='inference',
-                data_dir=infer_data_dir,
-                segmentations_dir=infer_seg_dir,
-                metadata_files_regex=None if args.data_from_single_dir else METADATA_FILES_REGEX,
-                split_proportion=0.,
-                batch_size=2,
-                image_size=args.image_size,
-                crop_images=True,
-                augment_images=False,
-                reload_data=args.reload_data,
+            data_fls, _ = get_data_files(
+                data_dir=args.inference_dir,
+                metadata_configs=dict(
+                    regex=METADATA_FILES_REGEX,
+                    shape=ORIGINAL_IMAGE_SHAPE,
+                    min_val=ORIGINAL_IMAGE_MIN_VAL,
+                    max_val=ORIGINAL_IMAGE_MAX_VAL
+                ),
+                validation_proportion=0.0,
                 logger=logger
             )
 
-            # -> Start the data loading process
-            main_data_loading_prcs = mlp.Process(target=infer_dl.enqueue_batches, args=())
-            main_data_loading_prcs.start()
+            # - Create the DataLoader object
+            infer_dl = DataLoader(
+                name='inference',
+                data_files=data_fls,
+                batch_size=args.batch_size,
+                image_size=args.image_size,
+                augmentation_func=validation_augmentations(),
+                reload_data=True,
+                logger=logger
+            )
 
             # - Inference -
             preds = model.infer(
@@ -197,40 +191,30 @@ if __name__ == '__main__':
             print(preds)
             print(f'''
             PREDICTIONS:
-                mean: {preds.mean():.2f} +/- {preds.std():.4f}
+                mean: {preds.mean():.3f} +/- {preds.std():.4f}
             ''')
 
         # -2.2- If we want to test the current model
         if args.test:
-            # - Get the directory where the test data is located at
-            data_dir = args.test_image_dir if args.data_from_single_dir else args.test_dir
-            seg_dir = args.test_seg_dir if args.data_from_single_dir else None
-
-            if isinstance(logger, logging.Logger):
-                logger.info(f' - Testing the images at {data_dir}')
-
             # - Get the test data loader
             test_dl, _ = get_data_loaders(
-                main_name=procedure_name,
-                side_name='test',
-                data_dir=data_dir,
-                segmentations_dir=seg_dir,
-                metadata_files_regex=None if args.data_from_single_dir else METADATA_FILES_REGEX,
+                data_dir=args.test_dir,
+                metadata_configs=dict(
+                    regex=METADATA_FILES_REGEX,
+                    shape=ORIGINAL_IMAGE_SHAPE,
+                    min_val=ORIGINAL_IMAGE_MIN_VAL,
+                    max_val=ORIGINAL_IMAGE_MAX_VAL
+                ),
                 split_proportion=args.validation_proportion,
                 batch_size=args.batch_size,
                 image_size=args.image_size,
-                crop_images=True,
-                augment_images=True,
                 reload_data=args.reload_data,
                 logger=logger
             )
-            # -> Start the data loading process
-            main_data_loading_prcs = mlp.Process(target=test_dl.enqueue_batches, args=())
-            main_data_loading_prcs.start()
 
             # - Get the callbacks and optionally the thread which runs the tensorboard
             callbacks, tb_prc = get_callbacks(
-                callback_type=procedure_name,
+                callback_type='test',
                 output_dir=current_run_dir,
                 logger=logger
             )
@@ -250,7 +234,7 @@ if __name__ == '__main__':
             print(f'Evaluating')
 
     else:
-        err_log(logger=logger, message=f'Could not run the {procedure_name} because the model does not exist!')
+        err_log(logger=logger, message=f'Could not run the test / inference because the model does not exist!')
         sys.exit(1)
 
     sys.exit(0)

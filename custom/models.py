@@ -9,17 +9,13 @@ import tensorflow as tf
 from tensorflow import keras
 from tensorflow.keras import layers
 from configs.general_configs import (
-    KERNEL_REGULARIZER,
-    ACTIVATION_LAYER,
-    PROFILE,
     RIBCAGE_CONFIGS_FILE_PATH,
     OUTLIER_TH,
 )
 
-from utils import (
-    aux_funcs
+from custom.activations import (
+    Swish
 )
-
 from custom.callbacks import (
     log_masks,
 )
@@ -29,11 +25,13 @@ from utils.plotting_funcs import (
 
 
 class RibCage(keras.Model):
-    def __init__(self, input_image_dims: tuple, logger: logging.Logger = None):
+    def __init__(self, model_configs: dict, logger: logging.Logger = None):
         super().__init__()
-        self.input_image_dims = input_image_dims
+        self.input_image_dims = model_configs.get('input_image_dims')
         self.logger = logger
-        self.activation_layer = ACTIVATION_LAYER
+        self.activation_layer = self._get_activation(configs=model_configs.get('activation'))
+        self.kernel_regularizer = self._get_kernel_regularizer(configs=model_configs.get('kernel_regularizer'))
+
         # - Open the models' configurations file
         self.ribcage_configs = None
         with RIBCAGE_CONFIGS_FILE_PATH.open(mode='r') as config_file:
@@ -41,6 +39,7 @@ class RibCage(keras.Model):
 
         # - Build the model
         self.model = self.build_model()
+
 
         # - Train epoch history
         self.train_losses = []
@@ -66,11 +65,35 @@ class RibCage(keras.Model):
         self.val_epoch_pred_seg_msrs = np.array([])
         self.val_epoch_outliers = list()
 
+    @staticmethod
+    def _get_activation(configs: dict):
+        activation = None
+        if configs.get('type') == 'swish':
+            activation = Swish()
+        elif configs.get('type') == 'relu':
+            activation = tf.nn.relu()
+        elif configs.get('type') == 'leaky_relu':
+            activation = tf.nn.leaky_relu()
+        return activation
+
+    @staticmethod
+    def _get_kernel_regularizer(configs: dict):
+        kernel_regularizer = None
+        if configs.get('type') == 'l1':
+            kernel_regularizer = tf.keras.regularizers.L1(l1=configs.get('l1'))
+        elif configs.get('type') == 'l2':
+            kernel_regularizer = tf.keras.regularizers.L2(l2=configs.get('l2'))
+        elif configs.get('type') == 'l1l2':
+            kernel_regularizer = tf.keras.regularizers.L2(l1=configs.get('l1'), l2=configs.get('l2'))
+        elif configs.get('type') == 'orthogonal':
+            kernel_regularizer = tf.keras.regularizers.OrthogonalRegularizer(factor=configs.get('factor'), l2=configs.get('mode'))
+        return kernel_regularizer
+
     # @staticmethod
     def _build_conv2d_block(self, filters: int, kernel_size: int):
         return keras.Sequential(
             [
-                layers.Conv2D(filters=filters, kernel_size=kernel_size, padding='same', kernel_regularizer=KERNEL_REGULARIZER),
+                layers.Conv2D(filters=filters, kernel_size=kernel_size, padding='same', kernel_regularizer=self.kernel_regularizer),
                 layers.BatchNormalization(),
                 self.activation_layer,
                 layers.MaxPool2D(padding='same')
@@ -81,7 +104,7 @@ class RibCage(keras.Model):
     def _build_fully_connected_block(self, units: int, drop_rate: float):
         return keras.Sequential(
             [
-                keras.layers.Dense(units=units, kernel_regularizer=KERNEL_REGULARIZER),
+                keras.layers.Dense(units=units, kernel_regularizer=self.kernel_regularizer),
                 keras.layers.BatchNormalization(),
                 self.activation_layer,
                 keras.layers.Dropout(rate=drop_rate)
@@ -164,11 +187,11 @@ class RibCage(keras.Model):
             # train_segs = log_bboxes(image=self.train_imgs[0], mask=self.train_aug_segs[0], true_seg_measure=self.train_trgt_seg_msrs[0], pred_seg_measure=self.train_pred_seg_msrs[0], procedure='train')
         wandb.log(data={"Train Segmentations": train_segs})
 
-        # train_scatter_plot = plot_scatter(
-        #     x=trgt_seg_msrs,
-        #     y=pred_seg_msrs,
-        # )
-        # wandb.log(data={"True vs Predicted Seg Measure (train)": train_scatter_plot})
+        train_scatter_plot = plot_scatter(
+            x=trgt_seg_msrs,
+            y=pred_seg_msrs,
+        )
+        wandb.log(data={"True vs Predicted Seg Measure (train)": wandb.Image(train_scatter_plot)})
 
         # - Add the target seg measures to epoch history
         self.train_epoch_trgt_seg_msrs = np.append(self.train_epoch_trgt_seg_msrs, trgt_seg_msrs)
@@ -185,25 +208,10 @@ class RibCage(keras.Model):
             train_outlier_segs.append(log_masks(image=img, mask=seg, true_seg_measure=trgt_seg_msr, pred_seg_measure=pred_seg_msr))
         wandb.log(data={"Train Outliers": train_outlier_segs})
 
-        # for outlier_idx in outliers_idxs:
-        #     self.train_epoch_outliers.append(
-        #         (
-        #             np.array(self.train_imgs[outlier_idx]),
-        #             np.array(self.train_aug_segs[outlier_idx]),
-        #             trgt_seg_msrs[outlier_idx],
-        #             pred_seg_msrs[outlier_idx]
-        #         )
-        #     )
-
-        if PROFILE:
-            aux_funcs.info_log(logger=self.logger, message=f'Training on batch of size {imgs.shape} took {aux_funcs.get_runtime(seconds=time.time() - t_strt)}')
-
         # - Return the mapping metric names to current value
         return {metric.name: metric.result() for metric in self.metrics}
 
     def test_step(self, data) -> dict:
-        # print('fff')
-        t_strt = time.time()
         # - Get the data of the current epoch
         (imgs, aug_segs), trgt_seg_msrs = data
 
@@ -233,11 +241,12 @@ class RibCage(keras.Model):
             # train_segs = log_bboxes(image=self.train_imgs[0], mask=self.train_aug_segs[0], true_seg_measure=self.train_trgt_seg_msrs[0], pred_seg_measure=self.train_pred_seg_msrs[0], procedure='train')
         wandb.log(data={"Validation Segmentations": val_segs})
 
-        # val_scatter_plot = plot_scatter(
-        #     x=trgt_seg_msrs,
-        #     y=pred_seg_msrs,
-        # )
-        # wandb.log(data={"True vs Predicted Seg Measure (validation)": val_scatter_plot})
+        val_scatter_plot = plot_scatter(
+            x=trgt_seg_msrs,
+            y=pred_seg_msrs,
+        )
+        wandb.log(data={"True vs Predicted Seg Measure (validation)": wandb.Image(val_scatter_plot)})
+
         # - Add the target seg measures to epoch history
         self.val_epoch_trgt_seg_msrs = np.append(self.val_epoch_trgt_seg_msrs, trgt_seg_msrs)
 
@@ -252,18 +261,6 @@ class RibCage(keras.Model):
         for idx, (img, seg, trgt_seg_msr, pred_seg_msr) in enumerate(zip(self.val_imgs[outliers_idxs], self.val_aug_segs[outliers_idxs], trgt_seg_msrs[outliers_idxs], pred_seg_msrs[outliers_idxs])):
             val_outlier_segs.append(log_masks(image=img, mask=seg, true_seg_measure=trgt_seg_msr, pred_seg_measure=pred_seg_msr))
         wandb.log(data={"Validation Outliers": val_outlier_segs})
-        # for outlier_idx in outliers_idxs:
-        #     self.val_epoch_outliers.append(
-        #         (
-        #             np.array(self.val_imgs[outlier_idx]),
-        #             np.array(self.val_aug_segs[outlier_idx]),
-        #             trgt_seg_msrs[outlier_idx],
-        #             pred_seg_msrs[outlier_idx]
-        #         )
-        #     )
-
-        if PROFILE:
-            aux_funcs.info_log(logger=self.logger, message=f'Validating on batch of size {imgs.shape} took {aux_funcs.get_runtime(seconds=time.time() - t_strt)}')
 
         return {metric.name: metric.result() for metric in self.metrics}
 
@@ -280,8 +277,5 @@ class RibCage(keras.Model):
 
             # - Append the predicted seg measures to the results
             results = np.append(results, pred_seg_msrs)
-
-        if PROFILE:
-            aux_funcs.info_log(logger=self.logger, message=f'Inference on data of {len(data_loader)} batches {aux_funcs.get_runtime(seconds=time.time() - t_strt)}')
 
         return results

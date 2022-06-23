@@ -11,8 +11,8 @@ from configs.general_configs import (
     N_OUTLIERS
 )
 from utils.plotting_funcs import (
-plot_scatter,
-plot
+    plot_scatter,
+    plot
 )
 # from utils.image_utils.image_aux import (
 from utils.image_funcs import (
@@ -20,11 +20,9 @@ from utils.image_funcs import (
 )
 from utils import aux_funcs
 
-
-
-
 # this is the order in which my classes will be displayed
-# this is a revese map of the integer class id to the string class label
+# this is a reverse map of the integer class id to the string class label
+
 
 def log_masks(image, mask, true_seg_measure, pred_seg_measure):
     class_ids = np.unique(mask)[1:]
