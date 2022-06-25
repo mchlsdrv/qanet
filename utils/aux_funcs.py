@@ -200,6 +200,70 @@ def get_train_val_idxs(n_items, val_prop):
     return train_idxs, val_idxs
 
 
+def get_one_hot_masks(multi_class_mask: np.ndarray, classes: np.ndarray = None):
+    """
+    Converts a multi-class label into a one-hot labels for each object in the multi-class label
+    :param: multi_class_mask - mask where integers represent different objects
+    """
+    # - Ensure the multi-class label is populated with int values
+    mlt_cls_mask = multi_class_mask.astype(np.int16)
+
+    # - Find the classes
+    cls = classes
+    if cls is None:
+        cls = np.unique(mlt_cls_mask)
+
+    # - Discard the background (0)
+    cls = cls[cls > 0]
+
+    one_hot_masks = np.zeros((len(cls), *mlt_cls_mask.shape), dtype=np.float32)
+    for lbl_idx, lbl in enumerate(one_hot_masks):
+        for obj_mask_idx, _ in enumerate(lbl):
+            idxs = np.argwhere(mlt_cls_mask[obj_mask_idx, ...] == cls[lbl_idx])
+            x, y = idxs[:, 0], idxs[:, 1]
+            one_hot_masks[lbl_idx, obj_mask_idx, x, y] = 1.
+    return one_hot_masks
+
+
+def calc_jaccard(R: np.ndarray, S: np.ndarray):
+    """
+    Calculates the mean Jaccard coefficient for two multi-class labels
+    :param: R - Reference multi-class label
+    :param: S - Segmentation multi-class label
+    """
+
+    # - Convert the multi-label mask to multiple one-hot masks
+    cls = np.unique(R.astype(np.int16))
+    R = get_one_hot_masks(multi_class_mask=R, classes=cls)
+    S = get_one_hot_masks(multi_class_mask=S, classes=cls)
+
+    # - Calculate the intersection of R and S
+    I = np.sum(np.logical_and(R, S), axis=(-2, -1))
+
+    # - Calculate the union of R and S
+    U = np.sum(np.logical_or(R, S), axis=(-2, -1))
+
+    # - To avoid division by 0
+    U[U == 0] = 1
+
+    # - Mean Jaccard on the valid items only
+    J = (I / U)
+
+    # - Calculate the areas of the reference items
+    R_areas = R.sum(axis=(-2, -1))
+    R_areas[R_areas <= 0] = 1
+
+    # - Find out the indices of the items which satisfy |I| / |R| > 0.5
+    valid_idx = np.argwhere((I / R_areas) <= .5)
+    x_val, y_val = valid_idx[:, 0], valid_idx[:, 1]
+
+    J[x_val, y_val] = 0.
+
+    J = J.mean(axis=0)
+
+    return J
+
+
 def check_dir(dir_path: pathlib.Path):
     dir_exists = False
     if isinstance(dir_path, pathlib.Path):
@@ -473,26 +537,26 @@ def get_train_val_split(data: list or np.ndarray, validation_proportion: float =
     return train_data, val_data
 
 
-def get_data_files(data_dir: str, segmentations_dir: str = None, metadata_files_regex: str = None, validation_proportion: float = .2, logger: logging.Logger = None):
-    if metadata_files_regex is not None:
-        train_fls, val_fls = get_train_val_split(
-            data=get_files_from_metadata(
-                root_dir=data_dir,
-                metadata_files_regex=metadata_files_regex,
-                logger=logger
-            ),
-            validation_proportion=validation_proportion,
-            logger=logger
-        )
-    else:
-        train_fls, val_fls = get_train_val_split(
-            data=get_files_from_dir(
-                images_dir=data_dir,
-                segmentations_dir=segmentations_dir
-            ),
-            validation_proportion=validation_proportion,
-            logger=logger
-        )
+# def get_data_files(data_dir: str, segmentations_dir: str = None, metadata_files_regex: str = None, validation_proportion: float = .2, logger: logging.Logger = None):
+#     if metadata_files_regex is not None:
+#         train_fls, val_fls = get_train_val_split(
+#             data=get_files_from_metadata(
+#                 root_dir=data_dir,
+#                 metadata_files_regex=metadata_files_regex,
+#                 logger=logger
+#             ),
+#             validation_proportion=validation_proportion,
+#             logger=logger
+#         )
+#     else:
+#         train_fls, val_fls = get_train_val_split(
+#             data=get_files_from_dir(
+#                 images_dir=data_dir,
+#                 segmentations_dir=segmentations_dir
+#             ),
+#             validation_proportion=validation_proportion,
+#             logger=logger
+#         )
 
 
 def info_log(logger: logging.Logger, message: str):

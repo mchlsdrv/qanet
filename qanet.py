@@ -27,6 +27,9 @@ from configs.general_configs import (
     METADATA_FILES_REGEX, ORIGINAL_IMAGE_SHAPE, ORIGINAL_IMAGE_MIN_VAL, ORIGINAL_IMAGE_MAX_VAL,
 )
 
+# import warnings
+# warnings.filterwarnings("ignore")
+
 '''
 You can adjust the verbosity of the logs which are being printed by TensorFlow
 

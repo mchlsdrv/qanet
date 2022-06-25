@@ -8,6 +8,7 @@ import numpy as np
 import tensorflow as tf
 from tensorflow import keras
 from tensorflow.keras import layers
+import matplotlib.pyplot as plt
 from configs.general_configs import (
     RIBCAGE_CONFIGS_FILE_PATH,
     OUTLIER_TH,
@@ -39,7 +40,6 @@ class RibCage(keras.Model):
 
         # - Build the model
         self.model = self.build_model()
-
 
         # - Train epoch history
         self.train_losses = []
@@ -192,6 +192,7 @@ class RibCage(keras.Model):
             y=pred_seg_msrs,
         )
         wandb.log(data={"True vs Predicted Seg Measure (train)": wandb.Image(train_scatter_plot)})
+        plt.close(train_scatter_plot)
 
         # - Add the target seg measures to epoch history
         self.train_epoch_trgt_seg_msrs = np.append(self.train_epoch_trgt_seg_msrs, trgt_seg_msrs)
@@ -246,6 +247,7 @@ class RibCage(keras.Model):
             y=pred_seg_msrs,
         )
         wandb.log(data={"True vs Predicted Seg Measure (validation)": wandb.Image(val_scatter_plot)})
+        plt.close(val_scatter_plot)
 
         # - Add the target seg measures to epoch history
         self.val_epoch_trgt_seg_msrs = np.append(self.val_epoch_trgt_seg_msrs, trgt_seg_msrs)

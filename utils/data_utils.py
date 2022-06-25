@@ -26,7 +26,7 @@ from utils.image_funcs import (
 )
 
 from utils.aux_funcs import (
-    info_log,
+    info_log, get_one_hot_masks, calc_jaccard,
 )
 
 from configs.general_configs import (
@@ -43,7 +43,7 @@ class DataLoader(tf.keras.utils.Sequence):
         self.logger = logger
         self.image_size = image_size
         self.augmentation_func = augmentation_func
-        self.mask_augmentations = mask_deformations()
+        self.mask_deformations = mask_deformations()
 
         tmp_dt_fl = TEMP_DIR / f'{self.name}_imgs_segs_temp.npy'
 
@@ -70,7 +70,7 @@ class DataLoader(tf.keras.utils.Sequence):
         """
         > Returns the number of batches
         """
-        return int(np.floor(self.n_fls / self.batch_size))
+        return int(np.floor(self.n_fls / self.batch_size)) if self.batch_size > 0 else 0
 
     def __getitem__(self, index):
         """
@@ -155,8 +155,8 @@ class DataLoader(tf.keras.utils.Sequence):
         # print('data loader...')
         # - Shuffle files before the next epoch
 
-        img_btch = list()
-        seg_btch = list()
+        img_aug_btch = list()
+        seg_aug_btch = list()
         seg_dfrmd_btch = list()
         seg_msrs_btch = list()
 
@@ -185,28 +185,33 @@ class DataLoader(tf.keras.utils.Sequence):
             res = self.mask_deformations(image=img_aug, mask=seg_aug)
             seg_dfrmd = res.get('mask')
 
-            # - Calculate the seg measure of the ground truth image with the augmented image
-            metrics = sg.write_metrics(labels=np.unique(seg)[1:], gdth_img=seg, pred_img=seg_aug, csv_file='metrics.csv')[0]
-            trgt_seg_msr = np.array(metrics['dice']).mean()
+            # labels = np.unique(seg_aug)
+            # labels = labels[labels > 0]
+            # metrics = sg.write_metrics(labels=labels, gdth_img=seg_aug, pred_img=seg_dfrmd, verbose=False)[0]
+            # trgt_seg_msr = np.array(metrics['dice']).mean()
 
             # -> Add the image into the appropriate container
-            img_btch.append(img)
-            seg_dfrmd_btch.append(seg_aug)
-            seg_msrs_btch.append(trgt_seg_msr)
+            img_aug_btch.append(img_aug)
+            seg_aug_btch.append(seg_aug)
+            seg_dfrmd_btch.append(seg_dfrmd)
+            # seg_msrs_btch.append(trgt_seg_msr)
 
-        # - Convert the crops into numpy arrays
-        img_btch = np.array(img_btch, dtype=np.float32)
+        # - Convert the crops to numpy arrays
+        img_aug_btch = np.array(img_aug_btch, dtype=np.float32)
+        seg_aug_btch = np.array(seg_aug_btch, dtype=np.float32)
         seg_dfrmd_btch = np.array(seg_dfrmd_btch, dtype=np.float32)
-        seg_msrs_btch = np.array(seg_msrs_btch, dtype=np.float32)
+
+        # - Calculate the seg measure for the current batch
+        seg_msrs_btch = calc_jaccard(R=seg_aug_btch, S=seg_dfrmd_btch)
 
         # - Shuffle batch crops
-        img_btch, seg_dfrmd_btch, seg_msrs_btch = self._shuffle_crops(
-            images=img_btch,
+        img_aug_btch, seg_dfrmd_btch, seg_msrs_btch = self._shuffle_crops(
+            images=img_aug_btch,
             segmentations=seg_dfrmd_btch,
             seg_measures=seg_msrs_btch
         )
 
-        return (tf.convert_to_tensor(img_btch, dtype=tf.float32), tf.convert_to_tensor(seg_dfrmd_btch, dtype=tf.float32)), tf.convert_to_tensor(seg_msrs_btch, dtype=tf.float32)
+        return (tf.convert_to_tensor(img_aug_btch, dtype=tf.float32), tf.convert_to_tensor(seg_dfrmd_btch, dtype=tf.float32)), tf.convert_to_tensor(seg_msrs_btch, dtype=tf.float32)
 
 
 def get_files_from_metadata(root_dir: str or pathlib.Path, metadata_files_regex, logger: logging.Logger = None):

@@ -25,7 +25,8 @@ CHECKPOINT_DIR = pathlib.Path('./output/11_4_150_epochs (train)/checkpoints')
 # - OUTPUT -
 OUTPUT_DIR = pathlib.Path('/media/rrtammyfs/Users/sidorov/QANet/output')
 
-TEMP_DIR = pathlib.Path('/media/rrtammyfs/Users/sidorov/QANet/temp')
+TEMP_DIR = pathlib.Path('./temp')
+# TEMP_DIR = pathlib.Path('/media/rrtammyfs/Users/sidorov/QANet/temp')
 
 CONFIGS_DIR_PATH = pathlib.Path('./configs')
 
@@ -122,7 +123,7 @@ METRICS = []
 
 #  Variables
 EPOCHS = 200
-BATCH_SIZE = 256
+BATCH_SIZE = 32
 VAL_BATCH_SIZE = 1
 VALIDATION_PROPORTION = .2
 LEARNING_RATE = 1e-3
