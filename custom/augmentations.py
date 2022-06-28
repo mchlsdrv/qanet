@@ -13,113 +13,8 @@ from scipy.ndimage.filters import gaussian_filter
 from configs.general_configs import (
     IMAGE_SIZE,
     EROSION_SIZES,
-    DILATION_SIZES,
+    DILATION_SIZES, COARSE_DROPOUT_MAX_HOLES, COARSE_DROPOUT_MAX_HEIGHT, COARSE_DROPOUT_MAX_WIDTH, COARSE_DROPOUT_FILL_VALUE
 )
-
-
-def train_augmentations():
-    return A.Compose(
-        [
-            tr.CoarseDropout(
-                max_holes=8,
-                max_height=30,
-                max_width=30,
-                fill_value=0,
-                p=0.5
-            ),
-            CropNonEmptyMaskIfExists(
-                height=IMAGE_SIZE,
-                width=IMAGE_SIZE,
-                p=1.
-            ),
-            A.OneOf([
-                A.Flip(),
-                A.RandomRotate90(),
-                tr.GaussianBlur(
-                    blur_limit=(3, 7),
-                    sigma_limit=0,
-                    p=1.
-                ),
-                tr.GlassBlur(
-                    sigma=.7,
-                    max_delta=4,
-                    iterations=2,
-                    p=1.
-                ),
-                tr.GaussNoise(
-                    var_limit=(10., 50.),
-                    mean=0,
-                    p=1.
-                ),
-                tr.MultiplicativeNoise(
-                    multiplier=(.9, 1.1),
-                    elementwise=False,
-                    p=1.
-                ),
-                tr.RandomBrightnessContrast(
-                    brightness_limit=.2,
-                    contrast_limit=.2,
-                    p=1.
-                )
-            ], p=.5),
-        ]
-    )
-
-
-def mask_deformations():
-    return A.Compose(
-        [
-            A.OneOf(
-                [
-                    tr.Lambda(
-                        mask=random_erosion,
-                        p=1.
-                    ),
-                    tr.Lambda(
-                        mask=random_dilation,
-                        p=1.
-                    ),
-                    tr.Lambda(
-                        mask=random_opening,
-                        p=1.
-                    ),
-                    tr.Lambda(
-                        mask=random_closing,
-                        p=1.
-                    ),
-                ],
-                p=.5
-            ),
-            tr.Lambda(
-                mask=elastic_transform,
-                p=.5
-            ),
-        ]
-    )
-
-
-def validation_augmentations():
-    return A.Compose(
-        [
-            CropNonEmptyMaskIfExists(
-                height=IMAGE_SIZE,
-                width=IMAGE_SIZE,
-                p=1.
-            ),
-        ]
-    )
-
-
-def inference_augmentations():
-    return A.Compose(
-        [
-            A.Resize(
-                height=IMAGE_SIZE,
-                width=IMAGE_SIZE,
-                p=1.
-            )
-        ]
-    )
 
 
 def random_erosion(mask, **kwargs):
@@ -169,3 +64,131 @@ def elastic_transform(mask, **kwargs):
 
     mask = map_coordinates(mask, idxs, order=1, mode='reflect').reshape(seg_shp)
     return mask
+
+
+def train_augmentations(configs: dict):
+    return A.Compose(
+        [
+            # tr.CoarseDropout(
+            #     max_holes=COARSE_DROPOUT_MAX_HOLES,
+            #     max_height=COARSE_DROPOUT_MAX_HEIGHT,
+            #     max_width=COARSE_DROPOUT_MAX_WIDTH,
+            #     fill_value=COARSE_DROPOUT_FILL_VALUE,
+            #     p=0.5
+            # ),
+            CropNonEmptyMaskIfExists(
+                height=IMAGE_SIZE,
+                width=IMAGE_SIZE,
+                p=1.
+            ),
+            # A.ToGray(p=1.),
+            A.CLAHE(
+                clip_limit=configs.get('clahe')['clip_limit'],
+                tile_grid_size=(configs.get('clahe')['tile_grid_size'], configs.get('clahe')['tile_grid_size']),
+                p=1.
+            ),
+            A.ToFloat(p=1.),
+            A.OneOf([
+                A.Flip(),
+                A.RandomRotate90(),
+                # tr.GaussianBlur(
+                #     blur_limit=(3, 7),
+                #     sigma_limit=0,
+                #     p=1.
+                # ),
+                # tr.GlassBlur(
+                #     sigma=.7,
+                #     max_delta=4,
+                #     iterations=2,
+                #     p=1.
+                # ),
+                # tr.GaussNoise(
+                #     var_limit=(10., 50.),
+                #     mean=0,
+                #     p=1.
+                # ),
+                # tr.MultiplicativeNoise(
+                #     multiplier=(.9, 1.1),
+                #     elementwise=False,
+                #     p=1.
+                # ),
+                # tr.RandomBrightnessContrast(
+                #     brightness_limit=.2,
+                #     contrast_limit=.2,
+                #     p=1.
+                # )
+            ],
+                p=.5
+            ),
+        ]
+    )
+
+
+def mask_deformations():
+    return A.Compose(
+        [
+            A.OneOf(
+                [
+                    tr.Lambda(
+                        mask=random_erosion,
+                        p=.5
+                    ),
+                    tr.Lambda(
+                        mask=random_dilation,
+                        p=.5
+                    ),
+                    tr.Lambda(
+                        mask=random_opening,
+                        p=.5
+                    ),
+                    tr.Lambda(
+                        mask=random_closing,
+                        p=.5
+                    ),
+                    tr.Lambda(
+                        mask=elastic_transform,
+                        p=.5
+                    ),
+                ],
+                p=1.
+            )
+        ]
+    )
+
+
+def validation_augmentations(configs: dict):
+    return A.Compose(
+        [
+            CropNonEmptyMaskIfExists(
+                height=IMAGE_SIZE,
+                width=IMAGE_SIZE,
+                p=1.
+            ),
+            # A.ToGray(p=1.),
+            A.CLAHE(
+                clip_limit=configs.get('clahe')['clip_limit'],
+                tile_grid_size=(configs.get('clahe')['tile_grid_size'], configs.get('clahe')['tile_grid_size']),
+                p=1.
+            ),
+            A.ToFloat(p=1.),
+        ]
+    )
+
+
+def inference_augmentations(configs: dict):
+    return A.Compose(
+        [
+            A.Resize(
+                height=IMAGE_SIZE,
+                width=IMAGE_SIZE,
+                p=1.
+            ),
+            # A.ToGray(p=1.),
+            A.CLAHE(
+                clip_limit=configs.get('clahe')['clip_limit'],
+                tile_grid_size=(configs.get('clahe')['tile_grid_size'], configs.get('clahe')['tile_grid_size']),
+                p=1.
+            ),
+            A.ToFloat(p=1.),
+        ]
+    )

@@ -5,7 +5,6 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
 sns.set(font_scale=2)
-plt.style.use('ggplot')
 
 
 def plot_scatter(x: np.ndarray, y: np.ndarray, save_file: pathlib.Path = None):

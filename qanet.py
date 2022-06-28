@@ -27,8 +27,8 @@ from configs.general_configs import (
     METADATA_FILES_REGEX, ORIGINAL_IMAGE_SHAPE, ORIGINAL_IMAGE_MIN_VAL, ORIGINAL_IMAGE_MAX_VAL,
 )
 
-# import warnings
-# warnings.filterwarnings("ignore")
+import warnings
+warnings.filterwarnings("ignore")
 
 '''
 You can adjust the verbosity of the logs which are being printed by TensorFlow
@@ -41,6 +41,7 @@ by changing the value of TF_CPP_MIN_LOG_LEVEL:
 '''
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
 TS = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+
 
 if __name__ == '__main__':
 
@@ -86,6 +87,10 @@ if __name__ == '__main__':
             ),
             activation=dict(
                 type=args.activation,
+                max_value=args.activation_relu_max_value,
+                negative_slope=args.activation_relu_negative_slope,
+                threshold=args.activation_relu_threshold,
+                alpha=args.activation_leaky_relu_alpha
             )
         ),
         checkpoint_dir=pathlib.Path(args.checkpoint_dir),
@@ -128,7 +133,14 @@ if __name__ == '__main__':
             split_proportion=args.validation_proportion,
             batch_size=args.batch_size,
             image_size=args.image_size,
-            spoil_segmentations=True,
+            configs=dict(
+                augmentation_configs=dict(
+                    clahe=dict(
+                        clip_limit=args.clahe_clip_limit,
+                        tile_grid_size=args.clahe_tile_grid_size,
+                    )
+                )
+            ),
             reload_data=args.reload_data,
             logger=logger
         )
@@ -182,7 +194,14 @@ if __name__ == '__main__':
                 data_files=data_fls,
                 batch_size=args.batch_size,
                 image_size=args.image_size,
-                augmentation_func=validation_augmentations(),
+                augmentation_func=validation_augmentations(
+                    configs=dict(
+                        clahe=dict(
+                            clip_limit=args.clahe_clip_limit,
+                            tile_grid_size=args.clahe_tile_grid_size,
+                        )
+                    )
+                ),
                 reload_data=True,
                 logger=logger
             )
@@ -211,6 +230,14 @@ if __name__ == '__main__':
                 split_proportion=args.validation_proportion,
                 batch_size=args.batch_size,
                 image_size=args.image_size,
+                configs=dict(
+                    augmentation_configs=dict(
+                        clahe=dict(
+                            clip_limit=args.clahe_clip_limit,
+                            tile_grid_size=args.clahe_tile_grid_size,
+                        )
+                    )
+                ),
                 reload_data=args.reload_data,
                 logger=logger
             )

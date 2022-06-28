@@ -71,9 +71,9 @@ class RibCage(keras.Model):
         if configs.get('type') == 'swish':
             activation = Swish()
         elif configs.get('type') == 'relu':
-            activation = tf.nn.relu()
+            activation = tf.keras.layers.ReLU(max_value=configs.get('max_value'), negative_slope=configs.get('negative_slope'), threshold=configs.get('threshold'))
         elif configs.get('type') == 'leaky_relu':
-            activation = tf.nn.leaky_relu()
+            activation = tf.keras.layers.LeakyReLU(alpha=configs.get('alpha'))
         return activation
 
     @staticmethod
@@ -192,7 +192,7 @@ class RibCage(keras.Model):
             y=pred_seg_msrs,
         )
         wandb.log(data={"True vs Predicted Seg Measure (train)": wandb.Image(train_scatter_plot)})
-        plt.close(train_scatter_plot)
+        # plt.close(train_scatter_plot)
 
         # - Add the target seg measures to epoch history
         self.train_epoch_trgt_seg_msrs = np.append(self.train_epoch_trgt_seg_msrs, trgt_seg_msrs)
@@ -247,7 +247,7 @@ class RibCage(keras.Model):
             y=pred_seg_msrs,
         )
         wandb.log(data={"True vs Predicted Seg Measure (validation)": wandb.Image(val_scatter_plot)})
-        plt.close(val_scatter_plot)
+        # plt.close(val_scatter_plot)
 
         # - Add the target seg measures to epoch history
         self.val_epoch_trgt_seg_msrs = np.append(self.val_epoch_trgt_seg_msrs, trgt_seg_msrs)

@@ -9,16 +9,17 @@ PROFILE = False
 # - TRAIN -
 TRAIN_DIR = pathlib.Path('./data/train/Fluo-N2DH-SIM+')
 # TRAIN_DIR = pathlib.Path('./data/train/Fluo-N2DH-GOWT1')
-# TRAIN_DIR = pathlib.Path('/media/rrtammyfs/labDatabase/CellTrackingChallenge/BGUSIM/Fluo-N2DH-BGUSIM/Train')
 
 # - TEST -
 TEST_DIR = pathlib.Path('/media/rrtammyfs/labDatabase/CellTrackingChallenge/Training/Silver_GT/Fluo-N2DH-GOWT1-ST')
 
 # - TEST -
-# INFERENCE_DIR = pathlib.Path('./data/BGU-IL-Fluo-N2DH-GOWT1')
-# INFERENCE_DIR = pathlib.Path('./data/UNSW_AU_Fluo-N2DH-GOWT1')
-INFERENCE_DIR = pathlib.Path('./data/nnUnet_Fluo-N2DH-SIM+')
-# INFERENCE_DIR = pathlib.Path('./data/BGU_IL_Fluo-N2DH-GOWT1')
+# INFERENCE_DIR = pathlib.Path('./data/inference/BGU-IL-Fluo-N2DH-GOWT1')
+INFERENCE_DIR = pathlib.Path('./data/inference/UNSW_AU_Fluo-N2DH-GOWT1')
+# INFERENCE_DIR = pathlib.Path('./data/inference/UNSW_AU_Fluo-N2DH-SIM+')
+# INFERENCE_DIR = pathlib.Path('./data/inference/nnUnet_Fluo-N2DH-SIM+')
+# INFERENCE_DIR = pathlib.Path('./data/inference/BGU-IL-Fluo-N2DH-GOWT1')
+# INFERENCE_DIR = pathlib.Path('./data/inference/BGU_IL_Fluo-N2DH-GOWT1(1)')
 
 CHECKPOINT_DIR = pathlib.Path('./output/11_4_150_epochs (train)/checkpoints')
 
@@ -34,7 +35,6 @@ RIBCAGE_CONFIGS_FILE_PATH = pathlib.Path('./configs/ribcage_configs.yml')
 
 # - Regular expression to extract the images directories
 METADATA_FILES_REGEX = re.compile(r'.+(?<=metadata)_[0-9]{2}.(?:pkl|pickle)')
-# METADATA_FILES_REGEX = re.compile(r'.+(?<=metadata)_[0-9]{2}.pkl')
 
 # CONSTANTS
 EPSILON = 1e-7
@@ -60,9 +60,14 @@ STANDARDIZE_IMAGE = False
 # FILTERS CONFIGS
 # - CLipped Adaptive Histogram Equalization (CLAHE)
 # Enhances the contrast by equalizing the image intensity
-# APPLY_CLAHE_FILTER = False
-# CLAHE_CLIP_LIMIT = 2.0
-# CLAHE_TILE_GRID_SIZE = (8, 8)
+CLAHE_CLIP_LIMIT = 2.0
+CLAHE_TILE_GRID_SIZE = 8
+
+# - NORMALIZATION TECHNIQUE
+COARSE_DROPOUT_MAX_HOLES = 8
+COARSE_DROPOUT_MAX_HEIGHT = 30
+COARSE_DROPOUT_MAX_WIDTH = 30
+COARSE_DROPOUT_FILL_VALUE = 0
 
 # AUGMENTATION CONFIGS
 # - Morphological Transforms
@@ -89,10 +94,11 @@ SIGMA_RANGE = (1, 8)
 ALPHA_RANGE = (50, 100)
 
 # NN
-ACTIVATION = 'swish'  # Swish()  # keras.layers.LeakyReLU()
-ACTIVATION_ALPHA = 0.1
-ACTIVATION_MAX_VALUE = None
-ACTIVATION_THRESHOLD = 0.0
+ACTIVATION = 'swish'
+ACTIVATION_RELU_MAX_VALUE = None
+ACTIVATION_RELU_NEGATIVE_SLOPE = None
+ACTIVATION_RELU_THRESHOLD = 0.0
+ACTIVATION_LEAKY_RELU_ALPHA = 0.1
 
 # > Training
 OPTIMIZER = 'adam'
@@ -107,17 +113,6 @@ KERNEL_REGULARIZER_L1 = 0.01
 KERNEL_REGULARIZER_L2 = 0.01
 KERNEL_REGULARIZER_FACTOR = 0.01
 KERNEL_REGULARIZER_MODE = 'rows'
-# OPTIMIZER = tf.keras.optimizers.Adam(
-#     learning_rate=0.001,
-#     beta_1=0.9,
-#     beta_2=0.999,
-#     epsilon=1e-07,
-#     amsgrad=False,
-#     name='Adam',
-# )
-# KERNEL_REGULARIZER = tf.keras.regularizers.L2(
-#     l2=0.01
-# )
 LOSS = tf.keras.losses.MeanSquaredError()
 METRICS = []
 
@@ -169,7 +164,7 @@ TERMINATE_ON_NAN = True
 REDUCE_LR_ON_PLATEAU = True
 REDUCE_LR_ON_PLATEAU_MONITOR = 'val_loss'
 REDUCE_LR_ON_PLATEAU_FACTOR = 0.5
-REDUCE_LR_ON_PLATEAU_PATIENCE = 5
+REDUCE_LR_ON_PLATEAU_PATIENCE = 10
 REDUCE_LR_ON_PLATEAU_MIN_DELTA = 0.01
 REDUCE_LR_ON_PLATEAU_COOLDOWN = 0
 REDUCE_LR_ON_PLATEAU_MIN_LR = 1e-7

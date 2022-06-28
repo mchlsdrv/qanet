@@ -4,16 +4,10 @@ import re
 import pickle as pkl
 import numpy as np
 import pathlib
-import seg_metrics.seg_metrics as sg
-import time
 import tensorflow as tf
 import logging
 from tqdm import tqdm
 from copy import copy
-from custom.preprocessings import (
-    preprocess_image,
-)
-
 from custom.augmentations import (
     train_augmentations,
     validation_augmentations,
@@ -26,7 +20,8 @@ from utils.image_funcs import (
 )
 
 from utils.aux_funcs import (
-    info_log, get_one_hot_masks, calc_jaccard,
+    info_log,
+    calc_jaccard,
 )
 
 from configs.general_configs import (
@@ -35,7 +30,7 @@ from configs.general_configs import (
 
 
 class DataLoader(tf.keras.utils.Sequence):
-    def __init__(self, name: str, data_files: list, batch_size: int, image_size: int, augmentation_func: A.core.composition.Compose, reload_data: bool = False, logger: logging.Logger = None):
+    def __init__(self, name: str, data_files: list, batch_size: int, image_size: int, augmentation_func: A.core.composition.Compose, reload_data: bool = False, reload: bool = True, logger: logging.Logger = None):
 
         # FILES
         self.name = name
@@ -45,22 +40,25 @@ class DataLoader(tf.keras.utils.Sequence):
         self.augmentation_func = augmentation_func
         self.mask_deformations = mask_deformations()
 
-        tmp_dt_fl = TEMP_DIR / f'{self.name}_imgs_segs_temp.npy'
+        tmp_fl = None
+        if isinstance(TEMP_DIR, pathlib.Path):
+            tmp_fl = TEMP_DIR / f'{self.name}_imgs_segs_temp.npy'
 
-        # - Load the temporal data
-        if tmp_dt_fl.is_file() and not reload_data:
-            info_log(logger=self.logger, message=f'Loading temp {self.name} data from \'{tmp_dt_fl}\'...')
-            self.imgs_segs_temp = np.load(str(tmp_dt_fl))
-        # - Or produce and save it
-        else:
-            info_log(logger=self.logger, message=f'Creating the temp data file from the {self.name} file, and saving it at \'{tmp_dt_fl}\'...')
-            self.imgs_segs_temp = self._get_temp_data(temp_data_file=tmp_dt_fl)
+        # - Load the data
+        if reload:
+            info_log(logger=self.logger, message=f'Loading data file from {self.name} file...')
+            if tmp_fl is not None:
+                info_log(logger=self.logger, message=f'Saving the temp data to \'{tmp_fl}\'...')
+            self.imgs_segs = self._get_data(temp_file=tmp_fl)
+        elif tmp_fl.is_file():
+            info_log(logger=self.logger, message=f'Loading temp {self.name} data from \'{tmp_fl}\'...')
+            self.imgs_segs = np.load(str(tmp_fl))
 
-        self._clean_blanks()
+        # self._clean_blanks()
 
-        self.n_fls = len(self.imgs_segs_temp)
+        self.n_fls = len(self.imgs_segs)
 
-        info_log(logger=self.logger, message=f'Number of clean {self.name} samples: {self.imgs_segs_temp.shape}')
+        info_log(logger=self.logger, message=f'Number of clean {self.name} samples: {self.imgs_segs.shape}')
 
         # BATCH
         # - If the batch size is larger then the number of files - configure it as the number of files
@@ -89,7 +87,7 @@ class DataLoader(tf.keras.utils.Sequence):
             # print('>>>')
             # -2- If there are no batch_size files left
             btch_idx_end = btch_idx_strt + (self.n_fls - btch_idx_strt) - 2
-            # print(f'{btch_idx_end} >? {self.n_fls} = {btch_idx_end >= self.n_fls}')
+
         return self.get_batch(index_start=btch_idx_strt, index_end=btch_idx_end)
 
     def _clean_blanks(self):
@@ -97,7 +95,7 @@ class DataLoader(tf.keras.utils.Sequence):
         Cleans all the images there theres no data, i.e., blank or only random noise
         """
         clean_data = []
-        for idx, (img, seg) in enumerate(self.imgs_segs_temp):
+        for idx, (img, seg) in enumerate(self.imgs_segs):
             bin_seg = copy(seg)
 
             # - Find the indices of the current labels' class in the segmentation label
@@ -115,32 +113,30 @@ class DataLoader(tf.keras.utils.Sequence):
             # - Find the contours in the image
             _, centroids = get_contours(image=bin_seg)
 
-            # - If the image has at least a single contour (i.e., it is not blank or noise) - add it to the data
+            # - If the image has at least one contour (i.e., it is not blank or noise) - add it to the data
             if centroids:
                 clean_data.append((img, seg))
 
-        self.imgs_segs_temp = np.array(clean_data)
+        self.imgs_segs = np.array(clean_data)
 
-    def _get_temp_data(self, temp_data_file: pathlib.Path):
+    def _get_data(self, temp_file: pathlib.Path = None):
         info_log(logger=self.logger, message=f'Creating temp data...')
         imgs, segs = list(), list()
-        # info_log(logger=self.logger, message=f'Working on \'{img_fl}\' and \'{seg_fl}\' ({idx} / {len(self.img_seg_fls)})')
         for img_fl, seg_fl in tqdm(self.img_seg_fls):
-            img = preprocess_image(load_image(img_fl))
-            seg = load_image(seg_fl)
-
-            imgs.append(img)
-            segs.append(seg)
+            imgs.append(load_image(img_fl))
+            segs.append(load_image(seg_fl))
 
         info_log(logger=self.logger, message=f'Converting list to array')
         imgs_segs = np.array(list(zip(imgs, segs)))
 
-        info_log(logger=self.logger, message=f'Creating \'temp\' directory, if does not exists')
-        if not temp_data_file.parent.is_dir():
-            os.makedirs(temp_data_file.parent)
+        # - If the temp_file is specified, the data will be saved to a temp file
+        if temp_file is not None:
+            info_log(logger=self.logger, message=f'Creating \'temp\' directory, if does not exists')
+            if not temp_file.parent.is_dir():
+                os.makedirs(temp_file.parent)
 
-        info_log(logger=self.logger, message=f'Saving temp data to \'{temp_data_file}\'')
-        np.save(str(temp_data_file), imgs_segs)
+            info_log(logger=self.logger, message=f'Saving temp data to \'{temp_file}\'')
+            np.save(str(temp_file), imgs_segs)
 
         return imgs_segs
 
@@ -152,9 +148,6 @@ class DataLoader(tf.keras.utils.Sequence):
         return images[rnd_idxs], segmentations[rnd_idxs], seg_measures[rnd_idxs]
 
     def get_batch(self, index_start, index_end):
-        # print('data loader...')
-        # - Shuffle files before the next epoch
-
         img_aug_btch = list()
         seg_aug_btch = list()
         seg_dfrmd_btch = list()
@@ -165,15 +158,13 @@ class DataLoader(tf.keras.utils.Sequence):
         #   * Each thread gets only the indices which he returns
         btch_fl_idxs = np.arange(index_start, index_end)
 
-        btch_fls = self.imgs_segs_temp[btch_fl_idxs]
+        btch_fls = self.imgs_segs[btch_fl_idxs]
 
         # TODO - Bottleneck
         for idx, (img, seg) in enumerate(btch_fls):
             btch_ts = np.array([])
 
             # - For each file in the batch files
-            t_strt = time.time()
-
             img, seg = img[:, :, 0], seg[:, :, 0]
 
             # - Augmentation
@@ -185,16 +176,10 @@ class DataLoader(tf.keras.utils.Sequence):
             res = self.mask_deformations(image=img_aug, mask=seg_aug)
             seg_dfrmd = res.get('mask')
 
-            # labels = np.unique(seg_aug)
-            # labels = labels[labels > 0]
-            # metrics = sg.write_metrics(labels=labels, gdth_img=seg_aug, pred_img=seg_dfrmd, verbose=False)[0]
-            # trgt_seg_msr = np.array(metrics['dice']).mean()
-
             # -> Add the image into the appropriate container
             img_aug_btch.append(img_aug)
             seg_aug_btch.append(seg_aug)
             seg_dfrmd_btch.append(seg_dfrmd)
-            # seg_msrs_btch.append(trgt_seg_msr)
 
         # - Convert the crops to numpy arrays
         img_aug_btch = np.array(img_aug_btch, dtype=np.float32)
@@ -317,7 +302,7 @@ def get_data_files(data_dir: str, metadata_configs: dict, validation_proportion:
     return train_fls, val_fls
 
 
-def get_data_loaders(data_dir: str or pathlib.Path,  metadata_configs: dict, split_proportion: float, batch_size: int, image_size: int, spoil_segmentations: bool = False, reload_data: bool = False, logger: logging.Logger = None):
+def get_data_loaders(data_dir: str or pathlib.Path,  metadata_configs: dict, split_proportion: float, batch_size: int, image_size: int, configs: dict, reload_data: bool = False, logger: logging.Logger = None):
     train_fls, val_fls = get_data_files(
         data_dir=data_dir,
         metadata_configs=metadata_configs,
@@ -331,7 +316,7 @@ def get_data_loaders(data_dir: str or pathlib.Path,  metadata_configs: dict, spl
         data_files=train_fls,
         batch_size=batch_size,
         image_size=image_size,
-        augmentation_func=train_augmentations(),
+        augmentation_func=train_augmentations(configs=configs.get('augmentation_configs')),
         reload_data=reload_data,
         logger=logger
     )
@@ -341,7 +326,7 @@ def get_data_loaders(data_dir: str or pathlib.Path,  metadata_configs: dict, spl
         data_files=val_fls,
         batch_size=batch_size,
         image_size=image_size,
-        augmentation_func=validation_augmentations(),
+        augmentation_func=validation_augmentations(configs=configs.get('augmentation_configs')),
         reload_data=reload_data,
         logger=logger
     )
