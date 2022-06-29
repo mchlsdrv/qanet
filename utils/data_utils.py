@@ -54,7 +54,7 @@ class DataLoader(tf.keras.utils.Sequence):
             info_log(logger=self.logger, message=f'Loading temp {self.name} data from \'{tmp_fl}\'...')
             self.imgs_segs = np.load(str(tmp_fl))
 
-        # self._clean_blanks()
+        self._clean_blanks()
 
         self.n_fls = len(self.imgs_segs)
 
@@ -176,18 +176,23 @@ class DataLoader(tf.keras.utils.Sequence):
             res = self.mask_deformations(image=img_aug, mask=seg_aug)
             seg_dfrmd = res.get('mask')
 
+            # - Calculate the seg measure for the current batch
+            seg_msrs = calc_jaccard(R=seg_aug, S=seg_dfrmd)
+
             # -> Add the image into the appropriate container
             img_aug_btch.append(img_aug)
-            seg_aug_btch.append(seg_aug)
+            # seg_aug_btch.append(seg_aug)
             seg_dfrmd_btch.append(seg_dfrmd)
+            seg_msrs_btch.append(seg_msrs)
 
         # - Convert the crops to numpy arrays
         img_aug_btch = np.array(img_aug_btch, dtype=np.float32)
-        seg_aug_btch = np.array(seg_aug_btch, dtype=np.float32)
+        # seg_aug_btch = np.array(seg_aug_btch, dtype=np.float32)
         seg_dfrmd_btch = np.array(seg_dfrmd_btch, dtype=np.float32)
+        seg_msrs_btch = np.array(seg_msrs_btch, dtype=np.float32)
 
         # - Calculate the seg measure for the current batch
-        seg_msrs_btch = calc_jaccard(R=seg_aug_btch, S=seg_dfrmd_btch)
+        # seg_msrs_btch = calc_jaccard(R=seg_aug_btch, S=seg_dfrmd_btch)
 
         # - Shuffle batch crops
         img_aug_btch, seg_dfrmd_btch, seg_msrs_btch = self._shuffle_crops(

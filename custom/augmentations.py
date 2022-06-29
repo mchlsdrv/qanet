@@ -69,19 +69,18 @@ def elastic_transform(mask, **kwargs):
 def train_augmentations(configs: dict):
     return A.Compose(
         [
-            # tr.CoarseDropout(
-            #     max_holes=COARSE_DROPOUT_MAX_HOLES,
-            #     max_height=COARSE_DROPOUT_MAX_HEIGHT,
-            #     max_width=COARSE_DROPOUT_MAX_WIDTH,
-            #     fill_value=COARSE_DROPOUT_FILL_VALUE,
-            #     p=0.5
-            # ),
+            tr.CoarseDropout(
+                max_holes=COARSE_DROPOUT_MAX_HOLES,
+                max_height=COARSE_DROPOUT_MAX_HEIGHT,
+                max_width=COARSE_DROPOUT_MAX_WIDTH,
+                fill_value=COARSE_DROPOUT_FILL_VALUE,
+                p=0.5
+            ),
             CropNonEmptyMaskIfExists(
                 height=IMAGE_SIZE,
                 width=IMAGE_SIZE,
                 p=1.
             ),
-            # A.ToGray(p=1.),
             A.CLAHE(
                 clip_limit=configs.get('clahe')['clip_limit'],
                 tile_grid_size=(configs.get('clahe')['tile_grid_size'], configs.get('clahe')['tile_grid_size']),
@@ -90,33 +89,7 @@ def train_augmentations(configs: dict):
             A.ToFloat(p=1.),
             A.OneOf([
                 A.Flip(),
-                A.RandomRotate90(),
-                # tr.GaussianBlur(
-                #     blur_limit=(3, 7),
-                #     sigma_limit=0,
-                #     p=1.
-                # ),
-                # tr.GlassBlur(
-                #     sigma=.7,
-                #     max_delta=4,
-                #     iterations=2,
-                #     p=1.
-                # ),
-                # tr.GaussNoise(
-                #     var_limit=(10., 50.),
-                #     mean=0,
-                #     p=1.
-                # ),
-                # tr.MultiplicativeNoise(
-                #     multiplier=(.9, 1.1),
-                #     elementwise=False,
-                #     p=1.
-                # ),
-                # tr.RandomBrightnessContrast(
-                #     brightness_limit=.2,
-                #     contrast_limit=.2,
-                #     p=1.
-                # )
+                A.RandomRotate90()
             ],
                 p=.5
             ),
@@ -164,7 +137,6 @@ def validation_augmentations(configs: dict):
                 width=IMAGE_SIZE,
                 p=1.
             ),
-            # A.ToGray(p=1.),
             A.CLAHE(
                 clip_limit=configs.get('clahe')['clip_limit'],
                 tile_grid_size=(configs.get('clahe')['tile_grid_size'], configs.get('clahe')['tile_grid_size']),
@@ -183,7 +155,6 @@ def inference_augmentations(configs: dict):
                 width=IMAGE_SIZE,
                 p=1.
             ),
-            # A.ToGray(p=1.),
             A.CLAHE(
                 clip_limit=configs.get('clahe')['clip_limit'],
                 tile_grid_size=(configs.get('clahe')['tile_grid_size'], configs.get('clahe')['tile_grid_size']),

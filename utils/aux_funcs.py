@@ -218,10 +218,10 @@ def get_one_hot_masks(multi_class_mask: np.ndarray, classes: np.ndarray = None):
 
     one_hot_masks = np.zeros((len(cls), *mlt_cls_mask.shape), dtype=np.float32)
     for lbl_idx, lbl in enumerate(one_hot_masks):
-        for obj_mask_idx, _ in enumerate(lbl):
-            idxs = np.argwhere(mlt_cls_mask[obj_mask_idx, ...] == cls[lbl_idx])
-            x, y = idxs[:, 0], idxs[:, 1]
-            one_hot_masks[lbl_idx, obj_mask_idx, x, y] = 1.
+        # for obj_mask_idx, _ in enumerate(lbl):
+        idxs = np.argwhere(mlt_cls_mask == cls[lbl_idx])
+        x, y = idxs[:, 0], idxs[:, 1]
+        one_hot_masks[lbl_idx, x, y] = 1.
     return one_hot_masks
 
 
@@ -231,41 +231,41 @@ def calc_jaccard(R: np.ndarray, S: np.ndarray):
     :param: R - Reference multi-class label
     :param: S - Segmentation multi-class label
     """
+    # - In case theres no other classes besides background (i.e., 0) J = 0.
+    J = 0.
 
     # - Convert the multi-label mask to multiple one-hot masks
     cls = np.unique(R.astype(np.int16))
-    R = get_one_hot_masks(multi_class_mask=R, classes=cls)
-    S = get_one_hot_masks(multi_class_mask=S, classes=cls)
 
-    # - Calculate the intersection of R and S
-    I = np.max(np.sum(np.logical_and(R[:, :, np.newaxis, ...], S[:, np.newaxis, ...]), axis=(-2, -1)), axis=-1)
-    # I = np.sum(np.logical_and(R, S), axis=(-2, -1))
+    if cls[cls > 0].any():  # <= If theres any classes besides background (i.e., 0)
+        R = get_one_hot_masks(multi_class_mask=R, classes=cls)
+        S = get_one_hot_masks(multi_class_mask=S, classes=cls)
 
-    # - Calculate the union of R and S
-    U = np.max(np.sum(np.logical_or(R[:, :, np.newaxis, ...], S[:, np.newaxis, ...]), axis=(-2, -1)), axis=-1)
-    # U = np.sum(np.logical_or(R, S), axis=(-2, -1))
+        # - Calculate the intersection of R and S
+        I_sums = np.sum(R[:, np.newaxis, ...] * S[np.newaxis, ...], axis=(-2, -1))
+        x, y = np.arange(len(I_sums)), np.argmax(I_sums, axis=1)  # <= Choose the once that have the largest overlap with the ground truth label
+        I = I_sums[x, y]
 
-    # - To avoid division by 0
-    U[U <= 0] = 1
+        # - Calculate the union of R and S
+        U_sums = np.sum(np.logical_or(R[:, np.newaxis, ...], S[np.newaxis, ...]), axis=(-2, -1))
+        U = U_sums[x, y]
 
-    # - Mean Jaccard on the valid items only
-    J = (I / U)
+        # - Mean Jaccard on the valid items only
+        U[U <= 0] = 1  # <= To avoid division by 0
+        J = (I / U)
 
-    # - Calculate the areas of the reference items
-    R_areas = R.sum(axis=(-2, -1))
+        # - Calculate the areas of the reference items
+        R_areas = R.sum(axis=(-2, -1))
+        R_areas[R_areas <= 0] = 1  # <= To avoid division by 0
 
-    # - To avoid division by 0
-    R_areas[R_areas <= 0] = 1
+        # - Find out the indices of the items which do not satisfy |I| / |R| > 0.5 and replace them with 0
+        inval = np.argwhere((I / R_areas) <= .5).reshape(-1)
 
-    # - Find out the indices of the items which do not satisfy |I| / |R| > 0.5 and replace them with 0
-    invalid_idx = np.argwhere((I / R_areas) <= .5)
-    x_inval, y_inval = invalid_idx[:, 0], invalid_idx[:, 1]
+        J[inval] = np.nan
 
-    J[x_inval, y_inval] = np.nan
+        J = np.nanmean(J)
 
-    J = np.nanmean(J, axis=0)
-
-    J = np.nan_to_num(J, copy=True, nan=0.0, posinf=0.0, neginf=0.0)
+        J = np.nan_to_num(J, copy=True, nan=0.0, posinf=0.0, neginf=0.0)
 
     return J
 
