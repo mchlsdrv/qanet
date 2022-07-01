@@ -44,12 +44,12 @@ TS = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
 
 
 if __name__ == '__main__':
-
-    wandb.init(project="QANet", entity="bio-vision-lab")
-
     # - Get the argument parser
     parser = get_arg_parser()
     args = parser.parse_args()
+
+    if args.wandb:
+        wandb.init(project="QANet", entity="bio-vision-lab")
 
     # - Create the directory for the current run
     current_run_dir = pathlib.Path(args.output_dir) / f'{TS}'
@@ -93,6 +93,7 @@ if __name__ == '__main__':
                 alpha=args.activation_leaky_relu_alpha
             )
         ),
+        wandb_callback=args.wandb,
         checkpoint_dir=pathlib.Path(args.checkpoint_dir),
         logger=logger
     )
@@ -151,10 +152,11 @@ if __name__ == '__main__':
             output_dir=current_run_dir,
             logger=logger
         )
-        wandb.config = {
-            "epochs": args.epochs,
-            "batch_size": args.batch_size
-        }
+        if args.wandb:
+            wandb.config = {
+                "epochs": args.epochs,
+                "batch_size": args.batch_size
+            }
 
         # - If the setting is to launch the tensorboard process automatically
         if tb_prc is not None:

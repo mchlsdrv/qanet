@@ -301,10 +301,10 @@ def launch_tensorboard(logdir):
     return tensorboard_th
 
 
-def get_model(model_configs, checkpoint_dir: pathlib.Path = None, logger: logging.Logger = None):
+def get_model(model_configs, checkpoint_dir: pathlib.Path = None, wandb_callback: bool = False, logger: logging.Logger = None):
     weights_loaded = False
 
-    model = RibCage(model_configs=model_configs, logger=logger)
+    model = RibCage(model_configs=model_configs, wandb_callback=wandb_callback, logger=logger)
 
     if checkpoint_dir.is_dir:
         try:
@@ -481,6 +481,8 @@ def get_arg_parser():
     parser.add_argument('--kernel_regularizer_l2', type=float, default=KERNEL_REGULARIZER_L2, help=f'The strength of the L2 regularization')
     parser.add_argument('--kernel_regularizer_factor', type=float, default=KERNEL_REGULARIZER_FACTOR, help=f'The strength of the orthogonal regularization')
     parser.add_argument('--kernel_regularizer_mode', type=str, choices=['rows', 'columns'], default=KERNEL_REGULARIZER_MODE, help=f"The mode ('columns' or 'rows') of the orthogonal regularization")
+
+    parser.add_argument('--wandb', default=False, action='store_true', help=f'If to use the weights and biases callback')
 
     return parser
 

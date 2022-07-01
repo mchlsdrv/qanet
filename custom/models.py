@@ -8,7 +8,6 @@ import numpy as np
 import tensorflow as tf
 from tensorflow import keras
 from tensorflow.keras import layers
-import matplotlib.pyplot as plt
 from configs.general_configs import (
     RIBCAGE_CONFIGS_FILE_PATH,
     OUTLIER_TH,
@@ -26,10 +25,11 @@ from utils.plotting_funcs import (
 
 
 class RibCage(keras.Model):
-    def __init__(self, model_configs: dict, logger: logging.Logger = None):
+    def __init__(self, model_configs: dict, wandb_callback: bool = False, logger: logging.Logger = None):
         super().__init__()
         self.input_image_dims = model_configs.get('input_image_dims')
         self.logger = logger
+        self.wandb = wandb_callback
         self.activation_layer = self._get_activation(configs=model_configs.get('activation'))
         self.kernel_regularizer = self._get_kernel_regularizer(configs=model_configs.get('kernel_regularizer'))
 
@@ -164,10 +164,12 @@ class RibCage(keras.Model):
 
         # - Calculate gradients
         gradients = tape.gradient(loss, trainable_vars)
-        wandb.log({"train loss": loss})
+        if self.wandb:
+            wandb.log({"train loss": loss})
 
         self.train_loss_delta = loss - self.train_loss_prev
-        wandb.log({"train loss delta": self.train_loss_delta})
+        if self.wandb:
+            wandb.log({"train loss delta": self.train_loss_delta})
         self.train_loss_prev = loss
 
         # - Update weights
@@ -185,13 +187,15 @@ class RibCage(keras.Model):
             if idx == 5:
                 break
             # train_segs = log_bboxes(image=self.train_imgs[0], mask=self.train_aug_segs[0], true_seg_measure=self.train_trgt_seg_msrs[0], pred_seg_measure=self.train_pred_seg_msrs[0], procedure='train')
-        wandb.log(data={"Train Segmentations": train_segs})
+        if self.wandb:
+            wandb.log(data={"Train Segmentations": train_segs})
 
         train_scatter_plot = plot_scatter(
             x=trgt_seg_msrs,
             y=pred_seg_msrs,
         )
-        wandb.log(data={"True vs Predicted Seg Measure (train)": wandb.Image(train_scatter_plot)})
+        if self.wandb:
+            wandb.log(data={"True vs Predicted Seg Measure (train)": wandb.Image(train_scatter_plot)})
         # plt.close(train_scatter_plot)
 
         # - Add the target seg measures to epoch history
@@ -207,7 +211,8 @@ class RibCage(keras.Model):
         train_outlier_segs = []
         for idx, (img, seg, trgt_seg_msr, pred_seg_msr) in enumerate(zip(self.train_imgs[outliers_idxs], self.train_aug_segs[outliers_idxs], trgt_seg_msrs[outliers_idxs], pred_seg_msrs[outliers_idxs])):
             train_outlier_segs.append(log_masks(image=img, mask=seg, true_seg_measure=trgt_seg_msr, pred_seg_measure=pred_seg_msr))
-        wandb.log(data={"Train Outliers": train_outlier_segs})
+        if self.wandb:
+            wandb.log(data={"Train Outliers": train_outlier_segs})
 
         # - Return the mapping metric names to current value
         return {metric.name: metric.result() for metric in self.metrics}
@@ -219,10 +224,12 @@ class RibCage(keras.Model):
         # - Compute the loss according to the predictions
         pred_seg_msrs = self.model([imgs, aug_segs], training=True)
         loss = self.compiled_loss(trgt_seg_msrs, pred_seg_msrs)
-        wandb.log({"val loss": loss})
+        if self.wandb:
+            wandb.log({"val loss": loss})
 
         self.val_loss_delta = loss - self.val_loss_prev
-        wandb.log({"val loss delta": self.val_loss_delta})
+        if self.wandb:
+            wandb.log({"val loss delta": self.val_loss_delta})
         self.val_loss_prev = loss
 
         trgt_seg_msrs = trgt_seg_msrs.numpy()
@@ -240,14 +247,15 @@ class RibCage(keras.Model):
             if idx == 5:
                 break
             # train_segs = log_bboxes(image=self.train_imgs[0], mask=self.train_aug_segs[0], true_seg_measure=self.train_trgt_seg_msrs[0], pred_seg_measure=self.train_pred_seg_msrs[0], procedure='train')
-        wandb.log(data={"Validation Segmentations": val_segs})
+        if self.wandb:
+            wandb.log(data={"Validation Segmentations": val_segs})
 
         val_scatter_plot = plot_scatter(
             x=trgt_seg_msrs,
             y=pred_seg_msrs,
         )
-        wandb.log(data={"True vs Predicted Seg Measure (validation)": wandb.Image(val_scatter_plot)})
-        # plt.close(val_scatter_plot)
+        if self.wandb:
+            wandb.log(data={"True vs Predicted Seg Measure (validation)": wandb.Image(val_scatter_plot)})
 
         # - Add the target seg measures to epoch history
         self.val_epoch_trgt_seg_msrs = np.append(self.val_epoch_trgt_seg_msrs, trgt_seg_msrs)
@@ -262,7 +270,8 @@ class RibCage(keras.Model):
         val_outlier_segs = []
         for idx, (img, seg, trgt_seg_msr, pred_seg_msr) in enumerate(zip(self.val_imgs[outliers_idxs], self.val_aug_segs[outliers_idxs], trgt_seg_msrs[outliers_idxs], pred_seg_msrs[outliers_idxs])):
             val_outlier_segs.append(log_masks(image=img, mask=seg, true_seg_measure=trgt_seg_msr, pred_seg_measure=pred_seg_msr))
-        wandb.log(data={"Validation Outliers": val_outlier_segs})
+        if self.wandb:
+            wandb.log(data={"Validation Outliers": val_outlier_segs})
 
         return {metric.name: metric.result() for metric in self.metrics}
 
