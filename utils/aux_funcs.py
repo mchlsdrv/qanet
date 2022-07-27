@@ -7,9 +7,9 @@ import albumentations as A
 import torchvision
 import yaml
 from albumentations.pytorch import ToTensorV2
-from utils.torch_logging_funcs import info_log, err_log
+from utils.logging_funcs import info_log, err_log
 
-from configs.torch_general_configs import (
+from configs.general_configs import (
     OUTPUT_DIR,
 
     EPOCHS,
@@ -43,7 +43,7 @@ import torch
 from matplotlib import pyplot as plt
 from tqdm import tqdm
 
-from configs.torch_general_configs import (
+from configs.general_configs import (
     VAL_PROP,
     LOSS,
     TRAIN_DIR,
@@ -55,17 +55,17 @@ from configs.torch_general_configs import (
     REDUCE_LR_ON_PLATEAU_FACTOR,
     REDUCE_LR_ON_PLATEAU_PATIENCE
 )
-from custom.torch_models import RibCage
+from custom.models import RibCage
 
-from utils.torch_data_utils import (
+from utils.data_utils import (
     get_data_loaders,
 )
 
-from custom.torch_augs import (
+from custom.augs import (
     train_augs,
     val_augs, test_augs
 )
-from configs.torch_general_configs import (
+from configs.general_configs import (
     MODEL_CONFIGS_FILE,
 )
 
@@ -581,7 +581,7 @@ def train_model(data_dir, epochs, args, device: str, save_dir: pathlib.Path, log
         if val_loss < best_loss:
 
             # - Save checkpoint
-            print(f'<!!> val_loss improve from {best_loss:.3f} -> {val_loss:.3f}')
+            print(f'<!!> val_loss improved from {best_loss:.3f} -> {val_loss:.3f}')
 
             # - Update the best loss
             best_loss = val_loss
@@ -628,7 +628,7 @@ def train_model(data_dir, epochs, args, device: str, save_dir: pathlib.Path, log
         val_true_seg_msr = val_true[-1]
         val_pred_seg_msr = val_pred[-1]
         print(f'''
-        Epoch {epch} Stats (train vs val):
+        Epoch {epch + 1} Stats (train vs val):
             - Loss: 
                 train - {train_loss:.4f}
                 val - {val_loss:.4f}

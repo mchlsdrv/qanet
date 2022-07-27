@@ -2,17 +2,17 @@ import os
 import datetime
 import pathlib
 
-from configs.torch_general_configs import (
+from configs.general_configs import (
     TRAIN_DIR,
     CONFIGS_DIR
 )
-from utils.torch_aux_funcs import (
+from utils.aux_funcs import (
     get_device,
     get_logger,
     get_arg_parser, train_model, test_model
 )
 
-from configs.torch_general_configs import (
+from configs.general_configs import (
     TEST_GT_DIR,
     TEST_ST_DIR,
 )

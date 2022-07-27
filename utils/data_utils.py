@@ -8,8 +8,8 @@ import numpy as np
 import pathlib
 import logging
 
-from configs.torch_general_configs import SEG_DIR_POSTFIX, IMAGE_PREFIX, SEG_PREFIX
-from custom.torch_augs import (
+from configs.general_configs import SEG_DIR_POSTFIX, IMAGE_PREFIX, SEG_PREFIX
+from custom.augs import (
     mask_augs,
 )
 
@@ -17,7 +17,7 @@ from custom.torch_augs import (
 #     get_contours,
 # )
 
-from utils.torch_logging_funcs import (
+from utils.logging_funcs import (
     info_log,
 )
 

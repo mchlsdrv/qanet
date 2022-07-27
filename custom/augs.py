@@ -12,16 +12,16 @@ from scipy.ndimage import (
 from scipy.ndimage.filters import gaussian_filter
 from scipy.ndimage.interpolation import map_coordinates
 
-from configs.torch_general_configs import (
+from configs.general_configs import (
     EROSION_SIZES,
     DILATION_SIZES,
     CLAHE_CLIP_LIMIT,
-    CLAHE_TILE_GRID_SIZE
+    CLAHE_TILE_GRID_SIZE,
+    IMAGE_WIDTH,
+    IMAGE_HEIGHT
 )
 
 __author__ = 'sidorov@post.bgu.ac.il'
-
-from configs.torch_general_configs import IMAGE_WIDTH, IMAGE_HEIGHT
 
 
 def random_erosion(mask, **kwargs):
