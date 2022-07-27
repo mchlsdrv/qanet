@@ -1,7 +1,7 @@
 conv2d_blocks:
-  block_filters: [32, 64, 128, 256]
-  block_kernel_sizes: [5, 5, 5, 5]
+  out_channels: [32, 64, 128, 256]
+  kernel_sizes: [5, 5, 5, 5]
 
-fully_connected_block:
-  layer_units: [512, 1024]
+fc_blocks:
+  out_features: [512, 1024]
   drop_rate: 0.5
