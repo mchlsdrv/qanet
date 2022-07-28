@@ -1,5 +1,3 @@
-import time
-
 import albumentations as A
 import albumentations.augmentations.transforms as tr
 import numpy as np
@@ -9,9 +7,10 @@ from scipy.ndimage import (
     grey_dilation,
     grey_erosion
 )
+import matplotlib.pyplot as plt
 from scipy.ndimage.filters import gaussian_filter
 from scipy.ndimage.interpolation import map_coordinates
-
+from PIL import Image
 from configs.general_configs import (
     EROSION_SIZES,
     DILATION_SIZES,
@@ -22,6 +21,9 @@ from configs.general_configs import (
 )
 
 __author__ = 'sidorov@post.bgu.ac.il'
+
+from utils.aux_funcs import calc_jaccard
+from utils.data_utils import scan_files
 
 
 def random_erosion(mask, **kwargs):
@@ -56,7 +58,7 @@ def elastic_transform(mask, **kwargs):
     Proc. of the International Conference on Document Analysis and
     Recognition, 2003.
     """
-    t_strt = time.time()
+    mask = np.transpose(mask, (1, 2, 0))
     seg_shp = mask.shape
     rnd_st = np.random.RandomState(None)
 
@@ -67,9 +69,12 @@ def elastic_transform(mask, **kwargs):
     dy = gaussian_filter((rnd_st.rand(*seg_shp) * 2 - 1), sgm) * alph
 
     x, y = np.meshgrid(np.arange(seg_shp[0]), np.arange(seg_shp[1]))
-    idxs = np.reshape(y + dy, (-1, 1)), np.reshape(x + dx, (-1, 1))
+    idxs = np.reshape(np.expand_dims(y, -1) + dy, (-1, 1)), np.reshape(np.expand_dims(x, -1) + dx, (-1, 1))
 
-    mask = map_coordinates(mask, idxs, order=1, mode='reflect').reshape(seg_shp)
+    mask = map_coordinates(np.reshape(mask, (-1, 1)), idxs, order=1, mode='reflect').reshape(seg_shp)
+
+    mask = np.transpose(mask, (2, 0, 1))
+
     return mask
 
 
@@ -187,3 +192,38 @@ def inference_augs():
             ToTensorV2()
         ]
     )
+
+
+def check_augs(data_dir, ):
+    files = scan_files(root_dir=data_dir, seg_dir_postfix='GT', image_prefix='t0', seg_prefix='man_seg0')
+    augs = mask_augs()
+
+    imgs = []
+    masks = []
+    mask_augs = []
+    jaccards = []
+    for img_fl, seg_fl in files:
+        img = np.array(Image.open(str(img_fl)).convert('L'), dtype=np.float32)
+        mask = np.array(Image.open(str(seg_fl)).convert('L'), dtype=np.float32)
+
+        aug_res = augs(image=img, mask=mask)
+        img_aug, mask_aug = aug_res.get('image'), aug_res.get('mask')
+
+        jaccard = calc_jaccard(mask, mask_aug)
+
+        imgs.append(img)
+        masks.append(mask)
+        mask_augs.append(mask_aug)
+        jaccards.append(jaccard)
+
+    imgs = np.array(imgs)
+    masks = np.array(masks)
+    mask_augs = np.array(mask_augs)
+    jaccards = np.array(jaccards)
+
+    for idx in range(10):
+        fig, ax = plt.subplots(1, 3)
+        ax[0].imshow(imgs[idx], cmap='gray')
+        ax[1].imshow(masks[idx], cmap='gray')
+        ax[2].imshow(mask_augs[idx], cmap='gray')
+        fig.suptitle(f'Jaccard: {jaccards[idx]:.3f}')

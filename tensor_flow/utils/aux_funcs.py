@@ -200,29 +200,29 @@ def get_train_val_idxs(n_items, val_prop):
     return train_idxs, val_idxs
 
 
-def get_one_hot_masks(multi_class_mask: np.ndarray, classes: np.ndarray = None):
-    """
-    Converts a multi-class label into a one-hot labels for each object in the multi-class label
-    :param: multi_class_mask - mask where integers represent different objects
-    """
-    # - Ensure the multi-class label is populated with int values
-    mlt_cls_mask = multi_class_mask.astype(np.int16)
-
-    # - Find the classes
-    cls = classes
-    if cls is None:
-        cls = np.unique(mlt_cls_mask)
-
-    # - Discard the background (0)
-    cls = cls[cls > 0]
-
-    one_hot_masks = np.zeros((len(cls), *mlt_cls_mask.shape), dtype=np.float32)
-    for lbl_idx, lbl in enumerate(one_hot_masks):
-        # for obj_mask_idx, _ in enumerate(lbl):
-        idxs = np.argwhere(mlt_cls_mask == cls[lbl_idx])
-        x, y = idxs[:, 0], idxs[:, 1]
-        one_hot_masks[lbl_idx, x, y] = 1.
-    return one_hot_masks
+# def get_one_hot_masks(multi_class_mask: np.ndarray, classes: np.ndarray = None):
+#     """
+#     Converts a multi-class label into a one-hot labels for each object in the multi-class label
+#     :param: multi_class_mask - mask where integers represent different objects
+#     """
+#     # - Ensure the multi-class label is populated with int values
+#     mlt_cls_mask = multi_class_mask.astype(np.int16)
+#
+#     # - Find the classes
+#     cls = classes
+#     if cls is None:
+#         cls = np.unique(mlt_cls_mask)
+#
+#     # - Discard the background (0)
+#     cls = cls[cls > 0]
+#
+#     one_hot_masks = np.zeros((len(cls), *mlt_cls_mask.shape), dtype=np.float32)
+#     for lbl_idx, lbl in enumerate(one_hot_masks):
+#         # for obj_mask_idx, _ in enumerate(lbl):
+#         idxs = np.argwhere(mlt_cls_mask == cls[lbl_idx])
+#         x, y = idxs[:, 0], idxs[:, 1]
+#         one_hot_masks[lbl_idx, x, y] = 1.
+#     return one_hot_masks
 
 
 def calc_jaccard(R: np.ndarray, S: np.ndarray):
@@ -231,15 +231,40 @@ def calc_jaccard(R: np.ndarray, S: np.ndarray):
     :param: R - Reference multi-class label
     :param: S - Segmentation multi-class label
     """
+    def _get_one_hot_masks(multi_class_mask: np.ndarray, classes: np.ndarray = None):
+        """
+        Converts a multi-class label into a one-hot labels for each object in the multi-class label
+        :param: multi_class_mask - mask where integers represent different objects
+        """
+        # - Ensure the multi-class label is populated with int values
+        mlt_cls_mask = multi_class_mask.astype(np.int16)
+
+        # - Find the classes
+        cls = classes
+        if cls is None:
+            cls = np.unique(mlt_cls_mask)
+
+        # - Discard the background (0)
+        cls = cls[cls > 0]
+
+        one_hot_masks = np.zeros((len(cls), *mlt_cls_mask.shape), dtype=np.float32)
+        for lbl_idx, lbl in enumerate(one_hot_masks):
+            # for obj_mask_idx, _ in enumerate(lbl):
+            idxs = np.argwhere(mlt_cls_mask == cls[lbl_idx])
+            x, y = idxs[:, 0], idxs[:, 1]
+            one_hot_masks[lbl_idx, x, y] = 1.
+        return one_hot_masks
+
     # - In case theres no other classes besides background (i.e., 0) J = 0.
     J = 0.
-
+    R = np.array(R)
+    S = np.array(S)
     # - Convert the multi-label mask to multiple one-hot masks
     cls = np.unique(R.astype(np.int16))
 
     if cls[cls > 0].any():  # <= If theres any classes besides background (i.e., 0)
-        R = get_one_hot_masks(multi_class_mask=R, classes=cls)
-        S = get_one_hot_masks(multi_class_mask=S, classes=cls)
+        R = _get_one_hot_masks(multi_class_mask=R, classes=cls)
+        S = _get_one_hot_masks(multi_class_mask=S, classes=cls)
 
         # - Calculate the intersection of R and S
         I_sums = np.sum(R[:, np.newaxis, ...] * S[np.newaxis, ...], axis=(-2, -1))
@@ -263,11 +288,9 @@ def calc_jaccard(R: np.ndarray, S: np.ndarray):
 
         J[inval] = np.nan
 
-        J = np.nanmean(J)
-
         J = np.nan_to_num(J, copy=True, nan=0.0, posinf=0.0, neginf=0.0)
 
-    return J
+    return J if isinstance(J, float) else J.mean()
 
 
 def check_dir(dir_path: pathlib.Path):

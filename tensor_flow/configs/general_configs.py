@@ -7,19 +7,20 @@ PROFILE = False
 
 # PATHS
 # - TRAIN -
-TRAIN_DIR = pathlib.Path('./data/train/Fluo-N2DH-SIM+')
-# TRAIN_DIR = pathlib.Path('./data/train/Fluo-N2DH-GOWT1')
+TRAIN_DIR = pathlib.Path('../../data/train/Fluo-N2DH-SIM+')
+# TRAIN_DIR = pathlib.Path('../../data/train/Fluo-N2DH-GOWT1')
 
 # - TEST -
-TEST_DIR = pathlib.Path('/media/rrtammyfs/labDatabase/CellTrackingChallenge/Training/Silver_GT/Fluo-N2DH-GOWT1-ST')
+TEST_DIR = pathlib.Path('../../data/test/Fluo-N2DH-GOWT1-ST')
+# TEST_DIR = pathlib.Path('../../data/test/Fluo-N2DH-GOWT1-GT')
 
 # - TEST -
-# INFERENCE_DIR = pathlib.Path('./data/inference/BGU-IL-Fluo-N2DH-GOWT1')
-INFERENCE_DIR = pathlib.Path('./data/inference/UNSW_AU_Fluo-N2DH-GOWT1')
-# INFERENCE_DIR = pathlib.Path('./data/inference/UNSW_AU_Fluo-N2DH-SIM+')
-# INFERENCE_DIR = pathlib.Path('./data/inference/nnUnet_Fluo-N2DH-SIM+')
-# INFERENCE_DIR = pathlib.Path('./data/inference/BGU-IL-Fluo-N2DH-GOWT1')
-# INFERENCE_DIR = pathlib.Path('./data/inference/BGU_IL_Fluo-N2DH-GOWT1(1)')
+# INFERENCE_DIR = pathlib.Path('../../data/inference/BGU-IL-Fluo-N2DH-GOWT1')
+INFERENCE_DIR = pathlib.Path('../../data/inference/UNSW_AU_Fluo-N2DH-GOWT1')
+# INFERENCE_DIR = pathlib.Path('../../data/inference/UNSW_AU_Fluo-N2DH-SIM+')
+# INFERENCE_DIR = pathlib.Path('../../data/inference/nnUnet_Fluo-N2DH-SIM+')
+# INFERENCE_DIR = pathlib.Path('../../data/inference/BGU-IL-Fluo-N2DH-GOWT1')
+# INFERENCE_DIR = pathlib.Path('../../data/inference/BGU_IL_Fluo-N2DH-GOWT1(1)')
 
 CHECKPOINT_DIR = pathlib.Path('./output/11_4_150_epochs (train)/checkpoints')
 
@@ -161,7 +162,7 @@ EARLY_STOPPING_VERBOSE = 1
 TERMINATE_ON_NAN = True
 
 # - LR Reduce
-REDUCE_LR_ON_PLATEAU = True
+REDUCE_LR_ON_PLATEAU = False
 REDUCE_LR_ON_PLATEAU_MONITOR = 'val_loss'
 REDUCE_LR_ON_PLATEAU_FACTOR = 0.5
 REDUCE_LR_ON_PLATEAU_PATIENCE = 10

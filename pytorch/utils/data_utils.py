@@ -1,5 +1,6 @@
 import os
 
+import torch
 from PIL import Image
 from torch.utils.data import Dataset, DataLoader
 import re
@@ -8,14 +9,10 @@ import numpy as np
 import pathlib
 import logging
 
-from configs.general_configs import SEG_DIR_POSTFIX, IMAGE_PREFIX, SEG_PREFIX
+from configs.general_configs import SEG_DIR_POSTFIX, IMAGE_PREFIX, SEG_PREFIX, VAL_BATCH_SIZE, TEST_BATCH_SIZE, NUM_WORKERS
 from custom.augs import (
     mask_augs,
 )
-
-# from utils.torch_image_funcs import (
-#     get_contours,
-# )
 
 from utils.logging_funcs import (
     info_log,
@@ -32,35 +29,6 @@ class ImageDS(Dataset):
         self.augs = augs
         self.mask_augs = mask_augs()
 
-    # def _clean_blanks(self):
-    #     """
-    #     Cleans all the images there theres no data, i.e., blank or only random noise
-    #     """
-    #     clean_data = []
-    #     for idx, (img, seg) in enumerate(self.imgs_segs):
-    #         bin_seg = copy(seg)
-    #
-    #         # - Find the indices of the current labels' class in the segmentation label
-    #         seg_px = np.arguer(bin_seg > 0)
-    #
-    #         # - Separate the indices into x and y coordinates
-    #         seg_pix_xs, seg_pix_ys = seg_px[:, 0], seg_px[:, 1]
-    #
-    #         # - Mark the entries at the indices that correspond to the label as '1', to produce a binary label
-    #         bin_seg[(seg_pix_xs, seg_pix_ys)] = 1
-    #
-    #         # - Images should be of type UINT8
-    #         bin_seg = bin_seg.astype(np.uint8)
-    #
-    #         # - Find the contours in the image
-    #         _, centroids = get_contours(image=bin_seg)
-    #
-    #         # - If the image has at least one contour (i.e., it is not blank or noise) - add it to the data
-    #         if centroids:
-    #             clean_data.append((img, seg))
-    #
-    #     self.imgs_segs = np.array(clean_data)
-
     def __len__(self):
         return len(self.file_tuples)
 
@@ -75,21 +43,77 @@ class ImageDS(Dataset):
         mask_aug_res = self.mask_augs(image=np.array(img), mask=np.array(mask))
         mask_aug = mask_aug_res.get('mask')
 
-        jaccard = get_jaccard(mask, mask_aug)
+        jaccard = calc_jaccard(R=mask, S=mask_aug)
 
-        return img, mask, mask_aug, jaccard
+        return img, mask, mask_aug, torch.tensor(jaccard, dtype=torch.float)
 
 
-def get_jaccard(gt, pred):
+def calc_jaccard(R: np.ndarray, S: np.ndarray):
+    """
+    Calculates the mean Jaccard coefficient for two multi-class labels
+    :param: R - Reference multi-class label
+    :param: S - Segmentation multi-class label
+    """
+    def _get_one_hot_masks(multi_class_mask: np.ndarray, classes: np.ndarray = None):
+        """
+        Converts a multi-class label into a one-hot labels for each object in the multi-class label
+        :param: multi_class_mask - mask where integers represent different objects
+        """
+        # - Ensure the multi-class label is populated with int values
+        mlt_cls_mask = multi_class_mask.astype(np.int16)
 
-    gt[gt > 0] = 1
-    pred[pred > 0] = 1
+        # - Find the classes
+        cls = classes
+        if cls is None:
+            cls = np.unique(mlt_cls_mask)
 
-    I = np.logical_and(gt, pred)
-    U = np.logical_and(gt, pred)
-    J = I.sum() / (U.sum() + 1e-8)
+        # - Discard the background (0)
+        cls = cls[cls > 0]
 
-    return J
+        one_hot_masks = np.zeros((len(cls), *mlt_cls_mask.shape), dtype=np.float32)
+        for lbl_idx, lbl in enumerate(one_hot_masks):
+            # for obj_mask_idx, _ in enumerate(lbl):
+            idxs = np.argwhere(mlt_cls_mask == cls[lbl_idx])
+            x, y = idxs[:, 0], idxs[:, 1]
+            one_hot_masks[lbl_idx, x, y] = 1.
+        return one_hot_masks
+
+    # - In case theres no other classes besides background (i.e., 0) J = 0.
+    J = 0.
+    R = np.array(R)
+    S = np.array(S)
+    # - Convert the multi-label mask to multiple one-hot masks
+    cls = np.unique(R.astype(np.int16))
+
+    if cls[cls > 0].any():  # <= If theres any classes besides background (i.e., 0)
+        R = _get_one_hot_masks(multi_class_mask=R, classes=cls)
+        S = _get_one_hot_masks(multi_class_mask=S, classes=cls)
+
+        # - Calculate the intersection of R and S
+        I_sums = np.sum(R[:, np.newaxis, ...] * S[np.newaxis, ...], axis=(-2, -1))
+        x, y = np.arange(len(I_sums)), np.argmax(I_sums, axis=1)  # <= Choose the once that have the largest overlap with the ground truth label
+        I = I_sums[x, y]
+
+        # - Calculate the union of R and S
+        U_sums = np.sum(np.logical_or(R[:, np.newaxis, ...], S[np.newaxis, ...]), axis=(-2, -1))
+        U = U_sums[x, y]
+
+        # - Mean Jaccard on the valid items only
+        U[U <= 0] = 1  # <= To avoid division by 0
+        J = (I / U)
+
+        # - Calculate the areas of the reference items
+        R_areas = R.sum(axis=(-2, -1))
+        R_areas[R_areas <= 0] = 1  # <= To avoid division by 0
+
+        # - Find out the indices of the items which do not satisfy |I| / |R| > 0.5 and replace them with 0
+        inval = np.argwhere((I / R_areas) <= .5).reshape(-1)
+
+        J[inval] = np.nan
+
+        J = np.nan_to_num(J, copy=True, nan=0.0, posinf=0.0, neginf=0.0)
+
+    return J if isinstance(J, float) else J.mean()
 
 
 def get_files_from_metadata(root_dir: str or pathlib.Path, metadata_files_regex, logger: logging.Logger = None):
@@ -144,7 +168,7 @@ def scan_files(root_dir: pathlib.Path or str, seg_dir_postfix: str, image_prefix
     return file_tuples
 
 
-def get_data_loaders(data_dir: str or pathlib.Path, batch_size: int, train_augs, val_augs, test_augs, seg_dir_postfix: str = SEG_DIR_POSTFIX, image_prefix: str = IMAGE_PREFIX, seg_prefix: str = SEG_PREFIX, val_prop: float = .2, logger: logging.Logger = None):
+def get_data_loaders(data_dir: str or pathlib.Path, train_batch_size: int, train_augs, val_augs, test_augs, seg_dir_postfix: str = SEG_DIR_POSTFIX, image_prefix: str = IMAGE_PREFIX, seg_prefix: str = SEG_PREFIX, val_prop: float = .2, logger: logging.Logger = None):
     fls = scan_files(
         root_dir=data_dir,
         seg_dir_postfix=seg_dir_postfix,
@@ -159,8 +183,8 @@ def get_data_loaders(data_dir: str or pathlib.Path, batch_size: int, train_augs,
         # - Create the DataLoader object
         train_dl = DataLoader(
             ImageDS(file_tuples=train_fls, augs=train_augs()),
-            batch_size=batch_size,
-            num_workers=2,
+            batch_size=train_batch_size,
+            num_workers=NUM_WORKERS,
             pin_memory=True,
             shuffle=True
         )
@@ -168,16 +192,16 @@ def get_data_loaders(data_dir: str or pathlib.Path, batch_size: int, train_augs,
         if val_fls is not None and len(val_fls):
             val_dl = DataLoader(
                 ImageDS(file_tuples=val_fls, augs=val_augs()),
-                batch_size=1,
-                num_workers=2,
+                batch_size=VAL_BATCH_SIZE,
+                num_workers=NUM_WORKERS,
                 pin_memory=True,
                 shuffle=True
             )
     elif test_augs is not None:
         test_dl = DataLoader(
             ImageDS(file_tuples=fls, augs=test_augs()),
-            batch_size=1,
-            num_workers=2,
+            batch_size=TEST_BATCH_SIZE,
+            num_workers=NUM_WORKERS,
             pin_memory=True,
             shuffle=True
         )

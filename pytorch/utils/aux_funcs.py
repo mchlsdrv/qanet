@@ -3,28 +3,20 @@ import logging.config
 import pickle as pkl
 from functools import partial
 
-import albumentations as A
 import torchvision
 import yaml
-from albumentations.pytorch import ToTensorV2
 from utils.logging_funcs import info_log, err_log
 
 from configs.general_configs import (
     OUTPUT_DIR,
 
     EPOCHS,
-    BATCH_SIZE,
+    TRAIN_BATCH_SIZE,
     OPTIMIZER_LR,
 
     OPTIMIZER,
     OPTIMIZER_WEIGHT_DECAY,
     OPTIMIZER_MOMENTUM_DECAY,
-
-    KERNEL_REGULARIZER_TYPE,
-    KERNEL_REGULARIZER_L1,
-    KERNEL_REGULARIZER_L2,
-    KERNEL_REGULARIZER_FACTOR,
-    KERNEL_REGULARIZER_MODE,
 
     CHECKPOINT_DIR,
     CHECKPOINT_FILE,
@@ -78,33 +70,6 @@ def save_checkpoint(state, filename='my_checkpoint.pth.tar'):
 def load_checkpoint(checkpoint, model):
     print('=> Loading checkpoint')
     model.load_state_dict(checkpoint['state_dict'])
-
-
-def get_accuracy(data_loader, model, device='cuda'):
-    num_correct = 0
-    num_pixels = 0
-    dice_score = 0.0
-    model.eval()
-
-    with torch.no_grad():
-        for img, seg, seg_aug, seg_msr in data_loader:
-            x = x.to(device=device)
-            y = y.to(device='cpu').unsqueeze(1)
-
-            preds = torch.sigmoid(model(x)).to('cpu')
-            preds = (preds > 0.5).float()
-
-            num_correct += (preds == y).sum()
-            num_pixels += torch.numel(preds)
-            acc = (num_correct / num_pixels)
-            dice_score += (2 * (preds * y).sum()) / ((preds + y).sum() + 1e-8)
-    dice_score = dice_score / len(data_loader)
-    print(f'Accuracy: {acc * 100 :.4f}%')
-    print(f'Dice Score: {dice_score:.4f}')
-
-    model.train()
-
-    return acc, dice_score
 
 
 def save_preds(data_loader, model, save_dir='./results/images', device='cuda'):
@@ -178,26 +143,72 @@ def get_runtime(seconds: float):
     return hrs_str + ':' + min_str + ':' + sec_str + '[H:M:S]'
 
 
-def get_augs(args: dict):
-    train_augs = A.Compose([
-        A.Resize(height=args.get('image_height'), width=args.get('image_width')),
-        A.Rotate(limit=35, p=1.0),
-        A.HorizontalFlip(p=0.5),
-        A.VerticalFlip(p=0.1),
-        A.CLAHE(p=1.),
-        A.ToFloat(p=1.),
-        ToTensorV2()
-    ])
+def calc_jaccard(R: np.ndarray, S: np.ndarray):
+    """
+    Calculates the mean Jaccard coefficient for two multi-class labels
+    :param: R - Reference multi-class label
+    :param: S - Segmentation multi-class label
+    """
+    def _get_one_hot_masks(multi_class_mask: np.ndarray, classes: np.ndarray = None):
+        """
+        Converts a multi-class label into a one-hot labels for each object in the multi-class label
+        :param: multi_class_mask - mask where integers represent different objects
+        """
+        # - Ensure the multi-class label is populated with int values
+        mlt_cls_mask = multi_class_mask.astype(np.int16)
 
-    val_augs = A.Compose([
-        A.Resize(height=args.get('image_height'), width=args.get('image_width')),
-        A.CLAHE(p=1.),
-        A.ToFloat(p=1.),
-        ToTensorV2()
-    ])
+        # - Find the classes
+        cls = classes
+        if cls is None:
+            cls = np.unique(mlt_cls_mask)
 
-    return train_augs, val_augs
+        # - Discard the background (0)
+        cls = cls[cls > 0]
 
+        one_hot_masks = np.zeros((len(cls), *mlt_cls_mask.shape), dtype=np.float32)
+        for lbl_idx, lbl in enumerate(one_hot_masks):
+            # for obj_mask_idx, _ in enumerate(lbl):
+            idxs = np.argwhere(mlt_cls_mask == cls[lbl_idx])
+            x, y = idxs[:, 0], idxs[:, 1]
+            one_hot_masks[lbl_idx, x, y] = 1.
+        return one_hot_masks
+
+    # - In case theres no other classes besides background (i.e., 0) J = 0.
+    J = 0.
+    R = np.array(R)
+    S = np.array(S)
+    # - Convert the multi-label mask to multiple one-hot masks
+    cls = np.unique(R.astype(np.int16))
+
+    if cls[cls > 0].any():  # <= If theres any classes besides background (i.e., 0)
+        R = _get_one_hot_masks(multi_class_mask=R, classes=cls)
+        S = _get_one_hot_masks(multi_class_mask=S, classes=cls)
+
+        # - Calculate the intersection of R and S
+        I_sums = np.sum(R[:, np.newaxis, ...] * S[np.newaxis, ...], axis=(-2, -1))
+        x, y = np.arange(len(I_sums)), np.argmax(I_sums, axis=1)  # <= Choose the once that have the largest overlap with the ground truth label
+        I = I_sums[x, y]
+
+        # - Calculate the union of R and S
+        U_sums = np.sum(np.logical_or(R[:, np.newaxis, ...], S[np.newaxis, ...]), axis=(-2, -1))
+        U = U_sums[x, y]
+
+        # - Mean Jaccard on the valid items only
+        U[U <= 0] = 1  # <= To avoid division by 0
+        J = (I / U)
+
+        # - Calculate the areas of the reference items
+        R_areas = R.sum(axis=(-2, -1))
+        R_areas[R_areas <= 0] = 1  # <= To avoid division by 0
+
+        # - Find out the indices of the items which do not satisfy |I| / |R| > 0.5 and replace them with 0
+        inval = np.argwhere((I / R_areas) <= .5).reshape(-1)
+
+        J[inval] = np.nan
+
+        J = np.nan_to_num(J, copy=True, nan=0.0, posinf=0.0, neginf=0.0)
+
+    return J if isinstance(J, float) else J.mean()
 
 def get_optimizer(params, algorithm: str, args: dict):
     optimizer = None
@@ -344,7 +355,7 @@ def get_arg_parser():
 
     # - TRAINING
     parser.add_argument('--epochs', type=int, default=EPOCHS, help='Number of epochs to train the model')
-    parser.add_argument('--batch_size', type=int, default=BATCH_SIZE, help='The number of samples in each batch')
+    parser.add_argument('--batch_size', type=int, default=TRAIN_BATCH_SIZE, help='The number of samples in each batch')
     parser.add_argument('--num_workers', type=int, default=NUM_WORKERS, help='The number of workers to load the data')
     parser.add_argument('--val_prop', type=float, default=VAL_PROP, help=f'The proportion of the data which will be set aside, and be used in the process of validation')
     parser.add_argument('--checkpoint_file', type=str, default=CHECKPOINT_FILE, help=f'The path to the file which contains the checkpoints of the model')
@@ -367,18 +378,6 @@ def get_arg_parser():
     parser.add_argument('--optimizer_nesterov', default=False, action='store_true', help=f'If to use the Nesterov momentum (SGD)')
     parser.add_argument('--optimizer_centered', default=False, action='store_true', help=f'If True, gradients are normalized by the estimated variance of the gradient; if False, by the un-centered second moment. Setting this to True may help with training, but is slightly more expensive in terms of computation and memory. (RMSprop)')
 
-    # - CALLBACKS
-    parser.add_argument('--no_drop_block', default=False, action='store_true', help=f'If to use the drop_block in the network')
-    parser.add_argument('--drop_block_keep_prob', type=float, help=f'The probability to keep the block')
-    parser.add_argument('--drop_block_block_size', type=int, help=f'The size of the block to drop')
-
-    parser.add_argument('--kernel_regularizer_type', type=str, choices=['l1', 'l2', 'l1l2'], default=KERNEL_REGULARIZER_TYPE, help=f'The type of the regularization')
-    parser.add_argument('--kernel_regularizer_l1', type=float, default=KERNEL_REGULARIZER_L1, help=f'The strength of the L1 regularization')
-    parser.add_argument('--kernel_regularizer_l2', type=float, default=KERNEL_REGULARIZER_L2, help=f'The strength of the L2 regularization')
-    parser.add_argument('--kernel_regularizer_factor', type=float, default=KERNEL_REGULARIZER_FACTOR, help=f'The strength of the orthogonal regularization')
-    parser.add_argument('--kernel_regularizer_mode', type=str, choices=['rows', 'columns'], default=KERNEL_REGULARIZER_MODE, help=f"The mode ('columns' or 'rows') of the orthogonal regularization")
-
-    parser.add_argument('--wandb', default=False, action='store_true', help=f'If to use the Weights and Biases board')
     parser.add_argument('--load_model', default=False, action='store_true', help=f'If to load the model')
 
     return parser
@@ -543,7 +542,7 @@ def train_model(data_dir, epochs, args, device: str, save_dir: pathlib.Path, log
     # - Get the data loaders
     train_data_loader, val_data_loader, _ = get_data_loaders(
         data_dir=data_dir,
-        batch_size=args.batch_size,
+        train_batch_size=args.batch_size,
         val_prop=VAL_PROP,
         train_augs=train_augs,
         val_augs=val_augs,
@@ -637,6 +636,7 @@ def train_model(data_dir, epochs, args, device: str, save_dir: pathlib.Path, log
                 val - {val_true_seg_msr:.3f} / {val_pred_seg_msr:.3f} ({100 - (val_pred_seg_msr * 100 / (val_true_seg_msr + EPSILON)):.2f}%)
         ''')
 
+        # - CALLBACKS
         # > Early Stopping
         if EARLY_STOPPING:
             if no_imprv_epchs >= EARLY_STOPPING_PATIENCE:
@@ -662,7 +662,7 @@ def train_model(data_dir, epochs, args, device: str, save_dir: pathlib.Path, log
 def test_model(model, data_dir, args, device: str, seg_dir_postfix: str, image_prefix: str, seg_prefix: str, save_dir: pathlib.Path, logger: logging.Logger = None):
     _, _, test_data_loader = get_data_loaders(
         data_dir=data_dir,
-        batch_size=1,
+        train_batch_size=0,
         train_augs=None,
         val_augs=None,
         seg_dir_postfix=seg_dir_postfix,
