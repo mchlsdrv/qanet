@@ -30,6 +30,7 @@ CHECKPOINT_DIR = pathlib.Path('./output/11_4_150_epochs (train)/checkpoints')
 OUTPUT_DIR = pathlib.Path('/media/rrtammyfs/Users/sidorov/QANet/output')
 
 TEMP_DIR = pathlib.Path('./temp')
+GEN_DATA_FILE = pathlib.Path('./gen_data/data.npy')
 # TEMP_DIR = pathlib.Path('/media/rrtammyfs/Users/sidorov/QANet/temp')
 
 CONFIGS_DIR = pathlib.Path('./configs')
@@ -41,6 +42,7 @@ MODEL_CONFIGS_FILE = CONFIGS_DIR / 'ribcage_configs.yml'
 EPSILON = 1e-7
 
 # DATA
+N_SAMPLES = 1000000
 SEG_DIR_POSTFIX = 'GT'
 IMAGE_PREFIX = 't0'
 SEG_PREFIX = 'man_seg0'
@@ -66,10 +68,10 @@ VAL_PROP = .2
 PIN_MEMORY = True
 NUM_WORKERS = 2
 
-EROSION_SIZES = (5, 10, 20)
-DILATION_SIZES = (5, 10, 20)
-OPENING_SIZES = (1, 3, 5)
-CLOSING_SIZES = (1, 3, 5)
+EROSION_SIZES = [20, 25, 30, 35, 40]
+DILATION_SIZES = [20, 25, 30, 35, 40]
+# OPENING_SIZES = (1, 3, 5)
+# CLOSING_SIZES = (1, 3, 5)
 # - Affine Transforms
 AFFINE = True
 SCALE_RANGE = (.01, .2)

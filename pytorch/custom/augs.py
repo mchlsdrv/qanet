@@ -19,11 +19,9 @@ from configs.general_configs import (
     IMAGE_WIDTH,
     IMAGE_HEIGHT
 )
+from utils import aux_funcs, data_utils
 
 __author__ = 'sidorov@post.bgu.ac.il'
-
-from utils.aux_funcs import calc_jaccard
-from utils.data_utils import scan_files
 
 
 def random_erosion(mask, **kwargs):
@@ -129,7 +127,7 @@ def mask_augs():
                     #     p=.5
                     # ),
                 ],
-                p=1.
+                p=.75
             ),
             A.ToFloat(p=1.),
             ToTensorV2()
@@ -194,8 +192,8 @@ def inference_augs():
     )
 
 
-def check_augs(data_dir, ):
-    files = scan_files(root_dir=data_dir, seg_dir_postfix='GT', image_prefix='t0', seg_prefix='man_seg0')
+def check_augs(data_dir, seg_dir_postfix='GT', image_prefix='t0', seg_prefix='man_seg0'):
+    files = data_utils.scan_files(root_dir=data_dir, seg_dir_postfix=seg_dir_postfix, image_prefix=image_prefix, seg_prefix=seg_prefix)
     augs = mask_augs()
 
     imgs = []
@@ -209,7 +207,7 @@ def check_augs(data_dir, ):
         aug_res = augs(image=img, mask=mask)
         img_aug, mask_aug = aug_res.get('image'), aug_res.get('mask')
 
-        jaccard = calc_jaccard(mask, mask_aug)
+        jaccard = aux_funcs.calc_jaccard(mask, mask_aug)
 
         imgs.append(img)
         masks.append(mask)

@@ -204,11 +204,12 @@ def calc_jaccard(R: np.ndarray, S: np.ndarray):
         # - Find out the indices of the items which do not satisfy |I| / |R| > 0.5 and replace them with 0
         inval = np.argwhere((I / R_areas) <= .5).reshape(-1)
 
-        J[inval] = np.nan
+        J[inval] = 0.0
 
-        J = np.nan_to_num(J, copy=True, nan=0.0, posinf=0.0, neginf=0.0)
+        J = J[J > 0].mean() if J[J > 0].any() else 0.0
 
-    return J if isinstance(J, float) else J.mean()
+    return J
+
 
 def get_optimizer(params, algorithm: str, args: dict):
     optimizer = None
