@@ -2,26 +2,21 @@ import albumentations as A
 import albumentations.augmentations.transforms as tr
 import numpy as np
 from albumentations.augmentations.crops.transforms import CropNonEmptyMaskIfExists
-from albumentations.pytorch import ToTensorV2
 from scipy.ndimage import (
     grey_dilation,
     grey_erosion
 )
-import matplotlib.pyplot as plt
 from scipy.ndimage.filters import gaussian_filter
 from scipy.ndimage.interpolation import map_coordinates
-from PIL import Image
-from configs.general_configs import (
-    EROSION_SIZES,
-    DILATION_SIZES,
-    CLAHE_CLIP_LIMIT,
-    CLAHE_TILE_GRID_SIZE,
-    IMAGE_WIDTH,
-    IMAGE_HEIGHT
-)
-from utils import aux_funcs, data_utils
 
 __author__ = 'sidorov@post.bgu.ac.il'
+
+EROSION_SIZES = [5, 10, 15, 20, 25]
+DILATION_SIZES = [5, 10, 15, 20, 25]
+CLAHE_CLIP_LIMIT = 2
+CLAHE_TILE_GRID_SIZE = 8
+IMAGE_WIDTH = 419
+IMAGE_HEIGHT = 419
 
 
 def random_erosion(mask, **kwargs):
@@ -96,7 +91,7 @@ def train_augs():
             ],
                 p=.5
             ),
-            ToTensorV2()
+            # ToTensorV2()
         ]
     )
 
@@ -130,7 +125,7 @@ def mask_augs():
                 p=.75
             ),
             A.ToFloat(p=1.),
-            ToTensorV2()
+            # ToTensorV2()
         ]
     )
 
@@ -149,7 +144,7 @@ def val_augs():
                 p=1.
             ),
             A.ToFloat(p=1.),
-            ToTensorV2()
+            # ToTensorV2()
         ]
     )
 
@@ -168,7 +163,7 @@ def test_augs():
                 p=1.
             ),
             A.ToFloat(p=1.),
-            ToTensorV2()
+            # ToTensorV2()
         ]
     )
 
@@ -187,41 +182,6 @@ def inference_augs():
                 p=1.
             ),
             A.ToFloat(p=1.),
-            ToTensorV2()
+            # ToTensorV2()
         ]
     )
-
-
-def check_augs(data_dir, seg_dir_postfix='GT', image_prefix='t0', seg_prefix='man_seg0'):
-    files = data_utils.scan_files(root_dir=data_dir, seg_dir_postfix=seg_dir_postfix, image_prefix=image_prefix, seg_prefix=seg_prefix)
-    augs = mask_augs()
-
-    imgs = []
-    masks = []
-    mask_augs = []
-    jaccards = []
-    for img_fl, seg_fl in files:
-        img = np.array(Image.open(str(img_fl)).convert('L'), dtype=np.float32)
-        mask = np.array(Image.open(str(seg_fl)).convert('L'), dtype=np.float32)
-
-        aug_res = augs(image=img, mask=mask)
-        img_aug, mask_aug = aug_res.get('image'), aug_res.get('mask')
-
-        jaccard = aux_funcs.calc_jaccard(mask, mask_aug)
-
-        imgs.append(img)
-        masks.append(mask)
-        mask_augs.append(mask_aug)
-        jaccards.append(jaccard)
-
-    imgs = np.array(imgs)
-    masks = np.array(masks)
-    mask_augs = np.array(mask_augs)
-    jaccards = np.array(jaccards)
-
-    for idx in range(10):
-        fig, ax = plt.subplots(1, 3)
-        ax[0].imshow(imgs[idx], cmap='gray')
-        ax[1].imshow(masks[idx], cmap='gray')
-        ax[2].imshow(mask_augs[idx], cmap='gray')
-        fig.suptitle(f'Jaccard: {jaccards[idx]:.3f}')

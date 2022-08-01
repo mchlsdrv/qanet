@@ -43,7 +43,7 @@ os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
 TS = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
 
 
-if __name__ == '__main__':
+def train():
     # - Get the argument parser
     parser = get_arg_parser()
     args = parser.parse_args()

@@ -1,22 +1,10 @@
-import os
-import datetime
 import pathlib
 
-from configs.general_configs import (
-    TRAIN_DIR,
-    CONFIGS_DIR
+from . utils.torch_utils import (
+    train_model,
+    test_model,
+    get_device
 )
-from utils.aux_funcs import (
-    get_device,
-    get_logger,
-    get_arg_parser, train_model, test_model
-)
-
-from configs.general_configs import (
-    TEST_GT_DIR,
-    TEST_ST_DIR,
-)
-
 import warnings
 
 __author__ = 'sidorov@post.bgu.ac.il'
@@ -24,62 +12,42 @@ __author__ = 'sidorov@post.bgu.ac.il'
 warnings.filterwarnings("ignore")
 
 
-if __name__ == '__main__':
-    ts = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-
-    # - Get the argument parser
-    parser = get_arg_parser()
-    args = parser.parse_args()
-
-    # - Create the directory for the current run
-    current_run_dir = pathlib.Path(args.output_dir) / f'{ts}'
-    os.makedirs(current_run_dir, exist_ok=True)
-
-    # - Configure the logger
-    logger = get_logger(
-        configs_file=CONFIGS_DIR / 'logger_configs.yml',
-        save_file=current_run_dir / f'logs.log'
-    )
-
+def run(args, save_dir, logger):
     # - Configure the GPU to run on
     device = get_device(gpu_id=args.gpu_id, logger=logger)
 
     # - Train model
     trained_model = train_model(
-        args=args,
-        data_dir=TRAIN_DIR,
+        data_file=args.train_data_file,
         epochs=args.epochs,
+        args=args,
         device=device,
-        save_dir=current_run_dir,
+        save_dir=save_dir,
         logger=logger
     )
 
     # - TEST -
     # -- GT
     # -*- Get the gold standard test data loader
-    if TEST_GT_DIR.is_dir():
+    gt_test_data_file = pathlib.Path(args.gt_test_data_file)
+    if gt_test_data_file.is_file():
         test_model(
             model=trained_model,
-            data_dir=TEST_GT_DIR,
+            data_file=gt_test_data_file,
             args=args,
             device=device,
-            seg_dir_postfix='GT',
-            image_prefix='t0',
-            seg_prefix='man_seg0',
-            save_dir=current_run_dir,
+            save_dir=save_dir,
             logger=logger
         )
     # -- ST
     # -*- Get the silver standard test data loader
-    if TEST_ST_DIR.is_dir():
+    st_test_data_file = pathlib.Path(args.st_test_data_file)
+    if st_test_data_file.is_file():
         test_model(
             model=trained_model,
-            data_dir=TEST_ST_DIR,
+            data_file=st_test_data_file,
             args=args,
             device=device,
-            seg_dir_postfix='ST',
-            image_prefix='t0',
-            seg_prefix='man_seg0',
-            save_dir=current_run_dir,
+            save_dir=save_dir,
             logger=logger
         )

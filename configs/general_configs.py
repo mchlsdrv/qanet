@@ -1,0 +1,102 @@
+import pathlib
+import torch.nn as nn
+
+__author__ = 'sidorov@post.bgu.ac.il'
+
+# TOGGLES
+DEFAULT_MODEL_LIB = 'pytorch'
+DEBUG_LEVEL = 0
+PROFILE = False
+
+# CONSTANTS
+EPSILON = 1e-7
+
+# PATHS
+# - INPUT
+RAW_DATA_DIR = pathlib.Path('../data')
+
+GEN_DATA_DIR = pathlib.Path('../data/gen_data/Fluo-N2DH-SIM+')
+
+# - TRAIN -
+# TRAIN_DATA_DIR = RAW_DATA_DIR / 'train/Fluo-N2DH-SIM+'
+TRAIN_DATA_FILE = GEN_DATA_DIR / 'train/4240_samples/data.npy'
+
+# - TEST -
+TEST_DATA_DIR = RAW_DATA_DIR / 'test/Fluo-N2DH-SIM+'
+TEST_GT_DATA_FILE = TEST_DATA_DIR / 'Fluo-N2DH-GOWT1/GT/gen_data/gt_data.npy'  # <= Gold (experts) standard test
+TEST_ST_DATA_FILE = TEST_DATA_DIR / 'Fluo-N2DH-GOWT1/ST/gen_data/st_data.npy'  # <= Gold (experts) standard test
+
+# - INFERENCE -
+INFERENCE_DATA_DIR = RAW_DATA_DIR / 'inference'
+INFERENCE_DATA_FILE = INFERENCE_DATA_DIR / 'UNSW-AU-Fluo-N2DH-GOWT1/gen_data/data.npy'
+# INFERENCE_DATA_FILE = INFERENCE_DATA_DIR / 'BGU-IL-Fluo-N2DH-GOWT1/gen_data/data_file.npy'
+# INFERENCE_DATA_FILE = INFERENCE_DATA_DIR / 'UNSW-AU-Fluo-N2DH-GOWT1/gen_data/data_file.npy'
+# INFERENCE_DATA_FILE = INFERENCE_DATA_DIR / 'UNSW-AU-Fluo-N2DH-SIM+/gen_data/data_file.npy'
+# INFERENCE_DATA_FILE = INFERENCE_DATA_DIR / 'DKFZ-GE-Fluo-N2DH-SIM+/gen_data/data_file.npy'
+# INFERENCE_DATA_FILE = INFERENCE_DATA_DIR / 'BGU-IL-Fluo-N2DH-GOWT1/gen_data/data_file.npy'
+# INFERENCE_DATA_FILE = INFERENCE_DATA_DIR / 'BGU-IL-Fluo-N2DH-GOWT1(1)/gen_data/data_file.npy'
+
+# - OUTPUT -
+OUTPUT_DIR = pathlib.Path('./output')
+
+CONFIGS_DIR = pathlib.Path('./configs')
+
+# PATHS
+MODEL_CONFIGS_FILE = CONFIGS_DIR / 'ribcage_configs.yml'
+CHECKPOINT_FILE = pathlib.Path('/media/rrtammyfs/Users/sidorov/QANet/output/2022-07-27_22-57-53/checkpoints/best_val_loss_chkpt.pth.tar')
+
+# DATA
+N_SAMPLES = 10000
+SEG_DIR_POSTFIX = 'GT'
+IMAGE_PREFIX = 't0'
+SEG_PREFIX = 'man_seg0'
+IMAGE_HEIGHT = 419
+IMAGE_WIDTH = 419
+IN_CHANNELS = 1
+OUT_CHANNELS = 1
+
+# SHUFFLE
+SHUFFLE = True
+
+# TRAINING
+TORCH_LOSS = nn.MSELoss()
+
+LOAD_MODEL = False
+EPOCHS = 10
+TRAIN_BATCH_SIZE = 32
+VAL_BATCH_SIZE = 10
+TEST_BATCH_SIZE = 5
+VAL_PROP = .2
+
+PIN_MEMORY = True
+NUM_WORKERS = 2
+
+# OPTIMIZER
+# > Arguments
+OPTIMIZER = 'adam'
+OPTIMIZER_LR = 1e-4
+OPTIMIZER_LR_DECAY = 0.001
+OPTIMIZER_BETA_1 = 0.9
+OPTIMIZER_BETA_2 = 0.999
+OPTIMIZER_WEIGHT_DECAY = 0.01
+OPTIMIZER_MOMENTUM = 0.1
+OPTIMIZER_DAMPENING = 0.01
+OPTIMIZER_MOMENTUM_DECAY = 0.01
+OPTIMIZER_RHO = 0.9
+OPTIMIZER_AMSGRAD = False
+
+# Parameters
+OPTIMIZER_MAXIMIZE = False
+OPTIMIZER_EPS = 1e-8
+OPTIMIZER_FOREACH = None
+
+# CALLBACKS
+# - Early Stopping
+EARLY_STOPPING = False
+EARLY_STOPPING_PATIENCE = 20
+
+# - LR Reduce
+REDUCE_LR_ON_PLATEAU = False
+REDUCE_LR_ON_PLATEAU_PATIENCE = 20
+REDUCE_LR_ON_PLATEAU_FACTOR = 0.5
+REDUCE_LR_ON_PLATEAU_MIN = 1e-8
