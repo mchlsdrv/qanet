@@ -7,8 +7,8 @@ import numpy as np
 
 from configs.general_configs import CONFIGS_DIR, TRAIN_DATA_FILE
 from utils.aux_funcs import get_arg_parser, get_runtime, get_logger
-from pytorch import train
-# from tensor_flow.train import train as tf_train
+from pytorch import torch_train as tr_train
+from tensor_flow import tf_train
 
 
 if __name__ == '__main__':
@@ -21,7 +21,7 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
     # - Create the directory for the current run
-    current_run_dir = pathlib.Path(args.output_dir) / f'{ts}'
+    current_run_dir = pathlib.Path(args.output_dir) / f'{args.model_lib}_{ts}'
     os.makedirs(current_run_dir, exist_ok=True)
 
     # - Configure the logger
@@ -32,15 +32,30 @@ if __name__ == '__main__':
 
     if args.train:
         if args.model_lib == 'pytorch':
-            train.run(
+            tr_train.run(
                 args=args,
-                save_dir=current_run_dir,
+                output_dir=current_run_dir,
                 logger=logger
             )
-        else:
-            pass
-            # tf_train()
+        elif args.model_lib == 'tensor_flow':
+            tf_train.run(
+                args=args,
+                output_dir=current_run_dir,
+                logger=logger
+            )
     elif args.test:
         data = np.load(str(TRAIN_DATA_FILE), allow_pickle=True)
+        if args.model_lib == 'pytorch':
+            tr_train.run(
+                args=args,
+                output_dir=current_run_dir,
+                logger=logger
+            )
+        elif args.model_lib == 'tensor_flow':
+            tf_train.run(
+                args=args,
+                output_dir=current_run_dir,
+                logger=logger
+            )
 
     print(f'== Total runtime: {get_runtime(seconds=time.time() - t_start)} ==')

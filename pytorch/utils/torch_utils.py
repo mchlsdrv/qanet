@@ -10,7 +10,7 @@ import torch
 from matplotlib import pyplot as plt
 from tqdm import tqdm
 
-import augs
+from utils import augs
 from utils.aux_funcs import data_not_found_err, check_file, get_model_configs
 from configs.general_configs import (
     VAL_PROP,
@@ -23,9 +23,9 @@ from configs.general_configs import (
     REDUCE_LR_ON_PLATEAU_PATIENCE,
     OPTIMIZER_EPS, EPSILON
 )
-from .. custom.models import RibCage
+from .. custom.torch_models import RibCage
 
-from . data_utils import (
+from . torch_data_utils import (
     get_data_loaders,
 )
 

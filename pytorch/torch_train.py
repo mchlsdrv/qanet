@@ -12,7 +12,7 @@ __author__ = 'sidorov@post.bgu.ac.il'
 warnings.filterwarnings("ignore")
 
 
-def run(args, save_dir, logger):
+def run(args, output_dir, logger):
     # - Configure the GPU to run on
     device = get_device(gpu_id=args.gpu_id, logger=logger)
 
@@ -22,7 +22,7 @@ def run(args, save_dir, logger):
         epochs=args.epochs,
         args=args,
         device=device,
-        save_dir=save_dir,
+        save_dir=output_dir,
         logger=logger
     )
 
@@ -36,18 +36,18 @@ def run(args, save_dir, logger):
             data_file=gt_test_data_file,
             args=args,
             device=device,
-            save_dir=save_dir,
+            save_dir=output_dir,
             logger=logger
         )
     # -- ST
     # -*- Get the silver standard test data loader
-    st_test_data_file = pathlib.Path(args.st_test_data_file)
-    if st_test_data_file.is_file():
-        test_model(
-            model=trained_model,
-            data_file=st_test_data_file,
-            args=args,
-            device=device,
-            save_dir=save_dir,
-            logger=logger
-        )
+    # st_test_data_file = pathlib.Path(args.st_test_data_file)
+    # if st_test_data_file.is_file():
+    #     test_model(
+    #         model=trained_model,
+    #         data_file=st_test_data_file,
+    #         args=args,
+    #         device=device,
+    #         save_dir=output_dir,
+    #         logger=logger
+    #     )

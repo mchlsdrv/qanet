@@ -9,33 +9,32 @@ import tensorflow as tf
 from tensorflow import keras
 from tensorflow.keras import layers
 from configs.general_configs import (
-    RIBCAGE_CONFIGS_FILE_PATH,
+    MODEL_CONFIGS_FILE,
     OUTLIER_TH,
 )
 
-from custom.activations import (
+from .. custom.activations import (
     Swish
 )
-from custom.callbacks import (
+from .. custom.callbacks import (
     log_masks,
 )
-from utils.plotting_funcs import (
+from utils.aux_funcs import (
     plot_scatter
 )
 
 
 class RibCage(keras.Model):
-    def __init__(self, model_configs: dict, wandb_callback: bool = False, logger: logging.Logger = None):
+    def __init__(self, model_configs: dict, logger: logging.Logger = None):
         super().__init__()
         self.input_image_dims = model_configs.get('input_image_dims')
         self.logger = logger
-        self.wandb = wandb_callback
         self.activation_layer = self._get_activation(configs=model_configs.get('activation'))
         self.kernel_regularizer = self._get_kernel_regularizer(configs=model_configs.get('kernel_regularizer'))
 
         # - Open the models' configurations file
         self.ribcage_configs = None
-        with RIBCAGE_CONFIGS_FILE_PATH.open(mode='r') as config_file:
+        with MODEL_CONFIGS_FILE.open(mode='r') as config_file:
             self.ribcage_configs = yaml.safe_load(config_file)
 
         # - Build the model
@@ -204,7 +203,7 @@ class RibCage(keras.Model):
         # - Add the modified seg measures to epoch history
         self.train_epoch_pred_seg_msrs = np.append(self.train_epoch_pred_seg_msrs, pred_seg_msrs)
 
-        # - Add the outliers, if theres any
+        # - Add the outliers, if there's any
         seg_msrs_diff = np.abs(trgt_seg_msrs - pred_seg_msrs)
         outliers_idxs = np.argwhere(seg_msrs_diff > OUTLIER_TH).flatten()
 
@@ -263,7 +262,7 @@ class RibCage(keras.Model):
         # - Add the modified seg measures to epoch history
         self.val_epoch_pred_seg_msrs = np.append(self.val_epoch_pred_seg_msrs, pred_seg_msrs)
 
-        # - Add the outliers, if theres any
+        # - Add the outliers, if there's any
         seg_msrs_diff = np.abs(trgt_seg_msrs - pred_seg_msrs)
         outliers_idxs = np.argwhere(seg_msrs_diff > OUTLIER_TH).flatten()
 

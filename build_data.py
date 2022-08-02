@@ -10,7 +10,7 @@ import numpy as np
 import pathlib
 import logging
 
-from qanet import augs
+from utils import augs
 from utils.aux_funcs import calc_jaccard, get_runtime, scan_files, plot_hist
 from configs.global_configs import (
     TRAIN_DATA_DIR,

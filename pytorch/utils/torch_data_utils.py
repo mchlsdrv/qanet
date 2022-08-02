@@ -3,7 +3,11 @@ import torch
 from torch.utils.data import Dataset, DataLoader
 import logging
 
-from configs.general_configs import SEG_DIR_POSTFIX, IMAGE_PREFIX, SEG_PREFIX, VAL_BATCH_SIZE, TEST_BATCH_SIZE, NUM_WORKERS
+from configs.general_configs import (
+    VAL_BATCH_SIZE,
+    TEST_BATCH_SIZE,
+    NUM_WORKERS
+)
 from utils.aux_funcs import get_train_val_split
 
 logging.getLogger('PIL').setLevel(logging.WARNING)
@@ -22,16 +26,16 @@ class ImageDS(Dataset):
     def __getitem__(self, index):
         img, gt_mask, aug_mask, jaccard = self.data_tuples[index]
         aug_res = self.augs(image=img.astype(np.uint8), mask=aug_mask)
-        img, mask = aug_res.get('image'), aug_res.get('mask')  #np.expand_dims(aug_res.get('mask'), 0)
+        img, mask = aug_res.get('image'), aug_res.get('mask')
         img, mask = np.expand_dims(img, 0), np.expand_dims(mask, 0)
 
         return torch.tensor(img, dtype=torch.float), torch.tensor(mask, dtype=torch.float), torch.tensor(jaccard, dtype=torch.float)
 
 
-def get_data_loaders(data: list or np.ndarray, train_batch_size: int, train_augs, val_augs, test_augs, seg_dir_postfix: str = SEG_DIR_POSTFIX, image_prefix: str = IMAGE_PREFIX, seg_prefix: str = SEG_PREFIX, val_prop: float = .2, logger: logging.Logger = None):
+def get_data_loaders(data: list or np.ndarray, train_batch_size: int, train_augs, val_augs, test_augs, val_prop: float = .2, logger: logging.Logger = None):
 
     train_dl = val_dl = test_dl = None
-    if train_augs is not None and val_augs is not None:
+    if train_batch_size > 0 and train_augs is not None and val_augs is not None:
         train_data, val_data = get_train_val_split(data_list=data, val_prop=val_prop, logger=logger)
 
         # - Create the DataLoader object
