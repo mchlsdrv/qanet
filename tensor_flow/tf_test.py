@@ -71,6 +71,7 @@ def run(args, output_dir, logger):
                 test_model(
                     model=trained_model,
                     data_file=test_data_file,
+                    args=args,
                     output_dir=output_dir,
                     logger=logger
                 )
@@ -84,6 +85,7 @@ def run(args, output_dir, logger):
                 test_model(
                     model=trained_model,
                     data_file=test_gt_data_file,
+                    args=args,
                     output_dir=output_dir,
                     logger=logger
                 )
@@ -98,6 +100,7 @@ def run(args, output_dir, logger):
                 test_model(
                     model=trained_model,
                     data_file=test_st_data_file,
+                    args=args,
                     output_dir=output_dir,
                     logger=logger
                 )

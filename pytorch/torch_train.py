@@ -29,11 +29,11 @@ def run(args, output_dir, logger):
     # - TEST -
     # -- GT
     # -*- Get the gold standard test data loader
-    gt_test_data_file = pathlib.Path(args.gt_test_data_file)
-    if gt_test_data_file.is_file():
+    test_gt_data_file = pathlib.Path(args.test_gt_data_file)
+    if test_gt_data_file.is_file():
         test_model(
             model=trained_model,
-            data_file=gt_test_data_file,
+            data_file=test_gt_data_file,
             args=args,
             device=device,
             save_dir=output_dir,
@@ -41,11 +41,11 @@ def run(args, output_dir, logger):
         )
     # -- ST
     # -*- Get the silver standard test data loader
-    # st_test_data_file = pathlib.Path(args.st_test_data_file)
-    # if st_test_data_file.is_file():
+    # test_st_data_file = pathlib.Path(args.st_test_st_data_file)
+    # if test_st_data_file.is_file():
     #     test_model(
     #         model=trained_model,
-    #         data_file=st_test_data_file,
+    #         data_file=test_st_data_file,
     #         args=args,
     #         device=device,
     #         save_dir=output_dir,

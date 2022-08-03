@@ -1,5 +1,4 @@
 import os
-import io
 from functools import partial
 import numpy as np
 import logging
@@ -8,34 +7,21 @@ import threading
 import multiprocessing as mlp
 import pathlib
 import tensorflow as tf
-import matplotlib.pyplot as plt
 
 from utils import augs
 from configs.general_configs import TF_LOSS, METRICS, TENSOR_BOARD, TENSOR_BOARD_WRITE_IMAGES, TENSOR_BOARD_WRITE_STEPS_PER_SECOND, TENSOR_BOARD_UPDATE_FREQ, PROGRESS_LOG, SCATTER_PLOT_FIGSIZE, PROGRESS_LOG_INTERVAL, TENSOR_BOARD_LAUNCH, EARLY_STOPPING, EARLY_STOPPING_MONITOR, EARLY_STOPPING_MIN_DELTA, EARLY_STOPPING_PATIENCE, EARLY_STOPPING_MODE, EARLY_STOPPING_RESTORE_BEST_WEIGHTS, EARLY_STOPPING_VERBOSE, TERMINATE_ON_NAN, REDUCE_LR_ON_PLATEAU, REDUCE_LR_ON_PLATEAU_MONITOR, \
     REDUCE_LR_ON_PLATEAU_FACTOR, REDUCE_LR_ON_PLATEAU_PATIENCE, REDUCE_LR_ON_PLATEAU_MIN_DELTA, REDUCE_LR_ON_PLATEAU_COOLDOWN, REDUCE_LR_ON_PLATEAU_MIN_LR, REDUCE_LR_ON_PLATEAU_MODE, REDUCE_LR_ON_PLATEAU_VERBOSE, CHECKPOINT, TF_CHECKPOINT_FILE_BEST_MODEL, CHECKPOINT_MONITOR, CHECKPOINT_SAVE_FREQ, CHECKPOINT_SAVE_WEIGHTS_ONLY, CHECKPOINT_MODE, CHECKPOINT_SAVE_BEST_ONLY, CHECKPOINT_VERBOSE, VAL_PROP
 from utils.aux_funcs import check_file, info_log, plot_scatter
 from . tf_data_utils import get_data_loaders
-from .. custom.tf_models import (
+from ..custom.tf_models import (
     RibCage
 )
 
-from .. custom.callbacks import (
+from ..custom.tf_callbacks import (
     ProgressLogCallback
 )
 
-
-def get_image_from_figure(figure):
-    buffer = io.BytesIO()
-
-    plt.savefig(buffer, format='png')
-
-    plt.close(figure)
-    buffer.seek(0)
-
-    image = tf.image.decode_png(buffer.getvalue(), channels=4)
-    image = tf.expand_dims(image, 0)
-
-    return image
+from .tf_data_utils import get_image_from_figure
 
 
 def get_callbacks(callback_type: str, output_dir: pathlib.Path, logger: logging.Logger = None):
@@ -200,23 +186,28 @@ def choose_gpu(gpu_id: int = 0, logger: logging.Logger = None):
     gpus = tf.config.list_physical_devices('GPU')
     if gpus:
         try:
-            if gpu_id > -1:
+            if -1 < gpu_id < len(gpus):
                 tf.config.set_visible_devices([gpus[gpu_id]], 'GPU')
                 physical_gpus = tf.config.list_physical_devices('GPU')
                 logical_gpus = tf.config.list_logical_devices('GPU')
-                if isinstance(logger, logging.Logger):
-                    logger.info(f'''
-                ====================================================
-                > Running on: {logical_gpus} (GPU #{gpu_id})
-                ====================================================
+                print(f'''
+    =================================================================================
+    = Running on: {logical_gpus} (GPU #{gpu_id}) =
+    =================================================================================
                 ''')
-            else:
-                if isinstance(logger, logging.Logger):
-                    logger.info(f'''
-                ====================================================
-                > Running on all available devices
-                ====================================================
-                    ''')
+            elif gpu_id > len(gpus) - 1:
+                print(f'''
+    ====================================
+    =       Running on all GPUs        =
+    ====================================
+                ''')
+            elif gpu_id < 0:
+                os.environ['CUDA_VISIBLE_DEVICES'] = ''
+                print(f'''
+    ====================================
+    =          Running on CPU          =
+    ====================================
+                ''')
 
         except RuntimeError as err:
             if isinstance(logger, logging.Logger):
@@ -312,7 +303,7 @@ def train_model(args, output_dir: pathlib.Path, logger: logging.Logger = None):
                     alpha=args.activation_leaky_relu_alpha
                 )
             ),
-            checkpoint_dir=pathlib.Path(args.checkpoint_dir),
+            checkpoint_dir=pathlib.Path(args.tf_checkpoint_dir),
             logger=logger
         )
 
@@ -355,7 +346,7 @@ def train_model(args, output_dir: pathlib.Path, logger: logging.Logger = None):
         )
 
         # - If the setting is to launch the tensorboard process automatically
-        if tb_prc is not None:
+        if tb_prc is not None and args.lunch_tb:
             tb_prc.start()
 
         # - Train -
@@ -368,8 +359,12 @@ def train_model(args, output_dir: pathlib.Path, logger: logging.Logger = None):
             callbacks=callbacks
         )
 
+        # -> If the setting is to launch the tensorboard process automatically
+        if tb_prc is not None and args.lunch_tb:
+            tb_prc.join()
 
-def test_model(model, data_file, output_dir: pathlib.Path, logger: logging.Logger = None):
+
+def test_model(model, data_file, args, output_dir: pathlib.Path, logger: logging.Logger = None):
     # -  Load the test data
     data = np.load(str(data_file), allow_pickle=True)
 
@@ -392,7 +387,7 @@ def test_model(model, data_file, output_dir: pathlib.Path, logger: logging.Logge
     )
 
     # -> If the setting is to launch the tensorboard process automatically
-    if tb_prc is not None:
+    if tb_prc is not None and args.lunch_tb:
         tb_prc.start()
 
     # -> Run the test
@@ -402,3 +397,7 @@ def test_model(model, data_file, output_dir: pathlib.Path, logger: logging.Logge
         verbose=1,
         callbacks=callbacks
     )
+
+    # -> If the setting is to launch the tensorboard process automatically
+    if tb_prc is not None and args.lunch_tb:
+        tb_prc.join()

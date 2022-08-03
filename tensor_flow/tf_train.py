@@ -4,7 +4,8 @@ import pathlib
 from utils.aux_funcs import err_log
 from .utils.tf_utils import (
     choose_gpu,
-    train_model, test_model,
+    train_model,
+    test_model,
 )
 
 import warnings
@@ -20,6 +21,10 @@ by changing the value of TF_CPP_MIN_LOG_LEVEL:
     3 = INFO, WARNING, and ERROR messages are not printed
 '''
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
+os.environ['TF_FORCE_GPU_ALLOW_GROWTH'] = 'true'
+
+# Run on CPU
+# os.environ['CUDA_VISIBLE_DEVICES'] = ''
 
 
 def run(args, output_dir, logger):
@@ -48,6 +53,7 @@ def run(args, output_dir, logger):
                 test_model(
                     model=trained_model,
                     data_file=test_data_file,
+                    args=args,
                     output_dir=output_dir,
                     logger=logger
                 )
@@ -63,6 +69,7 @@ def run(args, output_dir, logger):
                 test_model(
                     model=trained_model,
                     data_file=test_gt_data_file,
+                    args=args,
                     output_dir=output_dir,
                     logger=logger
                 )
@@ -78,6 +85,7 @@ def run(args, output_dir, logger):
                 test_model(
                     model=trained_model,
                     data_file=test_st_data_file,
+                    args=args,
                     output_dir=output_dir,
                     logger=logger
                 )

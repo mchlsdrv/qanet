@@ -31,6 +31,7 @@ if __name__ == '__main__':
     )
 
     if args.train:
+        print(f'\n== Running train with {args.model_lib} model ==\n')
         if args.model_lib == 'pytorch':
             tr_train.run(
                 args=args,
@@ -44,6 +45,7 @@ if __name__ == '__main__':
                 logger=logger
             )
     elif args.test:
+        print(f'\n== Running test with {args.model_lib} model ==\n')
         data = np.load(str(TRAIN_DATA_FILE), allow_pickle=True)
         if args.model_lib == 'pytorch':
             tr_train.run(
@@ -58,4 +60,4 @@ if __name__ == '__main__':
                 logger=logger
             )
 
-    print(f'== Total runtime: {get_runtime(seconds=time.time() - t_start)} ==')
+    print(f'\n== Total runtime: {get_runtime(seconds=time.time() - t_start)} ==\n')

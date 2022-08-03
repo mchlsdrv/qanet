@@ -1,3 +1,5 @@
+import io
+import matplotlib.pyplot as plt
 import numpy as np
 import tensorflow as tf
 import logging
@@ -12,22 +14,23 @@ class DataLoader(tf.keras.utils.Sequence):
     def __init__(self, data_tuples, batch_size, augs, logger: logging = None):
         self.data_tuples = data_tuples
         self.batch_size = batch_size
-        self.augs = augs
+        self.augs = augs()
         self.logger = logger
 
     def __len__(self):
         """
         > Returns the number of batches
         """
-        return int(np.floor(self.data_tuples / self.batch_size)) if self.batch_size > 0 else 0
+        return int(np.floor(len(self.data_tuples) / self.batch_size)) if self.batch_size > 0 else 0
 
     def __getitem__(self, index):
         img, _, aug_mask, jaccard = self.data_tuples[index]
         aug_res = self.augs(image=img.astype(np.uint8), mask=aug_mask)
         img, mask = aug_res.get('image'), aug_res.get('mask')
         img, mask = np.expand_dims(img, 0), np.expand_dims(mask, 0)
+        jaccard = np.array([jaccard])
 
-        return (tf.convert_to_tensor(img, dtype=tf.float32), tf.convert_to_tensor(mask, dtype=tf.float32)), tf.convert_to_tensor(jaccard, dtype=tf.float32)
+        return (tf.convert_to_tensor(img, dtype=tf.float32), tf.convert_to_tensor(mask, dtype=tf.float32)), (tf.convert_to_tensor(jaccard, dtype=tf.float32))
 
 
 def get_data_loaders(data: list or np.ndarray, train_batch_size: int, train_augs, val_augs, test_augs, val_prop: float = .2, logger: logging.Logger = None):
@@ -59,3 +62,17 @@ def get_data_loaders(data: list or np.ndarray, train_batch_size: int, train_augs
         )
 
     return train_dl, val_dl, test_dl
+
+
+def get_image_from_figure(figure):
+    buffer = io.BytesIO()
+
+    plt.savefig(buffer, format='png')
+
+    plt.close(figure)
+    buffer.seek(0)
+
+    image = tf.image.decode_png(buffer.getvalue(), channels=4)
+    image = tf.expand_dims(image, 0)
+
+    return image

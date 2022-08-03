@@ -130,18 +130,25 @@ def get_device(gpu_id: int = 0, logger: logging.Logger = None):
                 device = f'cuda:{gpu_id}'
 
                 print(f'''
-                ======================
-                = Running on {device}  =
-                ======================
+    ======================
+    = Running on {device}  =
+    ======================
                 ''')
             elif gpu_id > n_gpus - 1:
 
                 device = f'cuda'
                 print(f'''
-                =====================================
-                = Running on all the available GPUs =
-                =====================================
-                    ''')
+    ====================================
+    =       Running on all GPUs        =
+    ====================================
+                            ''')
+            elif gpu_id < 0:
+                device = 'cpu'
+                print(f'''
+    =====================================
+    = Running on all the available GPUs =
+    =====================================
+                        ''')
 
         except RuntimeError as err:
             if isinstance(logger, logging.Logger):
@@ -154,7 +161,7 @@ def train_fn(data_loader, model, optimizer, loss_fn, scaler, device: str):
     # - TRAIN
     data_loop = tqdm(data_loader)
 
-    print('\nTraining ...')
+    print('\n> Training ...')
     losses = np.array([])
     true_seg_msrs = np.array([])
     pred_seg_msrs = np.array([])
@@ -190,7 +197,7 @@ def train_fn(data_loader, model, optimizer, loss_fn, scaler, device: str):
 
 def val_fn(data_loader, model, loss_fn, device: str):
     # - VALIDATION
-    print('\nValidating ...')
+    print('\n> Validating ...')
     model.eval()
     data_loop = tqdm(data_loader)
     losses = np.array([])

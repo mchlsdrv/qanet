@@ -459,9 +459,10 @@ def get_arg_parser():
     parser.add_argument('--train', default=False, action='store_true', help=f'If to run the train procedure')
     parser.add_argument('--test', default=False, action='store_true', help=f'If to run the test procedure')
     parser.add_argument('--infer', default=False, action='store_true', help=f'If to run the inference procedure')
-    parser.add_argument('--gpu_id', type=int, choices=[gpu_id for gpu_id in range(-1, torch.cuda.device_count() - 1)], default=0 if torch.cuda.device_count() > 0 else -1, help='The ID of the GPU (if there is any) to run the network on (e.g., --gpu_id 1 will run the network on GPU #1 etc.)')
+    parser.add_argument('--gpu_id', type=int, default=0 if torch.cuda.device_count() > 0 else -1, help='The ID of the GPU (if there is any) to run the network on (e.g., --gpu_id 1 will run the network on GPU #1 etc.)')
 
     parser.add_argument('--train_continue', default=False, action='store_true', help=f'If to continue the training from the checkpoint saved at the checkpoint file')
+    parser.add_argument('--lunch_tb', default=False, action='store_true', help=f'If to lunch tensorboard')
     parser.add_argument('--train_data_file', type=str, default=TRAIN_DATA_FILE, help='The path to the train data file')
     parser.add_argument('--test_data_file', type=str, default='', help='The path to the custom test file')
     parser.add_argument('--test_gt_data_file', type=str, default=TEST_GT_DATA_FILE, help='The path to the gold standard test file')
