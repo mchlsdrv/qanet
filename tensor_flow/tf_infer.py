@@ -12,7 +12,7 @@ from . utils.tf_utils import (
 )
 
 from . utils.tf_data_utils import (
-    DataLoader,
+    get_data_loaders,
 )
 
 import warnings
@@ -38,7 +38,7 @@ def run(args, logger: logging.Logger = None):
     # -1- Build the model and optionally load the weights
     trained_model = None
     try:
-        model, weights_loaded = get_model(
+        trained_model, weights_loaded = get_model(
             model_configs=dict(
                 input_image_dims=(args.image_size, args.image_size),
                 kernel_regularizer=dict(
@@ -72,16 +72,21 @@ def run(args, logger: logging.Logger = None):
         )
 
         # - Create the DataLoader object
-        infer_dl = DataLoader(
-            data_tuples=data_tuples,
-            batch_size=1,
-            augs=inference_augs,
+        # - Get the train and the validation data loaders
+        _, _, _, inf_dl = get_data_loaders(
+            data=data_tuples,
+            train_batch_size=0,
+            val_prop=0,
+            train_augs=None,
+            val_augs=None,
+            test_augs=None,
+            inf_augs=inference_augs,
             logger=logger
         )
 
         # - Inference -
-        preds = model.infer(
-            infer_dl
+        preds = trained_model.infer(
+            inf_dl
         )
         print(preds)
         print(f'''

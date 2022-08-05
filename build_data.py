@@ -12,9 +12,9 @@ import logging
 
 from utils import augs
 from utils.aux_funcs import calc_jaccard, get_runtime, scan_files, plot_hist
-from configs.global_configs import (
+from configs.general_configs import (
     TRAIN_DATA_DIR,
-    GEN_DATA_DIR
+    GEN_DATA_DIR, RAW_DATA_DIR, TEST_DATA_DIR, INFERENCE_DATA_DIR
 )
 
 logging.getLogger('PIL').setLevel(logging.WARNING)
@@ -107,7 +107,11 @@ def build_data_file(files: list, output_dir: pathlib.Path, n_samples=N_SAMPLES, 
 def get_arg_parser():
     parser = argparse.ArgumentParser()
 
-    parser.add_argument('--raw_data_dir', type=str, default=TRAIN_DATA_DIR, help='The path to the directory where the images and corresponding masks are stored')
+    parser.add_argument('--procedure', type=str, choices=['train', 'test'], help='The type of the procedure we are interested in')
+
+    parser.add_argument('--train_data_dir', type=str, default=TRAIN_DATA_DIR, help='The path to the directory where the train images and corresponding masks are stored')
+
+    parser.add_argument('--test_data_dir', type=str, default=TEST_DATA_DIR, help='The path to the directory where the test images and corresponding masks are stored')
 
     parser.add_argument('--gen_data_dir', type=str, default=GEN_DATA_DIR, help='The path to the directory where the outputs will be placed')
 
@@ -125,8 +129,13 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
     # - Scan the files in the data dir
+    if args.procedure == 'train':
+        data_dir = args.train_data_dir
+    if args.procedure == 'test':
+        data_dir = args.test_data_dir
+
     fls = scan_files(
-        root_dir=args.raw_data_dir,
+        root_dir=data_dir,
         seg_dir_postfix=SEG_DIR_POSTFIX,
         image_prefix=IMAGE_PREFIX,
         seg_prefix=SEG_PREFIX

@@ -1,13 +1,12 @@
 import albumentations as A
 import albumentations.augmentations.transforms as tr
+import cv2
 import numpy as np
 from albumentations.augmentations.crops.transforms import CropNonEmptyMaskIfExists
 from scipy.ndimage import (
     grey_dilation,
     grey_erosion
 )
-from scipy.ndimage.filters import gaussian_filter
-from scipy.ndimage.interpolation import map_coordinates
 
 __author__ = 'sidorov@post.bgu.ac.il'
 
@@ -44,33 +43,6 @@ def random_closing(mask, **kwargs):
     return mask
 
 
-def elastic_transform(mask, **kwargs):
-    """Elastic deformation of images as described in [Simard2003]_.
-    .. [Simard2003] Simard, Steinkraus and Platt, "Best Practices for
-    Convolutional Neural Networks applied to Visual Document Analysis", in
-    Proc. of the International Conference on Document Analysis and
-    Recognition, 2003.
-    """
-    mask = np.transpose(mask, (1, 2, 0))
-    seg_shp = mask.shape
-    rnd_st = np.random.RandomState(None)
-
-    alph = seg_shp[1] * 2
-    sgm = seg_shp[1] * 0.15
-
-    dx = gaussian_filter((rnd_st.rand(*seg_shp) * 2 - 1), sgm) * alph
-    dy = gaussian_filter((rnd_st.rand(*seg_shp) * 2 - 1), sgm) * alph
-
-    x, y = np.meshgrid(np.arange(seg_shp[0]), np.arange(seg_shp[1]))
-    idxs = np.reshape(np.expand_dims(y, -1) + dy, (-1, 1)), np.reshape(np.expand_dims(x, -1) + dx, (-1, 1))
-
-    mask = map_coordinates(np.reshape(mask, (-1, 1)), idxs, order=1, mode='reflect').reshape(seg_shp)
-
-    mask = np.transpose(mask, (2, 0, 1))
-
-    return mask
-
-
 def train_augs():
     return A.Compose(
         [
@@ -79,19 +51,30 @@ def train_augs():
                 width=IMAGE_WIDTH,
                 p=1.
             ),
-            A.CLAHE(
-                clip_limit=CLAHE_CLIP_LIMIT,
-                tile_grid_size=(CLAHE_TILE_GRID_SIZE, CLAHE_TILE_GRID_SIZE),
-                p=1.
-            ),
-            A.ToFloat(p=1.),
             A.OneOf([
-                A.Flip(),
-                A.RandomRotate90()
+                A.Flip(p=0.5),
+                A.HorizontalFlip(p=0.5),
+                A.ShiftScaleRotate(
+                    shift_limit=0.0625,
+                    scale_limit=0.1,
+                    rotate_limit=45,
+                    interpolation=cv2.INTER_LANCZOS4,
+                    p=0.5
+                ),
+                A.SafeRotate(
+                    limit=90,
+                    interpolation=cv2.INTER_LANCZOS4,
+                    p=0.5
+                )
             ],
-                p=.5
+                p=.75
             ),
-            # ToTensorV2()
+            # A.CLAHE(
+            #     clip_limit=CLAHE_CLIP_LIMIT,
+            #     tile_grid_size=(CLAHE_TILE_GRID_SIZE, CLAHE_TILE_GRID_SIZE),
+            #     p=1.
+            # ),
+            A.ToFloat(p=1.),
         ]
     )
 
@@ -117,15 +100,19 @@ def mask_augs():
                         mask=random_closing,
                         p=.5
                     ),
-                    # tr.Lambda(
-                    #     mask=elastic_transform,
-                    #     p=.5
-                    # ),
+                    A.ElasticTransform(
+                        alpha=1,
+                        sigma=50,
+                        alpha_affine=50,
+                        interpolation=cv2.INTER_LANCZOS4,
+                        approximate=True,
+                        same_dxdy=True,
+                        p=0.5
+                    ),
                 ],
                 p=.75
             ),
             A.ToFloat(p=1.),
-            # ToTensorV2()
         ]
     )
 
@@ -144,7 +131,6 @@ def val_augs():
                 p=1.
             ),
             A.ToFloat(p=1.),
-            # ToTensorV2()
         ]
     )
 
@@ -163,7 +149,6 @@ def test_augs():
                 p=1.
             ),
             A.ToFloat(p=1.),
-            # ToTensorV2()
         ]
     )
 
@@ -182,6 +167,5 @@ def inference_augs():
                 p=1.
             ),
             A.ToFloat(p=1.),
-            # ToTensorV2()
         ]
     )

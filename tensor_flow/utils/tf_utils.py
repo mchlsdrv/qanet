@@ -328,13 +328,14 @@ def train_model(args, output_dir: pathlib.Path, logger: logging.Logger = None):
         )
 
         # - Get the train and the validation data loaders
-        train_dl, val_dl, _ = get_data_loaders(
+        train_dl, val_dl, _, _ = get_data_loaders(
             data=data,
             train_batch_size=args.batch_size,
             val_prop=VAL_PROP,
             train_augs=augs.train_augs,
             val_augs=augs.val_augs,
             test_augs=None,
+            inf_augs=None,
             logger=logger
         )
 
@@ -376,6 +377,7 @@ def test_model(model, data_file, args, output_dir: pathlib.Path, logger: logging
         train_augs=None,
         val_augs=None,
         test_augs=augs.test_augs,
+        inf_augs=None,
         logger=logger
     )
 

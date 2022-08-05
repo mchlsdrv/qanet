@@ -21,7 +21,7 @@ from configs.general_configs import (
     EARLY_STOPPING_PATIENCE,
     REDUCE_LR_ON_PLATEAU_FACTOR,
     REDUCE_LR_ON_PLATEAU_PATIENCE,
-    OPTIMIZER_EPS, EPSILON
+    OPTIMIZER_EPS, EPSILON, MIN_IMPROVEMENT_DELTA
 )
 from .. custom.torch_models import RibCage
 
@@ -163,8 +163,8 @@ def train_fn(data_loader, model, optimizer, loss_fn, scaler, device: str):
 
     print('\n> Training ...')
     losses = np.array([])
-    true_seg_msrs = np.array([])
-    pred_seg_msrs = np.array([])
+    abs_err_mus = np.array([])
+    abs_err_stds = np.array([])
     for btch_idx, (imgs, aug_segs, seg_msrs) in enumerate(data_loop):
         imgs = imgs.to(device=device)
         aug_segs = aug_segs.to(device=device)
@@ -183,16 +183,19 @@ def train_fn(data_loader, model, optimizer, loss_fn, scaler, device: str):
 
         # Update tqdm loop
         loss = loss.item()
-        true_seg_msr = seg_msrs.detach().cpu().numpy().mean()
-        pred_seg_msr = preds.detach().cpu().numpy().mean()
+        true_seg_msrs = seg_msrs.detach().cpu().numpy()
+        pred_seg_msrs = preds.detach().cpu().numpy()
 
-        data_loop.set_postfix(loss=loss, true_vs_pred=f'{true_seg_msr:.3f}/{pred_seg_msr:.3f}({100 - (100 * pred_seg_msr / (true_seg_msr + EPSILON)):.2f}%)')
+        abs_errs = np.abs(true_seg_msrs - pred_seg_msrs)
+        abs_err_mu, abs_err_std = abs_errs.mean(), abs_errs.std()
 
         losses = np.append(losses, loss)
-        true_seg_msrs = np.append(true_seg_msrs, true_seg_msr)
-        pred_seg_msrs = np.append(pred_seg_msrs, pred_seg_msr)
+        abs_err_mus = np.append(abs_err_mus, abs_err_mu)
+        abs_err_stds = np.append(abs_err_stds, abs_err_std)
 
-    return losses.mean(), true_seg_msrs.mean(), pred_seg_msrs.mean()
+        data_loop.set_postfix(loss=loss, batch_err=f'{abs_err_mu:.3f}+/-{abs_err_std:.4f} ({100 * abs_err_std / (abs_err_mu + EPSILON):.3f}%)')
+
+    return losses.mean(), abs_err_mus.mean(), abs_err_stds.sum() / ((len(abs_err_stds) - 1) + EPSILON)
 
 
 def val_fn(data_loader, model, loss_fn, device: str):
@@ -201,8 +204,8 @@ def val_fn(data_loader, model, loss_fn, device: str):
     model.eval()
     data_loop = tqdm(data_loader)
     losses = np.array([])
-    true_seg_msrs = np.array([])
-    pred_seg_msrs = np.array([])
+    abs_err_mus = np.array([])
+    abs_err_stds = np.array([])
     for btch_idx, (imgs, aug_masks, seg_msrs) in enumerate(data_loop):
         imgs = imgs.to(device=device)
         aug_masks = aug_masks.to(device=device)
@@ -215,18 +218,21 @@ def val_fn(data_loader, model, loss_fn, device: str):
                 loss = loss_fn(preds, seg_msrs).item()
 
         # Update tqdm loop
-        true_seg_msr = seg_msrs.detach().cpu().numpy().mean()
-        pred_seg_msr = preds.detach().cpu().numpy().mean()
+        true_seg_msrs = seg_msrs.detach().cpu().numpy()
+        pred_seg_msrs = preds.detach().cpu().numpy()
 
-        data_loop.set_postfix(loss=loss, true_vs_pred=f'{true_seg_msr:.3f}/{pred_seg_msr:.3f}({100 - (100 * pred_seg_msr / (true_seg_msr + EPSILON)):.2f}%)')
+        abs_errs = np.abs(true_seg_msrs - pred_seg_msrs)
+        abs_err_mu, abs_err_std = abs_errs.mean(), abs_errs.std()
 
         losses = np.append(losses, loss)
-        true_seg_msrs = np.append(true_seg_msrs, true_seg_msr)
-        pred_seg_msrs = np.append(pred_seg_msrs, pred_seg_msr)
+        abs_err_mus = np.append(abs_err_mus, abs_err_mu)
+        abs_err_stds = np.append(abs_err_stds, abs_err_std)
+
+        data_loop.set_postfix(loss=loss, batch_err=f'{abs_err_mu:.3f}+/-{abs_err_std:.4f} ({100 * abs_err_std / (abs_err_mu + EPSILON):.3f}%)')
 
     model.train()
 
-    return losses.mean(), true_seg_msrs.mean(), pred_seg_msrs.mean()
+    return losses.mean(), abs_err_mus.mean(), abs_err_stds.sum() / ((len(abs_err_stds) - 1) + EPSILON)
 
 
 def test_fn(data_loader, model, loss_fn, device: str):
@@ -235,8 +241,8 @@ def test_fn(data_loader, model, loss_fn, device: str):
     model.eval()
     data_loop = tqdm(data_loader)
     losses = np.array([])
-    true_seg_msrs = np.array([])
-    pred_seg_msrs = np.array([])
+    abs_err_mus = np.array([])
+    abs_err_stds = np.array([])
     for btch_idx, (imgs, _, aug_masks, seg_msrs) in enumerate(data_loop):
         imgs = imgs.to(device=device)
         aug_masks = aug_masks.to(device=device)
@@ -249,18 +255,21 @@ def test_fn(data_loader, model, loss_fn, device: str):
                 loss = loss_fn(preds, seg_msrs).item()
 
         # Update tqdm loop
-        true_seg_msr = seg_msrs.detach().cpu().numpy().mean()
-        pred_seg_msr = preds.detach().cpu().numpy().mean()
+        true_seg_msrs = seg_msrs.detach().cpu().numpy()
+        pred_seg_msrs = preds.detach().cpu().numpy()
 
-        data_loop.set_postfix(loss=loss, true_vs_pred=f'{true_seg_msr:.3f}/{pred_seg_msr:.3f}({100 - (100 * pred_seg_msr / (true_seg_msr + EPSILON)):.2f}%)')
+        abs_errs = np.abs(true_seg_msrs - pred_seg_msrs)
+        abs_err_mu, abs_err_std = abs_errs.mean(), abs_errs.std()
 
         losses = np.append(losses, loss)
-        true_seg_msrs = np.append(true_seg_msrs, true_seg_msr)
-        pred_seg_msrs = np.append(pred_seg_msrs, pred_seg_msr)
+        abs_err_mus = np.append(abs_err_mus, abs_err_mu)
+        abs_err_stds = np.append(abs_err_stds, abs_err_std)
+
+        data_loop.set_postfix(loss=loss, batch_err=f'{abs_err_mu:.3f} +/- {abs_err_std:.4f}({100 - (100 * abs_err_std / (abs_err_mu + EPSILON)):.3f}%)')
 
     model.train()
 
-    return losses.mean(), true_seg_msrs.mean(), pred_seg_msrs.mean()
+    return losses.mean(), abs_err_mus.mean(), abs_err_stds.sum() / ((len(abs_err_stds) - 1) + EPSILON)
 
 
 def train_model(data_file, epochs, args, device: str, save_dir: pathlib.Path, logger: logging.Logger = None):
@@ -332,32 +341,36 @@ def train_model(data_file, epochs, args, device: str, save_dir: pathlib.Path, lo
         no_imprv_epchs = 0
 
         train_losses = np.array([])
-        train_true = np.array([])
-        train_pred = np.array([])
+        train_err_mus = np.array([])
+        train_err_stds = np.array([])
 
         val_losses = np.array([])
-        val_true = np.array([])
-        val_pred = np.array([])
+        val_err_mus = np.array([])
+        val_err_stds = np.array([])
 
         scaler = torch.cuda.amp.GradScaler()
         for epch in range(epochs):
             print(f'\n== Epoch: {epch + 1}/{args.epochs} ({100 * (epch + 1) / args.epochs:.2f}% done) ==')
 
-            train_loss, train_true_mean, train_pred_mean = train_fn(data_loader=train_data_loader, model=model, optimizer=optimizer, loss_fn=TORCH_LOSS, scaler=scaler, device=device)
-            train_losses = np.append(train_losses, train_loss)
-            train_true = np.append(train_true, train_true_mean)
-            train_pred = np.append(train_pred, train_pred_mean)
+            train_loss, train_err_mu, train_err_std = train_fn(data_loader=train_data_loader, model=model, optimizer=optimizer, loss_fn=TORCH_LOSS, scaler=scaler, device=device)
 
-            val_loss, val_true_mean, val_pred_mean = val_fn(data_loader=val_data_loader, model=model, loss_fn=TORCH_LOSS, device=device)
+            # - Add train history
+            train_losses = np.append(train_losses, train_loss)
+            train_err_mus = np.append(train_err_mus, train_err_mu)
+            train_err_stds = np.append(train_err_stds, train_err_std)
+
+            val_loss, val_err_mu, val_err_std = val_fn(data_loader=val_data_loader, model=model, loss_fn=TORCH_LOSS, device=device)
+
+            # - Add val history
             val_losses = np.append(val_losses, val_loss)
-            val_true = np.append(val_true, val_true_mean)
-            val_pred = np.append(val_pred, val_pred_mean)
+            val_err_mus = np.append(val_err_mus, val_err_mu)
+            val_err_stds = np.append(val_err_stds, val_err_std)
 
             # - Save the best model
-            if val_loss < best_loss:
+            if val_loss < best_loss - MIN_IMPROVEMENT_DELTA:
 
                 # - Save checkpoint
-                print(f'<!!> val_loss improved from {best_loss:.3f} -> {val_loss:.3f}')
+                print(f'<!!> val_loss improved by delta > {MIN_IMPROVEMENT_DELTA}, from {best_loss} to {val_loss}!')
 
                 # - Update the best loss
                 best_loss = val_loss
@@ -372,45 +385,53 @@ def train_model(data_file, epochs, args, device: str, save_dir: pathlib.Path, lo
                 no_imprv_epchs = 0
 
             else:
-                print(f'<!> val_loss ({val_loss:.3f}) did not improved from the last best_loss value ({best_loss:.3f})')
+                print(f'<!> val_loss ({val_loss:.6f}) did not improved from the last best_loss value ({best_loss:.6f})')
 
                 # - Increase the non-improvement counter
                 no_imprv_epchs += 1
 
             # - Plot progress
-            fig, ax = plt.subplots()
-
             # - Loss
+            fig, ax = plt.subplots()
             ax.plot(np.arange(epch + 1), train_losses, color='g', label='Train loss')
-            ax.plot(np.arange(epch + 1), val_losses, color='r', label='Validation loss')
-
-            # - Seg measure
-            ax.plot(np.arange(epch + 1), train_true, color='g', marker='<', label='Train true seg measure')
-            ax.plot(np.arange(epch + 1), train_pred, color='r', marker='<', label='Train predicted seg measure')
-            ax.plot(np.arange(epch + 1), val_true, color='g', marker='o', label='Validation true seg measure')
-            ax.plot(np.arange(epch + 1), val_pred, color='r', marker='o', label='Validation predicted seg measure')
+            ax.plot(np.arange(epch + 1), val_losses, color='r', label='Val loss')
 
             plt.legend()
-            plt.savefig(f'{plots_dir}/train_stats.png')
+            plt.savefig(f'{plots_dir}/train_val_loss.png')
+            plt.close(fig)
+
+            # - Seg measure mean error
+            fig, ax = plt.subplots()
+            ax.plot(np.arange(epch + 1), train_err_mus, color='g', label='Train E[error]')
+            ax.plot(np.arange(epch + 1), val_err_mus, color='r', label='Val E[error]')
+            # ax.errorbar(np.arange(epch + 1), train_err_mus, yerr=train_err_stds, color='g', marker='<', label='Train mean seg measure error ')
+            # ax.errorbar(np.arange(epch + 1), val_err_mus, yerr=val_err_stds, color='r', marker='o', label='Train mean seg measure error ')
+
+            plt.legend()
+            plt.savefig(f'{plots_dir}/train_val_err_mu_std.png')
+            plt.close(fig)
 
             # - Print stats
             # -> loss
             train_loss = train_losses[-1]
             val_loss = val_losses[-1]
+
             # -> train seg measure
-            train_pred_seg_msr = train_pred[-1]
-            train_true_seg_msr = train_true[-1]
+            train_last_err_mu = train_err_mus[-1]
+            train_last_err_std = train_err_stds[-1]
+
             # -> val seg measure
-            val_true_seg_msr = val_true[-1]
-            val_pred_seg_msr = val_pred[-1]
+            val_last_err_mu = val_err_mus[-1]
+            val_last_err_std = val_err_stds[-1]
+
             print(f'''
-            Epoch {epch + 1} Stats (train vs val):
-                - Loss: 
-                    train - {train_loss:.4f}
-                    val - {val_loss:.4f}
-                - Seg Measure: 
-                    train - {train_true_seg_msr:.3f} / {train_pred_seg_msr:.3f} ({100 - (train_pred_seg_msr.mean() * 100 / (train_true_seg_msr + EPSILON)):.2f}%)
-                    val - {val_true_seg_msr:.3f} / {val_pred_seg_msr:.3f} ({100 - (val_pred_seg_msr * 100 / (val_true_seg_msr + EPSILON)):.2f}%)
+    Epoch {epch + 1} Stats (train vs val):
+        - Loss: 
+            train - {train_loss:.6f}
+            val - {val_loss:.6f}
+        - Seg Measure Error: 
+            train - {train_err_mu:.4f} +/- {train_last_err_std:.5f} ({100 - (train_last_err_std * 100 / (train_last_err_mu + EPSILON)):.3f}%)
+            val - {val_err_mu:.4f} +/- {val_last_err_std:.5f} ({100 - (val_last_err_std * 100 / (val_last_err_mu + EPSILON)):.3f}%)
             ''')
 
             # - CALLBACKS
@@ -419,6 +440,9 @@ def train_model(data_file, epochs, args, device: str, save_dir: pathlib.Path, lo
                 if no_imprv_epchs >= EARLY_STOPPING_PATIENCE:
                     print(f'<x> No improvement was recorded for {EARLY_STOPPING_PATIENCE} epochs - stopping the training!')
                     break
+                else:
+                    if no_imprv_epchs > 0:
+                        print(f'<!> {no_imprv_epchs}/{EARLY_STOPPING_PATIENCE} of epochs without improvement recorded (i.e, stopping the training when counter reaches {EARLY_STOPPING_PATIENCE} consecutive epochs with improvements < {MIN_IMPROVEMENT_DELTA})!')
 
             # > LR Reduction on Plateau
             if REDUCE_LR_ON_PLATEAU:
@@ -426,12 +450,12 @@ def train_model(data_file, epochs, args, device: str, save_dir: pathlib.Path, lo
                     lr = optimizer.param_groups[0]['lr']
                     new_lr = REDUCE_LR_ON_PLATEAU_FACTOR * lr
                     if new_lr < REDUCE_LR_ON_PLATEAU_MIN:
-                        print(f'<x> The lr ({new_lr:.3f}) was reduced beyond its smallest possible value ({REDUCE_LR_ON_PLATEAU_MIN:.3f}) - stopping the training!')
+                        print(f'<x> The lr ({new_lr}) was reduced beyond its smallest possible value ({REDUCE_LR_ON_PLATEAU_MIN}) - stopping the training!')
                         break
 
                     optimizer.param_groups[0]['lr'] = new_lr
 
-                    print(f'<!> No improvement was recorded for {REDUCE_LR_ON_PLATEAU_PATIENCE} epochs - reducing lr by factor {REDUCE_LR_ON_PLATEAU_FACTOR:.3f}, from {lr:.3f} -> {new_lr:.3f}!')
+                    print(f'<!> No improvement was recorded for {REDUCE_LR_ON_PLATEAU_PATIENCE} epochs - reducing lr by factor {REDUCE_LR_ON_PLATEAU_FACTOR}, from {lr} -> {new_lr}!')
     else:
         data_not_found_err(data_file=data_file, logger=logger)
 
@@ -456,11 +480,11 @@ def test_model(model, data_file: str or pathlib.Path, args, device: str, save_di
         loss, true_seg_msrs, pred_seg_msrs = test_fn(data_loader=test_data_loader, model=model, loss_fn=TORCH_LOSS, device=device)
 
         print(f'''
-        Test Results (on files from \'{data_file}\' dir):
-            Loss: 
-                - {loss:.4f}
-            Seg Measure: 
-                - {true_seg_msrs:.3f} / {pred_seg_msrs:.3f} ({100 - (pred_seg_msrs * 100 / (true_seg_msrs + EPSILON)):.2f}%)
+    Test Results (on files from \'{data_file}\' dir):
+        Loss: 
+            - {loss:.6f}
+        Seg Measure: 
+            - {true_seg_msrs:.4f} / {pred_seg_msrs:.4f} ({100 - (pred_seg_msrs * 100 / (true_seg_msrs + EPSILON)):.2f}%)
         ''')
     else:
         data_not_found_err(data_file=data_file, logger=logger)
