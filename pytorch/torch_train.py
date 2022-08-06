@@ -1,9 +1,9 @@
 import pathlib
 
+from .utils.torch_aux import get_device
 from . utils.torch_utils import (
     train_model,
     test_model,
-    get_device
 )
 import warnings
 

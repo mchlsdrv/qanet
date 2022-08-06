@@ -125,11 +125,11 @@ def val_augs():
                 width=IMAGE_WIDTH,
                 p=1.
             ),
-            A.CLAHE(
-                clip_limit=CLAHE_CLIP_LIMIT,
-                tile_grid_size=(CLAHE_TILE_GRID_SIZE, CLAHE_TILE_GRID_SIZE),
-                p=1.
-            ),
+            # A.CLAHE(
+            #     clip_limit=CLAHE_CLIP_LIMIT,
+            #     tile_grid_size=(CLAHE_TILE_GRID_SIZE, CLAHE_TILE_GRID_SIZE),
+            #     p=1.
+            # ),
             A.ToFloat(p=1.),
         ]
     )
@@ -143,11 +143,11 @@ def test_augs():
                 width=IMAGE_WIDTH,
                 p=1.
             ),
-            A.CLAHE(
-                clip_limit=CLAHE_CLIP_LIMIT,
-                tile_grid_size=(CLAHE_TILE_GRID_SIZE, CLAHE_TILE_GRID_SIZE),
-                p=1.
-            ),
+            # A.CLAHE(
+            #     clip_limit=CLAHE_CLIP_LIMIT,
+            #     tile_grid_size=(CLAHE_TILE_GRID_SIZE, CLAHE_TILE_GRID_SIZE),
+            #     p=1.
+            # ),
             A.ToFloat(p=1.),
         ]
     )
@@ -161,11 +161,11 @@ def inference_augs():
                 width=IMAGE_WIDTH,
                 p=1.
             ),
-            A.CLAHE(
-                clip_limit=CLAHE_CLIP_LIMIT,
-                tile_grid_size=(CLAHE_TILE_GRID_SIZE, CLAHE_TILE_GRID_SIZE),
-                p=1.
-            ),
+            # A.CLAHE(
+            #     clip_limit=CLAHE_CLIP_LIMIT,
+            #     tile_grid_size=(CLAHE_TILE_GRID_SIZE, CLAHE_TILE_GRID_SIZE),
+            #     p=1.
+            # ),
             A.ToFloat(p=1.),
         ]
     )

@@ -1,28 +1,27 @@
-import logging.config
-from functools import partial
-
 import logging
 import os
 import pathlib
 
+import cv2
 import numpy as np
 import torch
 from matplotlib import pyplot as plt
 from tqdm import tqdm
 
 from utils import augs
-from utils.aux_funcs import data_not_found_err, check_file, get_model_configs
+from utils.augs import inference_augs
+from utils.aux_funcs import data_not_found_err, check_file, get_model_configs, scan_files
 from configs.general_configs import (
     VAL_PROP,
     TORCH_LOSS,
-    REDUCE_LR_ON_PLATEAU_MIN,
-    REDUCE_LR_ON_PLATEAU,
-    EARLY_STOPPING,
-    EARLY_STOPPING_PATIENCE,
-    REDUCE_LR_ON_PLATEAU_FACTOR,
-    REDUCE_LR_ON_PLATEAU_PATIENCE,
-    OPTIMIZER_EPS, EPSILON, MIN_IMPROVEMENT_DELTA, LR_REDUCTION_SCHEDULER, LR_REDUCTION_SCHEDULER_PATIENCE, LR_REDUCTION_SCHEDULER_FACTOR, LR_REDUCTION_SCHEDULER_MIN
+    EPSILON,
+    MIN_IMPROVEMENT_DELTA,
+    SEG_PREFIX,
+    SEG_DIR_POSTFIX,
+    IMAGE_PREFIX
 )
+from .torch_aux import load_checkpoint
+from .torch_train_utils import get_optimizer, save_checkpoint_on_improvement, lr_reduction_scheduler, early_stopping, reduce_lr_on_plateau
 from .. custom.torch_models import RibCage
 
 from . torch_data_utils import (
@@ -36,183 +35,6 @@ from configs.general_configs import (
 # - Global Variables
 stop_training = False
 best_loss = np.inf
-
-
-def save_checkpoint(state, filename='my_checkpoint.pth.tar'):
-    print('=> Saving checkpoint')
-    torch.save(state, filename)
-
-
-def load_checkpoint(checkpoint, model):
-    print('=> Loading checkpoint')
-    model.load_state_dict(checkpoint['state_dict'])
-
-
-def get_optimizer(params, algorithm: str, args: dict):
-    optimizer = None
-    if algorithm == 'sgd':
-        optimizer = partial(
-            torch.optim.SGD,
-            params=params,
-            momentum=args.get('momentum'),
-            weight_decay=args.get('weight_decay'),
-            nesterov=args.get('nesterov'),
-            eps=OPTIMIZER_EPS,
-        )
-    elif algorithm == 'adam':
-        optimizer = partial(
-            torch.optim.Adam,
-            params=params,
-            betas=args.get('betas'),
-            weight_decay=args.get('weight_decay'),
-            amsgrad=args.get('amsgrad'),
-            eps=OPTIMIZER_EPS,
-        )
-    elif algorithm == 'adamw':
-        optimizer = partial(
-            torch.optim.AdamW,
-            params=params,
-            betas=args.get('betas'),
-            weight_decay=args.get('weight_decay'),
-            amsgrad=args.get('amsgrad'),
-            eps=OPTIMIZER_EPS,
-        )
-    elif algorithm == 'sparse_adam':
-        optimizer = partial(
-            torch.optim.SparseAdam,
-            params=params,
-            betas=args.get('betas'),
-            eps=OPTIMIZER_EPS,
-        )
-    elif algorithm == 'nadam':
-        optimizer = partial(
-            torch.optim.NAdam,
-            params=params,
-            betas=args.get('betas'),
-            weight_decay=args.get('weight_decay'),
-            momentum_decay=args.get('momentum_decay'),
-            eps=OPTIMIZER_EPS,
-        )
-    elif algorithm == 'adamax':
-        optimizer = partial(
-            torch.optim.Adamax,
-            params=params,
-            betas=args.get('betas'),
-            weight_decay=args.get('weight_decay'),
-            eps=OPTIMIZER_EPS,
-        )
-    elif algorithm == 'adadelta':
-        optimizer = partial(
-            torch.optim.Adadelta,
-            params=params,
-            rho=args.get('rho'),
-            weight_decay=args.get('weight_decay'),
-            eps=OPTIMIZER_EPS,
-        )
-    elif algorithm == 'adagrad':
-        optimizer = partial(
-            torch.optim.Adadelta,
-            params=params,
-            lr_decay=args.get('lr_decay'),
-            weight_decay=args.get('weight_decay'),
-            eps=OPTIMIZER_EPS,
-        )
-    return optimizer(lr=args.get('lr'))
-
-
-def get_device(gpu_id: int = 0, logger: logging.Logger = None):
-    n_gpus = torch.cuda.device_count()
-
-    print('Available GPUs:')
-    print(f'\t- Number of GPUs: {n_gpus}')
-    device = 'cpu'
-    if n_gpus > 0:
-        try:
-            if -1 < gpu_id < n_gpus - 1:
-                print(f'Setting GPU to: {gpu_id}')
-
-                device = f'cuda:{gpu_id}'
-
-                print(f'''
-    ======================
-    = Running on {device}  =
-    ======================
-                ''')
-            elif gpu_id > n_gpus - 1:
-
-                device = f'cuda'
-                print(f'''
-    ====================================
-    =       Running on all GPUs        =
-    ====================================
-                            ''')
-            elif gpu_id < 0:
-                device = 'cpu'
-                print(f'''
-    =====================================
-    = Running on all the available GPUs =
-    =====================================
-                        ''')
-
-        except RuntimeError as err:
-            if isinstance(logger, logging.Logger):
-                logger.exception(err)
-
-    return device
-
-
-# - CALLBACKS
-# > Save Checkpoint on Improvement
-def save_checkpoint_on_improvement(model, optimizer, output_dir: pathlib.Path):
-    chckpnt = dict(
-        state_dict=model.state_dict(),
-        optimizer=optimizer.state_dict(),
-    )
-    save_checkpoint(state=chckpnt, filename=str(output_dir / f'best_val_loss_chkpt.pth.tar'))
-
-
-# > Early Stopping
-def early_stopping(no_improvement_epochs: int):
-    if EARLY_STOPPING:
-        if no_improvement_epochs >= EARLY_STOPPING_PATIENCE:
-            print(f'<x> No improvement was recorded for {EARLY_STOPPING_PATIENCE} epochs - stopping the training!')
-            STOP_TRAINING = True
-        else:
-            if no_improvement_epochs > 0:
-                print(f'<!> {no_improvement_epochs}/{EARLY_STOPPING_PATIENCE} of epochs without improvement recorded (i.e, stopping the training when counter reaches {EARLY_STOPPING_PATIENCE} consecutive epochs with improvements < {MIN_IMPROVEMENT_DELTA})!')
-
-
-# > LR Reduction on Plateau
-def reduce_lr_on_plateau(no_improvement_epochs: int, optimizer):
-    global stop_training
-
-    if REDUCE_LR_ON_PLATEAU:
-        if no_improvement_epochs >= REDUCE_LR_ON_PLATEAU_PATIENCE:
-            lr = optimizer.param_groups[0]['lr']
-            new_lr = REDUCE_LR_ON_PLATEAU_FACTOR * lr
-            if new_lr < REDUCE_LR_ON_PLATEAU_MIN:
-                print(f'<x> The lr ({new_lr}) was reduced beyond its smallest possible value ({REDUCE_LR_ON_PLATEAU_MIN}) - stopping the training!')
-                stop_training = True
-
-            optimizer.param_groups[0]['lr'] = new_lr
-
-            print(f'<!> No improvement was recorded for {REDUCE_LR_ON_PLATEAU_PATIENCE} epochs - reducing lr by factor {REDUCE_LR_ON_PLATEAU_FACTOR}, from {lr} -> {new_lr}!')
-
-
-def lr_reduction_scheduler(epoch: int, optimizer):
-    global stop_training
-
-    if LR_REDUCTION_SCHEDULER:
-        if epoch in LR_REDUCTION_SCHEDULER_PATIENCE:
-            lr = optimizer.param_groups[0]['lr']
-            new_lr = LR_REDUCTION_SCHEDULER_FACTOR * lr
-            if new_lr < LR_REDUCTION_SCHEDULER_MIN:
-                print(f'<x> The lr ({new_lr}) was reduced beyond its smallest possible value ({LR_REDUCTION_SCHEDULER_MIN}) - stopping the training!')
-                stop_training = True
-
-            optimizer.param_groups[0]['lr'] = new_lr
-
-            print(f'<!> Reducing learning rate after epoch {epoch} > {LR_REDUCTION_SCHEDULER_PATIENCE} epochs - reducing lr by factor {LR_REDUCTION_SCHEDULER_FACTOR}, from {lr} -> {new_lr}!')
 
 
 def train_fn(data_loader, model, optimizer, loss_fn, scaler, device: str):
@@ -296,41 +118,54 @@ def val_fn(data_loader, model, loss_fn, device: str):
     return losses.mean(), abs_err_mus.mean(), abs_err_stds.sum() / ((len(abs_err_stds) - 1) + EPSILON)
 
 
-def test_fn(data_loader, model, loss_fn, device: str):
+def inf_fn(data_files: np.ndarray or list, model, device: str, output_dir: pathlib.Path):
     # - VALIDATION
-    print('\nTesting ...')
+    print('\n> Running Inference ...')
     model.eval()
-    data_loop = tqdm(data_loader)
-    losses = np.array([])
-    abs_err_mus = np.array([])
-    abs_err_stds = np.array([])
-    for btch_idx, (imgs, _, aug_masks, seg_msrs) in enumerate(data_loop):
-        imgs = imgs.to(device=device)
-        aug_masks = aug_masks.to(device=device)
-        seg_msrs = seg_msrs.unsqueeze(1).to(device=device)
+
+    data_loop = tqdm(data_files)
+
+    preds = np.array([])
+
+    inf_augs = inference_augs()
+
+    for idx, (img_fl, mask_fl) in enumerate(data_loop):
+
+        # - Load the image and the corresponding mask
+        img = cv2.imread(img_fl, -1).to(device=device)
+        seg = cv2.imread(mask_fl, -1).to(device=device)
+
+        # - Augment the image and the mask
+        augs = inf_augs(image=img, mask=mask)
+        img, mask = augs.get('image'), augs.get('mask')
 
         with torch.no_grad():
             # Forward pass
             with torch.cuda.amp.autocast():
-                preds = model(image=imgs, mask=aug_masks)
-                loss = loss_fn(preds, seg_msrs).item()
+                pred = model(image=img, mask=mask)
 
-        # Update tqdm loop
-        true_seg_msrs = seg_msrs.detach().cpu().numpy()
-        pred_seg_msrs = preds.detach().cpu().numpy()
+        pred = pred.item()
+        preds = np.append(preds, pred)
 
-        abs_errs = np.abs(true_seg_msrs - pred_seg_msrs)
-        abs_err_mu, abs_err_std = abs_errs.mean(), abs_errs.std()
+        # - Plot preds
+        fig, ax = plt.subplots(1, 2, figsize=(10, 15))
+        ax[0].imshow(img, cmap='gray')
+        ax[1].imshow(seg, cmap='gray')
+        fig.suptitle(f'Estimated Seg Measure: {pred:4f}')
+        plt.savefig(output_dir / f'{idx}.png')
+        plt.close(fig)
 
-        losses = np.append(losses, loss)
-        abs_err_mus = np.append(abs_err_mus, abs_err_mu)
-        abs_err_stds = np.append(abs_err_stds, abs_err_std)
-
-        data_loop.set_postfix(loss=loss, batch_err=f'{abs_err_mu:.3f} +/- {abs_err_std:.4f}({100 - (100 * abs_err_std / (abs_err_mu + EPSILON)):.3f}%)')
+        # - Update the progress bar
+        data_loop.set_postfix(prediction=f'{pred:.4f}')
 
     model.train()
 
-    return losses.mean(), abs_err_mus.mean(), abs_err_stds.sum() / ((len(abs_err_stds) - 1) + EPSILON)
+    print(f'''
+    ======================================
+    Final Preds:
+        - {preds.mean()}+/-{preds.std()}
+    ======================================
+    ''')
 
 
 def train_model(data_file, epochs, args, device: str, save_dir: pathlib.Path, logger: logging.Logger = None):
@@ -492,15 +327,15 @@ def train_model(data_file, epochs, args, device: str, save_dir: pathlib.Path, lo
             # - CALLBACKS
 
             # > Early Stopping
-            early_stopping(no_improvement_epochs=no_imprv_epchs)
+            stop_training_es = early_stopping(no_improvement_epochs=no_imprv_epchs)
 
             # > LR Reduction on Plateau
-            reduce_lr_on_plateau(no_improvement_epochs=no_imprv_epchs, optimizer=optimizer)
+            stop_training_rlp = reduce_lr_on_plateau(no_improvement_epochs=no_imprv_epchs, optimizer=optimizer)
 
             # > LR Reduction Scheduler
-            lr_reduction_scheduler(epoch=epch, optimizer=optimizer)
+            stop_training_lrr = lr_reduction_scheduler(epoch=epch, optimizer=optimizer)
 
-            if stop_training:
+            if stop_training_es or stop_training_rlp or stop_training_lrr:
                 break
     else:
         data_not_found_err(data_file=data_file, logger=logger)
@@ -523,7 +358,7 @@ def test_model(model, data_file: str or pathlib.Path, args, device: str, save_di
             logger=logger
         )
 
-        loss, true_seg_msrs, pred_seg_msrs = test_fn(data_loader=test_data_loader, model=model, loss_fn=TORCH_LOSS, device=device)
+        loss, true_seg_msrs, pred_seg_msrs = val_fn(data_loader=test_data_loader, model=model, loss_fn=TORCH_LOSS, device=device)
 
         print(f'''
     Test Results (on files from \'{data_file}\' dir):
@@ -534,3 +369,11 @@ def test_model(model, data_file: str or pathlib.Path, args, device: str, save_di
         ''')
     else:
         data_not_found_err(data_file=data_file, logger=logger)
+
+
+def infer(data_dir, model, device: str, output_dir: pathlib.Path):
+
+    # - Get file tuples
+    data_fls = scan_files(root_dir=data_dir, seg_dir_postfix=SEG_DIR_POSTFIX, image_prefix=IMAGE_PREFIX, seg_prefix=SEG_PREFIX)
+
+    inf_fn(data_files=data_fls, model=model, device=device, output_dir=output_dir)
