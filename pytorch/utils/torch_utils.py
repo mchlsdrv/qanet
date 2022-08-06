@@ -21,7 +21,7 @@ from configs.general_configs import (
     EARLY_STOPPING_PATIENCE,
     REDUCE_LR_ON_PLATEAU_FACTOR,
     REDUCE_LR_ON_PLATEAU_PATIENCE,
-    OPTIMIZER_EPS, EPSILON, MIN_IMPROVEMENT_DELTA
+    OPTIMIZER_EPS, EPSILON, MIN_IMPROVEMENT_DELTA, LR_REDUCTION_SCHEDULER, LR_REDUCTION_SCHEDULER_PATIENCE, LR_REDUCTION_SCHEDULER_FACTOR, LR_REDUCTION_SCHEDULER_MIN
 )
 from .. custom.torch_models import RibCage
 
@@ -32,6 +32,10 @@ from . torch_data_utils import (
 from configs.general_configs import (
     MODEL_CONFIGS_FILE,
 )
+
+# - Global Variables
+stop_training = False
+best_loss = np.inf
 
 
 def save_checkpoint(state, filename='my_checkpoint.pth.tar'):
@@ -157,7 +161,64 @@ def get_device(gpu_id: int = 0, logger: logging.Logger = None):
     return device
 
 
+# - CALLBACKS
+# > Save Checkpoint on Improvement
+def save_checkpoint_on_improvement(model, optimizer, output_dir: pathlib.Path):
+    chckpnt = dict(
+        state_dict=model.state_dict(),
+        optimizer=optimizer.state_dict(),
+    )
+    save_checkpoint(state=chckpnt, filename=str(output_dir / f'best_val_loss_chkpt.pth.tar'))
+
+
+# > Early Stopping
+def early_stopping(no_improvement_epochs: int):
+    if EARLY_STOPPING:
+        if no_improvement_epochs >= EARLY_STOPPING_PATIENCE:
+            print(f'<x> No improvement was recorded for {EARLY_STOPPING_PATIENCE} epochs - stopping the training!')
+            STOP_TRAINING = True
+        else:
+            if no_improvement_epochs > 0:
+                print(f'<!> {no_improvement_epochs}/{EARLY_STOPPING_PATIENCE} of epochs without improvement recorded (i.e, stopping the training when counter reaches {EARLY_STOPPING_PATIENCE} consecutive epochs with improvements < {MIN_IMPROVEMENT_DELTA})!')
+
+
+# > LR Reduction on Plateau
+def reduce_lr_on_plateau(no_improvement_epochs: int, optimizer):
+    global stop_training
+
+    if REDUCE_LR_ON_PLATEAU:
+        if no_improvement_epochs >= REDUCE_LR_ON_PLATEAU_PATIENCE:
+            lr = optimizer.param_groups[0]['lr']
+            new_lr = REDUCE_LR_ON_PLATEAU_FACTOR * lr
+            if new_lr < REDUCE_LR_ON_PLATEAU_MIN:
+                print(f'<x> The lr ({new_lr}) was reduced beyond its smallest possible value ({REDUCE_LR_ON_PLATEAU_MIN}) - stopping the training!')
+                stop_training = True
+
+            optimizer.param_groups[0]['lr'] = new_lr
+
+            print(f'<!> No improvement was recorded for {REDUCE_LR_ON_PLATEAU_PATIENCE} epochs - reducing lr by factor {REDUCE_LR_ON_PLATEAU_FACTOR}, from {lr} -> {new_lr}!')
+
+
+def lr_reduction_scheduler(epoch: int, optimizer):
+    global stop_training
+
+    if LR_REDUCTION_SCHEDULER:
+        if epoch in LR_REDUCTION_SCHEDULER_PATIENCE:
+            lr = optimizer.param_groups[0]['lr']
+            new_lr = LR_REDUCTION_SCHEDULER_FACTOR * lr
+            if new_lr < LR_REDUCTION_SCHEDULER_MIN:
+                print(f'<x> The lr ({new_lr}) was reduced beyond its smallest possible value ({LR_REDUCTION_SCHEDULER_MIN}) - stopping the training!')
+                stop_training = True
+
+            optimizer.param_groups[0]['lr'] = new_lr
+
+            print(f'<!> Reducing learning rate after epoch {epoch} > {LR_REDUCTION_SCHEDULER_PATIENCE} epochs - reducing lr by factor {LR_REDUCTION_SCHEDULER_FACTOR}, from {lr} -> {new_lr}!')
+
+
 def train_fn(data_loader, model, optimizer, loss_fn, scaler, device: str):
+    global stop_training
+    global best_loss
+
     # - TRAIN
     data_loop = tqdm(data_loader)
 
@@ -369,17 +430,13 @@ def train_model(data_file, epochs, args, device: str, save_dir: pathlib.Path, lo
             # - Save the best model
             if val_loss < best_loss - MIN_IMPROVEMENT_DELTA:
 
-                # - Save checkpoint
                 print(f'<!!> val_loss improved by delta > {MIN_IMPROVEMENT_DELTA}, from {best_loss} to {val_loss}!')
 
-                # - Update the best loss
-                best_loss = val_loss
+                # - Save checkpoint
+                save_checkpoint_on_improvement(model=model, optimizer=optimizer, output_dir=chkpt_dir)
 
-                checkpoint = dict(
-                    state_dict=model.state_dict(),
-                    optimizer=optimizer.state_dict(),
-                )
-                save_checkpoint(state=checkpoint, filename=str(chkpt_dir / f'best_val_loss_chkpt.pth.tar'))
+                # - Update the best_loss
+                best_loss = val_loss
 
                 # - Reset the non-improvement counter
                 no_imprv_epchs = 0
@@ -404,8 +461,6 @@ def train_model(data_file, epochs, args, device: str, save_dir: pathlib.Path, lo
             fig, ax = plt.subplots()
             ax.plot(np.arange(epch + 1), train_err_mus, color='g', label='Train E[error]')
             ax.plot(np.arange(epch + 1), val_err_mus, color='r', label='Val E[error]')
-            # ax.errorbar(np.arange(epch + 1), train_err_mus, yerr=train_err_stds, color='g', marker='<', label='Train mean seg measure error ')
-            # ax.errorbar(np.arange(epch + 1), val_err_mus, yerr=val_err_stds, color='r', marker='o', label='Train mean seg measure error ')
 
             plt.legend()
             plt.savefig(f'{plots_dir}/train_val_err_mu_std.png')
@@ -435,27 +490,18 @@ def train_model(data_file, epochs, args, device: str, save_dir: pathlib.Path, lo
             ''')
 
             # - CALLBACKS
+
             # > Early Stopping
-            if EARLY_STOPPING:
-                if no_imprv_epchs >= EARLY_STOPPING_PATIENCE:
-                    print(f'<x> No improvement was recorded for {EARLY_STOPPING_PATIENCE} epochs - stopping the training!')
-                    break
-                else:
-                    if no_imprv_epchs > 0:
-                        print(f'<!> {no_imprv_epchs}/{EARLY_STOPPING_PATIENCE} of epochs without improvement recorded (i.e, stopping the training when counter reaches {EARLY_STOPPING_PATIENCE} consecutive epochs with improvements < {MIN_IMPROVEMENT_DELTA})!')
+            early_stopping(no_improvement_epochs=no_imprv_epchs)
 
             # > LR Reduction on Plateau
-            if REDUCE_LR_ON_PLATEAU:
-                if no_imprv_epchs >= REDUCE_LR_ON_PLATEAU_PATIENCE:
-                    lr = optimizer.param_groups[0]['lr']
-                    new_lr = REDUCE_LR_ON_PLATEAU_FACTOR * lr
-                    if new_lr < REDUCE_LR_ON_PLATEAU_MIN:
-                        print(f'<x> The lr ({new_lr}) was reduced beyond its smallest possible value ({REDUCE_LR_ON_PLATEAU_MIN}) - stopping the training!')
-                        break
+            reduce_lr_on_plateau(no_improvement_epochs=no_imprv_epchs, optimizer=optimizer)
 
-                    optimizer.param_groups[0]['lr'] = new_lr
+            # > LR Reduction Scheduler
+            lr_reduction_scheduler(epoch=epch, optimizer=optimizer)
 
-                    print(f'<!> No improvement was recorded for {REDUCE_LR_ON_PLATEAU_PATIENCE} epochs - reducing lr by factor {REDUCE_LR_ON_PLATEAU_FACTOR}, from {lr} -> {new_lr}!')
+            if stop_training:
+                break
     else:
         data_not_found_err(data_file=data_file, logger=logger)
 
