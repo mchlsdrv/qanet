@@ -14,7 +14,14 @@ from utils import augs
 from utils.aux_funcs import calc_jaccard, get_runtime, scan_files, plot_hist
 from configs.general_configs import (
     TRAIN_DATA_DIR,
-    GEN_DATA_DIR, RAW_DATA_DIR, TEST_DATA_DIR, INFERENCE_DATA_DIR
+    GEN_DATA_DIR,
+    TEST_DATA_DIR,
+    TRAIN_SEG_DIR_POSTFIX,
+    TRAIN_IMAGE_PREFIX,
+    TRAIN_SEG_PREFIX,
+    TEST_SEG_PREFIX,
+    TEST_IMAGE_PREFIX,
+    TEST_SEG_DIR_POSTFIX,
 )
 
 logging.getLogger('PIL').setLevel(logging.WARNING)
@@ -26,9 +33,10 @@ DATA_TYPE = 'train'
 SEG_DIR_POSTFIX = 'GT'
 IMAGE_PREFIX = 't0'
 SEG_PREFIX = 'man_seg0'
-N_SAMPLES = 10000
-MIN_J = 0.1
-MAX_J = 0.9
+
+N_SAMPLES = 100000
+MIN_J = 0.01
+MAX_J = 0.99
 
 
 def build_data_file(files: list, output_dir: pathlib.Path, n_samples=N_SAMPLES, plot_samples: bool = False):
@@ -131,8 +139,14 @@ if __name__ == '__main__':
     # - Scan the files in the data dir
     if args.procedure == 'train':
         data_dir = args.train_data_dir
-    if args.procedure == 'test':
+        sed_dir_postfix = TRAIN_SEG_DIR_POSTFIX
+        img_prefix = TRAIN_IMAGE_PREFIX
+        seg_prefix = TRAIN_SEG_PREFIX
+    elif args.procedure == 'test':
         data_dir = args.test_data_dir
+        sed_dir_postfix = TEST_SEG_DIR_POSTFIX
+        img_prefix = TEST_IMAGE_PREFIX
+        seg_prefix = TEST_SEG_PREFIX
 
     fls = scan_files(
         root_dir=data_dir,

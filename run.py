@@ -8,6 +8,7 @@ import numpy as np
 from configs.general_configs import CONFIGS_DIR, TRAIN_DATA_FILE
 from utils.aux_funcs import get_arg_parser, get_runtime, get_logger
 from pytorch import torch_train as tr_train
+from pytorch import torch_infer as tr_inf
 from tensor_flow import tf_train
 
 
@@ -21,7 +22,7 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
     # - Create the directory for the current run
-    current_run_dir = pathlib.Path(args.output_dir) / f'{args.model_lib}_{ts}'
+    current_run_dir = pathlib.Path(args.output_dir) / f'{args.procedure}/{args.model_lib}_{ts}'
     os.makedirs(current_run_dir, exist_ok=True)
 
     # - Configure the logger
@@ -30,7 +31,7 @@ if __name__ == '__main__':
         save_file=current_run_dir / f'logs.log'
     )
 
-    if args.train:
+    if args.procedure == 'train':
         print(f'\n== Running train with {args.model_lib} model ==\n')
         if args.model_lib == 'pytorch':
             tr_train.run(
@@ -44,11 +45,25 @@ if __name__ == '__main__':
                 output_dir=current_run_dir,
                 logger=logger
             )
-    elif args.test:
+    elif args.procedure == 'test':
         print(f'\n== Running test with {args.model_lib} model ==\n')
         data = np.load(str(TRAIN_DATA_FILE), allow_pickle=True)
         if args.model_lib == 'pytorch':
             tr_train.run(
+                args=args,
+                output_dir=current_run_dir,
+                logger=logger
+            )
+        elif args.model_lib == 'tensor_flow':
+            tf_train.run(
+                args=args,
+                output_dir=current_run_dir,
+                logger=logger
+            )
+    elif args.procedure == 'inference':
+        print(f'\n== Running inference with {args.model_lib} model ==\n')
+        if args.model_lib == 'pytorch':
+            tr_inf.run(
                 args=args,
                 output_dir=current_run_dir,
                 logger=logger

@@ -82,6 +82,8 @@ class RibCage(nn.Module):
                 out_feats = self.fc_out_features[lyr_idx]
                 self.fc_lyrs.append(self.FCBlk(in_features=in_feats, out_features=out_feats))
 
+        self.fc_lyrs.append(nn.Linear(in_features=out_feats, out_features=1))
+
     def convs(self, image, mask):
         x_l = image
         x_r = mask
@@ -100,6 +102,7 @@ class RibCage(nn.Module):
         for fc_lyr in self.fc_lyrs:
             # print(f'x.shape: {x.shape}')
             x = fc_lyr(x)
+
         return x
 
     def _get_flat_channels(self):

@@ -46,9 +46,19 @@ MODEL_CONFIGS_FILE = CONFIGS_DIR / 'ribcage_configs.yml'
 
 # DATA
 N_SAMPLES = 10000
-SEG_DIR_POSTFIX = 'GT'
-IMAGE_PREFIX = 't0'
-SEG_PREFIX = 'man_seg0'
+
+TRAIN_SEG_DIR_POSTFIX = 'GT'
+TRAIN_IMAGE_PREFIX = 't0'
+TRAIN_SEG_PREFIX = 'man_seg0'
+
+TEST_SEG_DIR_POSTFIX = 'GT'
+TEST_IMAGE_PREFIX = 't0'
+TEST_SEG_PREFIX = 'man_seg0'
+
+INF_SEG_DIR_POSTFIX = 'RES'
+INF_IMAGE_PREFIX = 't0'
+INF_SEG_PREFIX = 'mask0'
+
 IMAGE_HEIGHT = 419
 IMAGE_WIDTH = 419
 IN_CHANNELS = 1
@@ -59,7 +69,7 @@ SHUFFLE = True
 
 # TRAINING
 # - Loss
-TORCH_LOSS = nn.MSELoss()
+TR_LOSS = nn.MSELoss()
 TF_LOSS = tf.keras.losses.MeanSquaredError()
 
 LOAD_MODEL = False
@@ -125,8 +135,8 @@ EARLY_STOPPING_VERBOSE = 1
 
 # - LR Reduction Scheduler
 LR_REDUCTION_SCHEDULER = True
-LR_REDUCTION_SCHEDULER_PATIENCE = [50, 100, 150]
-LR_REDUCTION_SCHEDULER_FACTOR = 0.2
+LR_REDUCTION_SCHEDULER_PATIENCE = [150, 300]
+LR_REDUCTION_SCHEDULER_FACTOR = 0.5
 LR_REDUCTION_SCHEDULER_MIN = 1e-9
 
 # - LR Reduce on Plateau
@@ -167,9 +177,12 @@ TERMINATE_ON_NAN = True
 
 # - Checkpoint
 CHECKPOINT = True
+# - PyTorch
+# TR_CHECKPOINT_FILE_BEST_MODEL = pathlib.Path('/media/rrtammyfs/Users/sidorov/QANet/output/pytorch_2022-07-27_22-57-53/checkpoints/best_val_loss_chkpt.pth.tar')
+TR_CHECKPOINT_FILE_BEST_MODEL = pathlib.Path('/home/sidorov/Projects/QANetV2/qanet/output/train/pytorch_2022-08-07_14-50-57/checkpoints/best_val_loss_chkpt.pth.tar')
+# - TensorFlow
+TF_CHECKPOINT_DIR = pathlib.Path('/media/rrtammyfs/Users/sidorov/QANet/output/train/tensor_flow_2022-07-27_22-57-53/checkpoints')
 TF_CHECKPOINT_FILE_TEMPLATE = 'checkpoints/cp-{epoch:04d}.ckpt'  # <- may be used in case we want to save all teh check points, and not only the best
-TR_CHECKPOINT_FILE_BEST_MODEL = pathlib.Path('/media/rrtammyfs/Users/sidorov/QANet/output/pytorch_2022-07-27_22-57-53/checkpoints/best_val_loss_chkpt.pth.tar')
-TF_CHECKPOINT_DIR = pathlib.Path('/media/rrtammyfs/Users/sidorov/QANet/output/tensor_flow_2022-07-27_22-57-53/checkpoints')
 TF_CHECKPOINT_FILE_BEST_MODEL = 'checkpoints/best_model.ckpt'  # <- overwrites the second-best model weights in case MODEL_CHECKPOINT_SAVE_BEST_ONLY = True
 CHECKPOINT_MONITOR = 'val_loss'
 CHECKPOINT_VERBOSE = 1

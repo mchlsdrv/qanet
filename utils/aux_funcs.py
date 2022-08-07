@@ -455,10 +455,8 @@ def get_arg_parser():
 
     # - GENERAL PARAMETERS
     parser.add_argument('--model_lib', type=str, choices=['pytorch', 'tensor_flow'], default=DEFAULT_MODEL_LIB, help=f'The library used to build the model (pytorch or tensor_flow)')
+    parser.add_argument('--procedure', type=str, choices=['train', 'test', 'inference'], help=f'Which procedure to execute')
     parser.add_argument('--load_model', default=False, action='store_true', help=f'If to load the model')
-    parser.add_argument('--train', default=False, action='store_true', help=f'If to run the train procedure')
-    parser.add_argument('--test', default=False, action='store_true', help=f'If to run the test procedure')
-    parser.add_argument('--infer', default=False, action='store_true', help=f'If to run the inference procedure')
     parser.add_argument('--gpu_id', type=int, default=0 if torch.cuda.device_count() > 0 else -1, help='The ID of the GPU (if there is any) to run the network on (e.g., --gpu_id 1 will run the network on GPU #1 etc.)')
 
     parser.add_argument('--train_continue', default=False, action='store_true', help=f'If to continue the training from the checkpoint saved at the checkpoint file')

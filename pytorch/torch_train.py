@@ -22,7 +22,7 @@ def run(args, output_dir, logger):
         epochs=args.epochs,
         args=args,
         device=device,
-        save_dir=output_dir,
+        output_dir=output_dir,
         logger=logger
     )
 
@@ -36,7 +36,7 @@ def run(args, output_dir, logger):
             data_file=test_gt_data_file,
             args=args,
             device=device,
-            save_dir=output_dir,
+            output_dir=output_dir,
             logger=logger
         )
     # -- ST

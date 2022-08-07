@@ -10,15 +10,16 @@ from tqdm import tqdm
 
 from utils import augs
 from utils.augs import inference_augs
-from utils.aux_funcs import data_not_found_err, check_file, get_model_configs, scan_files
+from utils.aux_funcs import (
+    data_not_found_err,
+    check_file,
+    get_model_configs
+)
 from configs.general_configs import (
     VAL_PROP,
-    TORCH_LOSS,
+    TR_LOSS,
     EPSILON,
     MIN_IMPROVEMENT_DELTA,
-    SEG_PREFIX,
-    SEG_DIR_POSTFIX,
-    IMAGE_PREFIX
 )
 from .torch_aux import load_checkpoint
 from .torch_train_utils import get_optimizer, save_checkpoint_on_improvement, lr_reduction_scheduler, early_stopping, reduce_lr_on_plateau
@@ -32,14 +33,8 @@ from configs.general_configs import (
     MODEL_CONFIGS_FILE,
 )
 
-# - Global Variables
-stop_training = False
-best_loss = np.inf
-
 
 def train_fn(data_loader, model, optimizer, loss_fn, scaler, device: str):
-    global stop_training
-    global best_loss
 
     # - TRAIN
     data_loop = tqdm(data_loader)
@@ -118,71 +113,15 @@ def val_fn(data_loader, model, loss_fn, device: str):
     return losses.mean(), abs_err_mus.mean(), abs_err_stds.sum() / ((len(abs_err_stds) - 1) + EPSILON)
 
 
-def inf_fn(data_files: np.ndarray or list, model, device: str, output_dir: pathlib.Path):
-    # - VALIDATION
-    print('\n> Running Inference ...')
-    model.eval()
-
-    data_loop = tqdm(data_files)
-
-    preds = np.array([])
-
-    inf_augs = inference_augs()
-
-    for idx, (img_fl, mask_fl) in enumerate(data_loop):
-
-        # - Load the image and the corresponding mask
-        img = cv2.imread(img_fl, -1).to(device=device)
-        seg = cv2.imread(mask_fl, -1).to(device=device)
-
-        # - Augment the image and the mask
-        augs = inf_augs(image=img, mask=mask)
-        img, mask = augs.get('image'), augs.get('mask')
-
-        with torch.no_grad():
-            # Forward pass
-            with torch.cuda.amp.autocast():
-                pred = model(image=img, mask=mask)
-
-        pred = pred.item()
-        preds = np.append(preds, pred)
-
-        # - Plot preds
-        fig, ax = plt.subplots(1, 2, figsize=(10, 15))
-        ax[0].imshow(img, cmap='gray')
-        ax[1].imshow(seg, cmap='gray')
-        fig.suptitle(f'Estimated Seg Measure: {pred:4f}')
-        plt.savefig(output_dir / f'{idx}.png')
-        plt.close(fig)
-
-        # - Update the progress bar
-        data_loop.set_postfix(prediction=f'{pred:.4f}')
-
-    model.train()
-
-    print(f'''
-    ======================================
-    Final Preds:
-        - {preds.mean()}+/-{preds.std()}
-    ======================================
-    ''')
-
-
-def train_model(data_file, epochs, args, device: str, save_dir: pathlib.Path, logger: logging.Logger = None):
+def train_model(data_file, epochs, args, device: str, output_dir: pathlib.Path, logger: logging.Logger = None):
     if check_file(file_path=data_file):
         data = np.load(str(data_file), allow_pickle=True)
 
         # - Print some examples
-        train_dir = save_dir / 'train'
-        os.makedirs(save_dir, exist_ok=True)
-
-        plots_dir = train_dir / 'plots'
+        plots_dir = output_dir / 'plots'
         os.makedirs(plots_dir, exist_ok=True)
 
-        val_preds_dir = train_dir / 'val_preds'
-        os.makedirs(val_preds_dir, exist_ok=True)
-
-        chkpt_dir = save_dir / 'checkpoints'
+        chkpt_dir = output_dir / 'checkpoints'
         os.makedirs(chkpt_dir, exist_ok=True)
 
         # - Build the model
@@ -248,14 +187,14 @@ def train_model(data_file, epochs, args, device: str, save_dir: pathlib.Path, lo
         for epch in range(epochs):
             print(f'\n== Epoch: {epch + 1}/{args.epochs} ({100 * (epch + 1) / args.epochs:.2f}% done) ==')
 
-            train_loss, train_err_mu, train_err_std = train_fn(data_loader=train_data_loader, model=model, optimizer=optimizer, loss_fn=TORCH_LOSS, scaler=scaler, device=device)
+            train_loss, train_err_mu, train_err_std = train_fn(data_loader=train_data_loader, model=model, optimizer=optimizer, loss_fn=TR_LOSS, scaler=scaler, device=device)
 
             # - Add train history
             train_losses = np.append(train_losses, train_loss)
             train_err_mus = np.append(train_err_mus, train_err_mu)
             train_err_stds = np.append(train_err_stds, train_err_std)
 
-            val_loss, val_err_mu, val_err_std = val_fn(data_loader=val_data_loader, model=model, loss_fn=TORCH_LOSS, device=device)
+            val_loss, val_err_mu, val_err_std = val_fn(data_loader=val_data_loader, model=model, loss_fn=TR_LOSS, device=device)
 
             # - Add val history
             val_losses = np.append(val_losses, val_loss)
@@ -302,17 +241,6 @@ def train_model(data_file, epochs, args, device: str, save_dir: pathlib.Path, lo
             plt.close(fig)
 
             # - Print stats
-            # -> loss
-            train_loss = train_losses[-1]
-            val_loss = val_losses[-1]
-
-            # -> train seg measure
-            train_last_err_mu = train_err_mus[-1]
-            train_last_err_std = train_err_stds[-1]
-
-            # -> val seg measure
-            val_last_err_mu = val_err_mus[-1]
-            val_last_err_std = val_err_stds[-1]
 
             print(f'''
     Epoch {epch + 1} Stats (train vs val):
@@ -320,8 +248,8 @@ def train_model(data_file, epochs, args, device: str, save_dir: pathlib.Path, lo
             train - {train_loss:.6f}
             val - {val_loss:.6f}
         - Seg Measure Error: 
-            train - {train_err_mu:.4f} +/- {train_last_err_std:.5f} ({100 - (train_last_err_std * 100 / (train_last_err_mu + EPSILON)):.3f}%)
-            val - {val_err_mu:.4f} +/- {val_last_err_std:.5f} ({100 - (val_last_err_std * 100 / (val_last_err_mu + EPSILON)):.3f}%)
+            train - {train_err_mu:.4f} +/- {train_err_std:.5f} ({100 - (train_err_mu * 100 / (train_err_mu + EPSILON)):.3f}%)
+            val - {val_err_mu:.4f} +/- {val_err_std:.5f} ({100 - (val_err_std * 100 / (val_err_mu + EPSILON)):.3f}%)
             ''')
 
             # - CALLBACKS
@@ -343,7 +271,7 @@ def train_model(data_file, epochs, args, device: str, save_dir: pathlib.Path, lo
     return model
 
 
-def test_model(model, data_file: str or pathlib.Path, args, device: str, save_dir: pathlib.Path, logger: logging.Logger = None):
+def test_model(model, data_file: str or pathlib.Path, args, device: str, output_dir: pathlib.Path, logger: logging.Logger = None):
     if check_file(file_path=data_file):
 
         data = np.load(str(data_file), allow_pickle=True)
@@ -358,7 +286,7 @@ def test_model(model, data_file: str or pathlib.Path, args, device: str, save_di
             logger=logger
         )
 
-        loss, true_seg_msrs, pred_seg_msrs = val_fn(data_loader=test_data_loader, model=model, loss_fn=TORCH_LOSS, device=device)
+        loss, true_seg_msrs, pred_seg_msrs = val_fn(data_loader=test_data_loader, model=model, loss_fn=TR_LOSS, device=device)
 
         print(f'''
     Test Results (on files from \'{data_file}\' dir):
@@ -371,9 +299,62 @@ def test_model(model, data_file: str or pathlib.Path, args, device: str, save_di
         data_not_found_err(data_file=data_file, logger=logger)
 
 
-def infer(data_dir, model, device: str, output_dir: pathlib.Path):
+def infer(data_files, model, device: str, output_dir: pathlib.Path):
+    # - VALIDATION
+    print('\n> Running Inference ...')
+    model.eval()
 
-    # - Get file tuples
-    data_fls = scan_files(root_dir=data_dir, seg_dir_postfix=SEG_DIR_POSTFIX, image_prefix=IMAGE_PREFIX, seg_prefix=SEG_PREFIX)
+    data_loop = tqdm(data_files)
 
-    inf_fn(data_files=data_fls, model=model, device=device, output_dir=output_dir)
+    inf_mean_preds = np.array([])
+
+    inf_augs = inference_augs()
+
+    plots_dir = output_dir / 'plots'
+    os.makedirs(plots_dir, exist_ok=True)
+
+    for idx, (img_fl, mask_fl) in enumerate(data_loop):
+        # - Create figure for plots
+        fig, ax = plt.subplots(1, 2, figsize=(20, 10))
+
+        # - Load the image and plot it
+        img = cv2.imread(str(img_fl), -1)
+        ax[0].imshow(img, cmap='gray')
+
+        # - Load the corresponding mask and plot it
+        mask = cv2.imread(str(mask_fl), -1)
+        ax[1].imshow(mask, cmap='gray')
+
+        # - Augment the image and the mask
+        augs = inf_augs(image=img, mask=mask)
+        img, mask = np.expand_dims(augs.get('image'), 0), np.expand_dims(augs.get('mask'), 0)
+
+        # - Convert to tensors and move to device
+        img = torch.tensor(np.expand_dims(img, 0), dtype=torch.float).to(device=device)
+        mask = torch.tensor(np.expand_dims(mask, 0).astype(np.float32), dtype=torch.float).to(device=device)
+
+        with torch.no_grad():
+            # Forward pass
+            with torch.cuda.amp.autocast():
+                preds = model(image=img, mask=mask)
+
+        preds = preds.cpu().numpy().flatten()
+        preds_mu = preds.mean()
+        inf_mean_preds = np.append(inf_mean_preds, preds_mu)
+
+        # - Plot preds
+        fig.suptitle(f'Estimated Seg Measure: {preds_mu:.4f}')
+        plt.savefig(plots_dir / f'{idx}.png')
+        plt.close(fig)
+
+        # - Update the progress bar
+        data_loop.set_postfix(prediction=f'{preds_mu:.4f}')
+
+    model.train()
+
+    print(f'''
+    ======================================
+    Final Preds:
+        - {inf_mean_preds.mean():.4f}
+    ======================================
+    ''')
