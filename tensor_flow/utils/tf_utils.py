@@ -11,7 +11,7 @@ import tensorflow as tf
 from utils import augs
 from configs.general_configs import TF_LOSS, METRICS, TENSOR_BOARD, TENSOR_BOARD_WRITE_IMAGES, TENSOR_BOARD_WRITE_STEPS_PER_SECOND, TENSOR_BOARD_UPDATE_FREQ, PROGRESS_LOG, SCATTER_PLOT_FIGSIZE, PROGRESS_LOG_INTERVAL, TENSOR_BOARD_LAUNCH, EARLY_STOPPING, EARLY_STOPPING_MONITOR, EARLY_STOPPING_MIN_DELTA, EARLY_STOPPING_PATIENCE, EARLY_STOPPING_MODE, EARLY_STOPPING_RESTORE_BEST_WEIGHTS, EARLY_STOPPING_VERBOSE, TERMINATE_ON_NAN, REDUCE_LR_ON_PLATEAU, REDUCE_LR_ON_PLATEAU_MONITOR, \
     REDUCE_LR_ON_PLATEAU_FACTOR, REDUCE_LR_ON_PLATEAU_PATIENCE, REDUCE_LR_ON_PLATEAU_MIN_DELTA, REDUCE_LR_ON_PLATEAU_COOLDOWN, REDUCE_LR_ON_PLATEAU_MIN_LR, REDUCE_LR_ON_PLATEAU_MODE, REDUCE_LR_ON_PLATEAU_VERBOSE, CHECKPOINT, TF_CHECKPOINT_FILE_BEST_MODEL, CHECKPOINT_MONITOR, CHECKPOINT_SAVE_FREQ, CHECKPOINT_SAVE_WEIGHTS_ONLY, CHECKPOINT_MODE, CHECKPOINT_SAVE_BEST_ONLY, CHECKPOINT_VERBOSE, VAL_PROP
-from utils.aux_funcs import check_file, info_log, plot_scatter
+from utils.aux_funcs import check_file, info_log, scatter_plot
 from . tf_data_utils import get_data_loaders
 from ..custom.tf_models import (
     RibCage
@@ -263,7 +263,7 @@ def write_images_to_tensorboard(writer, data: dict, step: int):
             tf.summary.image(
                 'Scatter',
                 get_image_from_figure(
-                    figure=plot_scatter(
+                    figure=scatter_plot(
                         x=data.get('Scatter')['x'],
                         y=data.get('Scatter')['y'],
                         save_file=None

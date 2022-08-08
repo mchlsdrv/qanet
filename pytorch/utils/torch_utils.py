@@ -13,7 +13,7 @@ from utils.augs import inference_augs
 from utils.aux_funcs import (
     data_not_found_err,
     check_file,
-    get_model_configs
+    get_model_configs, line_plot, scatter_plot
 )
 from configs.general_configs import (
     VAL_PROP,
@@ -51,6 +51,7 @@ def train_fn(data_loader, model, optimizer, loss_fn, scaler, device: str):
         # Forward pass
         with torch.cuda.amp.autocast():
             preds = model(imgs, aug_segs)
+            # TODO: maybe use MAE instead
             loss = loss_fn(preds, seg_msrs)
 
         # Backward pass
@@ -73,7 +74,7 @@ def train_fn(data_loader, model, optimizer, loss_fn, scaler, device: str):
 
         data_loop.set_postfix(loss=loss, batch_err=f'{abs_err_mu:.3f}+/-{abs_err_std:.4f} ({100 * abs_err_std / (abs_err_mu + EPSILON):.3f}%)')
 
-    return losses.mean(), abs_err_mus.mean(), abs_err_stds.sum() / ((len(abs_err_stds) - 1) + EPSILON)
+    return losses.mean(), true_seg_msrs, pred_seg_msrs, abs_err_mus.mean(), abs_err_stds.sum() / ((len(abs_err_stds) - 1) + EPSILON)
 
 
 def val_fn(data_loader, model, loss_fn, device: str):
@@ -110,7 +111,7 @@ def val_fn(data_loader, model, loss_fn, device: str):
 
     model.train()
 
-    return losses.mean(), abs_err_mus.mean(), abs_err_stds.sum() / ((len(abs_err_stds) - 1) + EPSILON)
+    return losses.mean(), true_seg_msrs, pred_seg_msrs, abs_err_mus.mean(), abs_err_stds.sum() / ((len(abs_err_stds) - 1) + EPSILON)
 
 
 def train_model(data_file, epochs, args, device: str, output_dir: pathlib.Path, logger: logging.Logger = None):
@@ -187,16 +188,18 @@ def train_model(data_file, epochs, args, device: str, output_dir: pathlib.Path, 
         for epch in range(epochs):
             print(f'\n== Epoch: {epch + 1}/{args.epochs} ({100 * (epch + 1) / args.epochs:.2f}% done) ==')
 
-            train_loss, train_err_mu, train_err_std = train_fn(data_loader=train_data_loader, model=model, optimizer=optimizer, loss_fn=TR_LOSS, scaler=scaler, device=device)
+            # - Train Model
+            train_loss, train_true_seg_msrs, train_pred_seg_msrs, train_err_mu, train_err_std = train_fn(data_loader=train_data_loader, model=model, optimizer=optimizer, loss_fn=TR_LOSS, scaler=scaler, device=device)
 
-            # - Add train history
+            # -*- Add train history
             train_losses = np.append(train_losses, train_loss)
             train_err_mus = np.append(train_err_mus, train_err_mu)
             train_err_stds = np.append(train_err_stds, train_err_std)
 
-            val_loss, val_err_mu, val_err_std = val_fn(data_loader=val_data_loader, model=model, loss_fn=TR_LOSS, device=device)
+            # - Validate Model
+            val_loss, val_true_seg_msrs, val_pred_seg_msrs, val_err_mu, val_err_std = val_fn(data_loader=val_data_loader, model=model, loss_fn=TR_LOSS, device=device)
 
-            # - Add val history
+            # -*- Add val history
             val_losses = np.append(val_losses, val_loss)
             val_err_mus = np.append(val_err_mus, val_err_mu)
             val_err_stds = np.append(val_err_stds, val_err_std)
@@ -223,32 +226,26 @@ def train_model(data_file, epochs, args, device: str, output_dir: pathlib.Path, 
 
             # - Plot progress
             # - Loss
-            fig, ax = plt.subplots()
-            ax.plot(np.arange(epch + 1), train_losses, color='g', label='Train loss')
-            ax.plot(np.arange(epch + 1), val_losses, color='r', label='Val loss')
-
-            plt.legend()
-            plt.savefig(f'{plots_dir}/train_val_loss.png')
-            plt.close(fig)
+            line_plot(x=np.arange(epch + 1), ys=[train_losses, val_losses], suptitle='Train / Validation Loss Plot', labels=['Train', 'Validation'], colors=('r', 'g'), save_file=f'{plots_dir}/train_val_loss.png', logger=logger)
 
             # - Seg measure mean error
-            fig, ax = plt.subplots()
-            ax.plot(np.arange(epch + 1), train_err_mus, color='g', label='Train E[error]')
-            ax.plot(np.arange(epch + 1), val_err_mus, color='r', label='Val E[error]')
+            line_plot(x=np.arange(epch + 1), ys=[train_err_mus, val_err_mus], suptitle='Train / Validation Error Plot', labels=['Train', 'Validation'], colors=('r', 'g'), save_file=f'{plots_dir}/train_val_error.png', logger=logger)
 
-            plt.legend()
-            plt.savefig(f'{plots_dir}/train_val_err_mu_std.png')
-            plt.close(fig)
+            # - Scatter plot
+            # > Train
+            scatter_plot(x=train_true_seg_msrs.flatten(), y=train_pred_seg_msrs.flatten(), save_file=f'{plots_dir}/scatter/train/epoch_{epch + 1}.png', logger=logger)
+
+            # > Validation
+            scatter_plot(x=val_true_seg_msrs.flatten(), y=val_pred_seg_msrs.flatten(), save_file=f'{plots_dir}/scatter/val/epoch_{epch + 1}.png', logger=logger)
 
             # - Print stats
-
             print(f'''
     Epoch {epch + 1} Stats (train vs val):
         - Loss: 
             train - {train_loss:.6f}
             val - {val_loss:.6f}
         - Seg Measure Error: 
-            train - {train_err_mu:.4f} +/- {train_err_std:.5f} ({100 - (train_err_mu * 100 / (train_err_mu + EPSILON)):.3f}%)
+            train - {train_err_mu:.4f} +/- {train_err_std:.5f} ({100 - (train_err_std * 100 / (train_err_mu + EPSILON)):.3f}%)
             val - {val_err_mu:.4f} +/- {val_err_std:.5f} ({100 - (val_err_std * 100 / (val_err_mu + EPSILON)):.3f}%)
             ''')
 
@@ -276,6 +273,10 @@ def test_model(model, data_file: str or pathlib.Path, args, device: str, output_
 
         data = np.load(str(data_file), allow_pickle=True)
 
+        # - Print some examples
+        plots_dir = output_dir / 'plots'
+        os.makedirs(plots_dir, exist_ok=True)
+
         _, _, test_data_loader = get_data_loaders(
             data=data,
             train_batch_size=0,
@@ -286,14 +287,20 @@ def test_model(model, data_file: str or pathlib.Path, args, device: str, output_
             logger=logger
         )
 
-        loss, true_seg_msrs, pred_seg_msrs = val_fn(data_loader=test_data_loader, model=model, loss_fn=TR_LOSS, device=device)
+        loss, true_seg_msrs, pred_seg_msrs, err_mu, err_std = val_fn(data_loader=test_data_loader, model=model, loss_fn=TR_LOSS, device=device)
 
+        # - Plot progress
+
+        # - Scatter plot
+        scatter_plot(x=true_seg_msrs, y=pred_seg_msrs, save_file=f'{plots_dir}/test_scatter.png', logger=logger)
+
+        # - Print stats
         print(f'''
     Test Results (on files from \'{data_file}\' dir):
         Loss: 
             - {loss:.6f}
-        Seg Measure: 
-            - {true_seg_msrs:.4f} / {pred_seg_msrs:.4f} ({100 - (pred_seg_msrs * 100 / (true_seg_msrs + EPSILON)):.2f}%)
+        - Seg Measure Error: 
+            test - {err_mu:.4f} +/- {err_std:.5f} ({100 - (err_mu * 100 / (err_mu + EPSILON)):.3f}%)
         ''')
     else:
         data_not_found_err(data_file=data_file, logger=logger)

@@ -69,7 +69,8 @@ SHUFFLE = True
 
 # TRAINING
 # - Loss
-TR_LOSS = nn.MSELoss()
+# TR_LOSS = nn.MSELoss()
+TR_LOSS = nn.L1Loss()
 TF_LOSS = tf.keras.losses.MeanSquaredError()
 
 LOAD_MODEL = False

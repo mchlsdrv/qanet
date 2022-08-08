@@ -84,15 +84,7 @@ def load_image(image_file):
     return img
 
 
-def plot_scatter(x: np.ndarray, y: np.ndarray, save_file: pathlib.Path = None):
-    D = pd.DataFrame(dict(true=x, predicted=y))
-    g = sns.jointplot(x='true', y='predicted', data=D, height=15, space=0.02, kind='reg')
-    g.ax_joint.plot(np.linspace(0, 1), np.linspace(0, 1), ':g', label='Perfect estimation')
-    g.figure.legend()
-    return g.figure
-
-
-def plot(images, labels, suptitle='', figsize=(25, 10), save_file: pathlib.Path = None) -> None:
+def show_images(images, labels, suptitle='', figsize=(25, 10), save_file: pathlib.Path or str = './new_images_plot.png', logger: logging.Logger = None) -> None:
     fig, ax = plt.subplots(1, len(images), figsize=figsize)
     for idx, (img, lbl) in enumerate(zip(images, labels)):
         ax[idx].imshow(img, cmap='gray')
@@ -100,14 +92,36 @@ def plot(images, labels, suptitle='', figsize=(25, 10), save_file: pathlib.Path 
 
     fig.suptitle(suptitle)
 
-    save_figure(figure=fig, save_file=save_file)
+    save_figure(figure=fig, save_file=pathlib.Path(save_file), logger=logger)
 
 
-def save_figure(figure, save_file):
+def line_plot(x: list or np.ndarray, ys: list or np.ndarray, suptitle: str, labels: list, colors: tuple = ('r', 'g', 'b'), save_file: pathlib.Path or str = './new_line_plot.png', logger: logging.Logger = None):
+    assert len(ys) == len(labels) == len(colors), f'The number of data items ({len(ys)}) does not match the number of labels ({len(labels)}) or the number of colors ({len(colors)})!'
+
+    fig, ax = plt.subplots()
+    for y, lbl, clr in zip(ys, labels, colors):
+        ax.plot(x, y, color=clr, label=lbl)
+
+    plt.legend()
+
+    save_figure(figure=fig, save_file=pathlib.Path(save_file), logger=logger)
+
+
+def scatter_plot(x: np.ndarray, y: np.ndarray, save_file: pathlib.Path or str = './new_scatter_plot.png', logger: logging.Logger = None):
+    D = pd.DataFrame(dict(true=x, predicted=y))
+    g = sns.jointplot(x='true', y='predicted', data=D, height=15, space=0.02, kind='reg')
+    g.ax_joint.plot(np.linspace(0, 1), np.linspace(0, 1), ':g', label='Perfect estimation')
+    g.figure.legend()
+
+    save_figure(figure=g.figure, save_file=pathlib.Path(save_file), logger=logger)
+
+
+def save_figure(figure, save_file, logger: logging.Logger = None):
     if isinstance(save_file, pathlib.Path):
         os.makedirs(save_file.parent, exist_ok=True)
         figure.savefig(str(save_file))
         plt.close(figure)
+        info_log(logger=logger, message=f'Figure was saved to \'{save_file}\'')
 
 
 def plot_seg_measure_histogram(seg_measures: np.ndarray, bin_width: float = .1, figsize: tuple = (25, 10), density: bool = False, save_file: pathlib.Path = None):

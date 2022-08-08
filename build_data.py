@@ -11,7 +11,7 @@ import pathlib
 import logging
 
 from utils import augs
-from utils.aux_funcs import calc_jaccard, get_runtime, scan_files, plot_hist
+from utils.aux_funcs import calc_jaccard, get_runtime, scan_files, plot_hist, show_images
 from configs.general_configs import (
     TRAIN_DATA_DIR,
     GEN_DATA_DIR,
@@ -92,14 +92,15 @@ def build_data_file(files: list, output_dir: pathlib.Path, n_samples=N_SAMPLES, 
         plot_pbar = tqdm(data)
         idx = 0
         for img, msk, msk_aug, j in plot_pbar:
-            fig, ax = plt.subplots(1, 3)
-            ax[0].imshow(img, cmap='gray')
-            ax[1].imshow(msk, cmap='gray')
-            ax[2].imshow(msk_aug, cmap='gray')
-            fig.suptitle(f'Jaccard: {j:.3f}')
-
-            plt.savefig(samples_dir / f'{idx}.png')
-            plt.close(fig)
+            show_images(images=[img, msk, msk_aug], labels=['Image', 'Mask'], suptitle=f'Jaccard: {j:.4f}', figsize=(25, 10), save_file=samples_dir / f'{idx}.png')
+            # fig, ax = plt.subplots(1, 3)
+            # ax[0].imshow(img, cmap='gray')
+            # ax[1].imshow(msk, cmap='gray')
+            # ax[2].imshow(msk_aug, cmap='gray')
+            # fig.suptitle(f'Jaccard: {j:.3f}')
+            #
+            # plt.savefig(samples_dir / f'{idx}.png')
+            # plt.close(fig)
 
             idx += 1
 

@@ -13,7 +13,7 @@ from configs.general_configs import (
 )
 
 from utils.aux_funcs import (
-    plot_scatter
+    scatter_plot
 )
 from .tf_activations import (
     Swish
@@ -182,7 +182,7 @@ class RibCage(keras.Model):
                 break
             # train_segs = log_bboxes(image=self.train_imgs[0], mask=self.train_aug_segs[0], true_seg_measure=self.train_trgt_seg_msrs[0], pred_seg_measure=self.train_pred_seg_msrs[0], procedure='train')
 
-        train_scatter_plot = plot_scatter(
+        train_scatter_plot = scatter_plot(
             x=trgt_seg_msrs,
             y=pred_seg_msrs,
         )
@@ -229,7 +229,7 @@ class RibCage(keras.Model):
             val_segs.append(log_masks(image=img, mask=seg, true_seg_measure=trgt_seg_msr, pred_seg_measure=pred_seg_msr))
             if idx == 5:
                 break
-        val_scatter_plot = plot_scatter(
+        val_scatter_plot = scatter_plot(
             x=trgt_seg_msrs,
             y=pred_seg_msrs,
         )
