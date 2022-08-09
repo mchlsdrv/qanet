@@ -54,7 +54,7 @@ def run(args, output_dir, logger):
                     alpha=args.activation_leaky_relu_alpha
                 )
             ),
-            checkpoint_dir=pathlib.Path(args.checkpoint_dir),
+            checkpoint_dir=pathlib.Path(args.tf_checkpoint_dir),
             logger=logger
         )
     except Exception as err:

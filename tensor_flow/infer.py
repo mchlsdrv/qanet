@@ -30,7 +30,7 @@ by changing the value of TF_CPP_MIN_LOG_LEVEL:
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
 
 
-def run(args, logger: logging.Logger = None):
+def run(args, output_dir, logger: logging.Logger = None):
     # - Configure the GPU to run on
     choose_gpu(gpu_id=args.gpu_id, logger=logger)
 
@@ -40,7 +40,7 @@ def run(args, logger: logging.Logger = None):
     try:
         trained_model, weights_loaded = get_model(
             model_configs=dict(
-                input_image_dims=(args.image_size, args.image_size),
+                input_image_dims=(args.image_height, args.image_width),
                 kernel_regularizer=dict(
                     type=args.kernel_regularizer_type,
                     l1=args.kernel_regularizer_l1,

@@ -83,6 +83,8 @@ def val_fn(data_loader, model, loss_fn, device: str):
     model.eval()
     data_loop = tqdm(data_loader)
     losses = np.array([])
+    true_seg_msrs_history = np.array([])
+    pred_seg_msrs_history = np.array([])
     abs_err_mus = np.array([])
     abs_err_stds = np.array([])
     for btch_idx, (imgs, aug_masks, seg_msrs) in enumerate(data_loop):
@@ -98,7 +100,10 @@ def val_fn(data_loader, model, loss_fn, device: str):
 
         # Update tqdm loop
         true_seg_msrs = seg_msrs.detach().cpu().numpy()
+        true_seg_msrs_history = np.append(true_seg_msrs_history, true_seg_msrs)
+
         pred_seg_msrs = preds.detach().cpu().numpy()
+        pred_seg_msrs_history = np.append(pred_seg_msrs_history, pred_seg_msrs)
 
         abs_errs = np.abs(true_seg_msrs - pred_seg_msrs)
         abs_err_mu, abs_err_std = abs_errs.mean(), abs_errs.std()
@@ -111,10 +116,11 @@ def val_fn(data_loader, model, loss_fn, device: str):
 
     model.train()
 
-    return losses.mean(), true_seg_msrs, pred_seg_msrs, abs_err_mus.mean(), abs_err_stds.sum() / ((len(abs_err_stds) - 1) + EPSILON)
+    return losses.mean(), true_seg_msrs_history, pred_seg_msrs_history, abs_err_mus.mean(), abs_err_stds.sum() / ((len(abs_err_stds) - 1) + EPSILON)
 
 
 def train_model(data_file, epochs, args, device: str, output_dir: pathlib.Path, logger: logging.Logger = None):
+    model = None
     if check_file(file_path=data_file):
         data = np.load(str(data_file), allow_pickle=True)
 
@@ -138,7 +144,7 @@ def train_model(data_file, epochs, args, device: str, output_dir: pathlib.Path, 
             logger=logger
         ).to(device)
 
-        if args.load_model:
+        if args.continue_train:
             chkpt_fl = pathlib.Path(args.checkpoint_file)
             if chkpt_fl.is_file():
                 load_checkpoint(torch.load(chkpt_fl), model)

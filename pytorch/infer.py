@@ -5,9 +5,9 @@ import torch
 
 from configs.general_configs import (
     MODEL_CONFIGS_FILE,
-    INF_SEG_DIR_POSTFIX,
-    INF_IMAGE_PREFIX,
-    INF_SEG_PREFIX
+    SEG_DIR_POSTFIX,
+    IMAGE_PREFIX,
+    SEG_PREFIX
 )
 from utils.aux_funcs import get_model_configs, scan_files, err_log
 from .custom.torch_models import RibCage
@@ -47,7 +47,7 @@ def run(args, output_dir, logger: logging.Logger):
     inf_data_dir = pathlib.Path(args.inference_data_dir)
     assert inf_data_dir.is_dir(), f'The \'{inf_data_dir}\' directory does not exist!'
     # - Get file tuples
-    data_fls = scan_files(root_dir=inf_data_dir, seg_dir_postfix=INF_SEG_DIR_POSTFIX, image_prefix=INF_IMAGE_PREFIX, seg_prefix=INF_SEG_PREFIX)
+    data_fls = scan_files(root_dir=inf_data_dir, seg_dir_postfix=SEG_DIR_POSTFIX, image_prefix=IMAGE_PREFIX, seg_prefix=SEG_PREFIX)
 
     if data_fls:
         infer(

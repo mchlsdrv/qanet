@@ -18,8 +18,6 @@ import seaborn as sns
 
 from configs.general_configs import (
     TRAIN_DATA_FILE,
-    TEST_GT_DATA_FILE,
-    TEST_ST_DATA_FILE,
     OUTPUT_DIR,
     IMAGE_WIDTH,
     IMAGE_HEIGHT,
@@ -40,7 +38,7 @@ from configs.general_configs import (
     OPTIMIZER_MOMENTUM,
     OPTIMIZER_DAMPENING,
     OPTIMIZER_MOMENTUM_DECAY,
-    OPTIMIZER, DEFAULT_MODEL_LIB, DEBUG_LEVEL, TF_CHECKPOINT_DIR, DROP_BLOCK_KEEP_PROB, DROP_BLOCK_BLOCK_SIZE, KERNEL_REGULARIZER_TYPE, KERNEL_REGULARIZER_L1, KERNEL_REGULARIZER_L2, KERNEL_REGULARIZER_FACTOR, KERNEL_REGULARIZER_MODE, ACTIVATION, ACTIVATION_RELU_MAX_VALUE, ACTIVATION_RELU_NEGATIVE_SLOPE, ACTIVATION_RELU_THRESHOLD, ACTIVATION_LEAKY_RELU_ALPHA, INFERENCE_DATA_DIR
+    OPTIMIZER, DEBUG_LEVEL, TF_CHECKPOINT_DIR, DROP_BLOCK_KEEP_PROB, DROP_BLOCK_BLOCK_SIZE, KERNEL_REGULARIZER_TYPE, KERNEL_REGULARIZER_L1, KERNEL_REGULARIZER_L2, KERNEL_REGULARIZER_FACTOR, KERNEL_REGULARIZER_MODE, ACTIVATION, ACTIVATION_RELU_MAX_VALUE, ACTIVATION_RELU_NEGATIVE_SLOPE, ACTIVATION_RELU_THRESHOLD, ACTIVATION_LEAKY_RELU_ALPHA, INFERENCE_DATA_DIR, TEST_DATA_FILE
 )
 plt.style.use('seaborn')
 
@@ -84,7 +82,7 @@ def load_image(image_file):
     return img
 
 
-def show_images(images, labels, suptitle='', figsize=(25, 10), save_file: pathlib.Path or str = './new_images_plot.png', logger: logging.Logger = None) -> None:
+def show_images(images, labels, suptitle='', figsize=(25, 10), save_file: pathlib.Path or str = './new_images_plot.png', verbose: bool = False, logger: logging.Logger = None) -> None:
     fig, ax = plt.subplots(1, len(images), figsize=figsize)
     for idx, (img, lbl) in enumerate(zip(images, labels)):
         ax[idx].imshow(img, cmap='gray')
@@ -92,7 +90,7 @@ def show_images(images, labels, suptitle='', figsize=(25, 10), save_file: pathli
 
     fig.suptitle(suptitle)
 
-    save_figure(figure=fig, save_file=pathlib.Path(save_file), logger=logger)
+    save_figure(figure=fig, save_file=pathlib.Path(save_file), verbose=verbose, logger=logger)
 
 
 def line_plot(x: list or np.ndarray, ys: list or np.ndarray, suptitle: str, labels: list, colors: tuple = ('r', 'g', 'b'), save_file: pathlib.Path or str = './new_line_plot.png', logger: logging.Logger = None):
@@ -116,12 +114,13 @@ def scatter_plot(x: np.ndarray, y: np.ndarray, save_file: pathlib.Path or str = 
     save_figure(figure=g.figure, save_file=pathlib.Path(save_file), logger=logger)
 
 
-def save_figure(figure, save_file, logger: logging.Logger = None):
+def save_figure(figure, save_file, verbose: bool = False, logger: logging.Logger = None):
     if isinstance(save_file, pathlib.Path):
         os.makedirs(save_file.parent, exist_ok=True)
         figure.savefig(str(save_file))
         plt.close(figure)
-        info_log(logger=logger, message=f'Figure was saved to \'{save_file}\'')
+        if verbose:
+            info_log(logger=logger, message=f'Figure was saved to \'{save_file}\'')
 
 
 def plot_seg_measure_histogram(seg_measures: np.ndarray, bin_width: float = .1, figsize: tuple = (25, 10), density: bool = False, save_file: pathlib.Path = None):
@@ -468,23 +467,18 @@ def get_arg_parser():
     parser = argparse.ArgumentParser()
 
     # - GENERAL PARAMETERS
-    parser.add_argument('--model_lib', type=str, choices=['pytorch', 'tensor_flow'], default=DEFAULT_MODEL_LIB, help=f'The library used to build the model (pytorch or tensor_flow)')
-    parser.add_argument('--procedure', type=str, choices=['train', 'test', 'inference'], help=f'Which procedure to execute')
-    parser.add_argument('--load_model', default=False, action='store_true', help=f'If to load the model')
     parser.add_argument('--gpu_id', type=int, default=0 if torch.cuda.device_count() > 0 else -1, help='The ID of the GPU (if there is any) to run the network on (e.g., --gpu_id 1 will run the network on GPU #1 etc.)')
 
-    parser.add_argument('--train_continue', default=False, action='store_true', help=f'If to continue the training from the checkpoint saved at the checkpoint file')
+    parser.add_argument('--continue_train', default=False, action='store_true', help=f'If to continue the training from the checkpoint saved at the checkpoint file')
     parser.add_argument('--lunch_tb', default=False, action='store_true', help=f'If to lunch tensorboard')
     parser.add_argument('--train_data_file', type=str, default=TRAIN_DATA_FILE, help='The path to the train data file')
-    parser.add_argument('--test_data_file', type=str, default='', help='The path to the custom test file')
-    parser.add_argument('--test_gt_data_file', type=str, default=TEST_GT_DATA_FILE, help='The path to the gold standard test file')
-    parser.add_argument('--test_st_data_file', type=str, default=TEST_ST_DATA_FILE, help='The path to the silver standard test file')
+    parser.add_argument('--test_data_file', type=str, default=TEST_DATA_FILE, help='The path to the custom test file')
     parser.add_argument('--inference_data_dir', type=str, default=INFERENCE_DATA_DIR, help='The path to the inference data dir')
 
     parser.add_argument('--output_dir', type=str, default=OUTPUT_DIR, help='The path to the directory where the outputs will be placed')
 
-    parser.add_argument('--image_width', type=int, default=IMAGE_WIDTH, help='The width of the images that will be used for network training and inference. If not specified, will be set to IMAGE_WIDTH as in general_configs.py file.')
     parser.add_argument('--image_height', type=int, default=IMAGE_HEIGHT, help='The height of the images that will be used for network training and inference. If not specified, will be set to IMAGE_HEIGHT as in general_configs.py file.')
+    parser.add_argument('--image_width', type=int, default=IMAGE_WIDTH, help='The width of the images that will be used for network training and inference. If not specified, will be set to IMAGE_WIDTH as in general_configs.py file.')
 
     parser.add_argument('--in_channels', type=int, default=IN_CHANNELS, help='The number of channels in an input image (e.g., 3 for RGB, 1 for Grayscale etc)')
     parser.add_argument('--out_channels', type=int, default=OUT_CHANNELS, help='The number of channels in the output image (e.g., 3 for RGB, 1 for Grayscale etc)')

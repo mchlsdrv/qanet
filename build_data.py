@@ -3,7 +3,6 @@ import datetime
 import os
 import time
 
-import matplotlib.pyplot as plt
 import cv2
 from tqdm import tqdm
 import numpy as np
@@ -13,33 +12,23 @@ import logging
 from utils import augs
 from utils.aux_funcs import calc_jaccard, get_runtime, scan_files, plot_hist, show_images
 from configs.general_configs import (
-    TRAIN_DATA_DIR,
-    GEN_DATA_DIR,
-    TEST_DATA_DIR,
-    TRAIN_SEG_DIR_POSTFIX,
-    TRAIN_IMAGE_PREFIX,
-    TRAIN_SEG_PREFIX,
-    TEST_SEG_PREFIX,
-    TEST_IMAGE_PREFIX,
-    TEST_SEG_DIR_POSTFIX,
+    N_SAMPLES,
+    MIN_J,
+    MAX_J,
+    INPUT_DATA_DIR,
+    OUTPUT_DATA_DIR,
+    SEG_DIR_POSTFIX,
+    SEG_PREFIX,
+    IMAGE_PREFIX,
+    DATA_TYPE,
 )
 
 logging.getLogger('PIL').setLevel(logging.WARNING)
 
 __author__ = 'sidorov@post.bgu.ac.il'
 
-# - CONFIGS
-DATA_TYPE = 'train'
-SEG_DIR_POSTFIX = 'GT'
-IMAGE_PREFIX = 't0'
-SEG_PREFIX = 'man_seg0'
 
-N_SAMPLES = 100000
-MIN_J = 0.01
-MAX_J = 0.99
-
-
-def build_data_file(files: list, output_dir: pathlib.Path, n_samples=N_SAMPLES, plot_samples: bool = False):
+def build_data_file(files: list, output_dir: pathlib.Path, n_samples, min_j: int, max_j: int, plot_samples: bool = False):
     t_start = time.time()
     mask_augs = augs.mask_augs()
     imgs = []
@@ -60,7 +49,7 @@ def build_data_file(files: list, output_dir: pathlib.Path, n_samples=N_SAMPLES, 
 
             jaccard = calc_jaccard(mask, mask_aug)
 
-            if MIN_J < jaccard < MAX_J:
+            if min_j < jaccard < max_j:
                 imgs.append(img)
                 masks.append(mask)
                 aug_masks.append(mask_aug)
@@ -69,46 +58,40 @@ def build_data_file(files: list, output_dir: pathlib.Path, n_samples=N_SAMPLES, 
 
     data = np.array(list(zip(imgs, masks, aug_masks, jaccards)), dtype=object)
 
-    # - Save the data
-    data_dir = output_dir / f'{DATA_TYPE}/{len(data)}_samples'
+    if len(data):
+        # - Save the data
+        data_dir = output_dir / f'{len(data)}_samples'
 
-    # To avoid data overwrite
-    if data_dir.is_dir():
-        ts = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-        print(f'\'{data_dir}\' already exists! Data will be placed in \'{data_dir}/{ts}\'')
-        data_dir = data_dir / ts
+        # To avoid data overwrite
+        if data_dir.is_dir():
+            ts = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+            print(f'\'{data_dir}\' already exists! Data will be placed in \'{data_dir}/{ts}\'')
+            data_dir = data_dir / ts
 
-    os.makedirs(data_dir, exist_ok=True)
-    np.save(str(data_dir / f'data.npy'), data, allow_pickle=True)
-    print(f'Data was saved to \'{data_dir}/data.npy\'')
+        os.makedirs(data_dir, exist_ok=True)
+        np.save(str(data_dir / f'data.npy'), data, allow_pickle=True)
+        print(f'Data was saved to \'{data_dir}/data.npy\'')
 
-    if plot_samples:
-        print(f'Plotting samples..')
+        if plot_samples:
+            print(f'Plotting samples..')
 
-        # - Plot samples
-        samples_dir = data_dir / 'samples'
-        os.makedirs(samples_dir, exist_ok=True)
+            # - Plot samples
+            samples_dir = data_dir / 'samples'
+            os.makedirs(samples_dir, exist_ok=True)
 
-        plot_pbar = tqdm(data)
-        idx = 0
-        for img, msk, msk_aug, j in plot_pbar:
-            show_images(images=[img, msk, msk_aug], labels=['Image', 'Mask'], suptitle=f'Jaccard: {j:.4f}', figsize=(25, 10), save_file=samples_dir / f'{idx}.png')
-            # fig, ax = plt.subplots(1, 3)
-            # ax[0].imshow(img, cmap='gray')
-            # ax[1].imshow(msk, cmap='gray')
-            # ax[2].imshow(msk_aug, cmap='gray')
-            # fig.suptitle(f'Jaccard: {j:.3f}')
-            #
-            # plt.savefig(samples_dir / f'{idx}.png')
-            # plt.close(fig)
+            plot_pbar = tqdm(data)
+            idx = 0
+            for img, msk, msk_aug, j in plot_pbar:
+                show_images(images=[img, msk, msk_aug], labels=['Image', 'Mask', 'Augmented Mask'], suptitle=f'Jaccard: {j:.4f}', figsize=(25, 10), save_file=samples_dir / f'{idx}.png')
+                idx += 1
 
-            idx += 1
+        # - Plot J histogram
+        print(f'Plotting the histogram of the Js...')
+        plot_hist(data=jaccards, hist_range=(0., 1., 0.1), bins=10, save_name=f'data dist ({len(data)} samples)', output_dir=data_dir, density=True)
 
-    # - Plot J histogram
-    print(f'Plotting the histogram of the Js...')
-    plot_hist(data=jaccards, hist_range=(0., 1., 0.1), bins=10, save_name=f'data dist ({len(data)} samples)', output_dir=data_dir, density=True)
-
-    print(f'== Data generation took: {get_runtime(seconds=time.time() - t_start)} ==')
+        print(f'== Data generation took: {get_runtime(seconds=time.time() - t_start)} ==')
+    else:
+        print(f'No data was generated - no files were provided!')
 
     return data
 
@@ -116,15 +99,21 @@ def build_data_file(files: list, output_dir: pathlib.Path, n_samples=N_SAMPLES, 
 def get_arg_parser():
     parser = argparse.ArgumentParser()
 
-    parser.add_argument('--procedure', type=str, choices=['train', 'test'], help='The type of the procedure we are interested in')
+    parser.add_argument('--input_data_dir', type=str, default=INPUT_DATA_DIR, help='The path to the directory where the train images and corresponding masks are stored')
 
-    parser.add_argument('--train_data_dir', type=str, default=TRAIN_DATA_DIR, help='The path to the directory where the train images and corresponding masks are stored')
+    parser.add_argument('--output_data_dir', type=str, default=OUTPUT_DATA_DIR, help='The path to the directory where the outputs will be placed')
 
-    parser.add_argument('--test_data_dir', type=str, default=TEST_DATA_DIR, help='The path to the directory where the test images and corresponding masks are stored')
+    parser.add_argument('--seg_dir_postfix', type=str, default=SEG_DIR_POSTFIX, help='The postfix of the directory which holds the segmentations')
 
-    parser.add_argument('--gen_data_dir', type=str, default=GEN_DATA_DIR, help='The path to the directory where the outputs will be placed')
+    parser.add_argument('--image_prefix', type=str, default=IMAGE_PREFIX, help='The prefix of the images')
+
+    parser.add_argument('--seg_prefix', type=str, default=SEG_PREFIX, help='The prefix of the segmentations')
 
     parser.add_argument('--n_samples', type=int, default=N_SAMPLES, help='The total number of samples to generate')
+
+    parser.add_argument('--min_j', type=float, default=MIN_J, help='The minimal allowed jaccard ')
+
+    parser.add_argument('--max_j', type=float, default=MAX_J, help='The maximal allowed jaccard ')
 
     parser.add_argument('--plot_samples', default=False, action='store_true', help=f'If to plot the samples images of the data')
 
@@ -138,28 +127,23 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
     # - Scan the files in the data dir
-    if args.procedure == 'train':
-        data_dir = args.train_data_dir
-        sed_dir_postfix = TRAIN_SEG_DIR_POSTFIX
-        img_prefix = TRAIN_IMAGE_PREFIX
-        seg_prefix = TRAIN_SEG_PREFIX
-    elif args.procedure == 'test':
-        data_dir = args.test_data_dir
-        sed_dir_postfix = TEST_SEG_DIR_POSTFIX
-        img_prefix = TEST_IMAGE_PREFIX
-        seg_prefix = TEST_SEG_PREFIX
 
     fls = scan_files(
-        root_dir=data_dir,
-        seg_dir_postfix=SEG_DIR_POSTFIX,
-        image_prefix=IMAGE_PREFIX,
-        seg_prefix=SEG_PREFIX
+        root_dir=args.input_data_dir,
+        seg_dir_postfix=args.seg_dir_postfix,
+        image_prefix=args.image_prefix,
+        seg_prefix=args.seg_prefix
     )
 
     # - Build the data file
-    build_data_file(
-        files=fls,
-        output_dir=args.gen_data_dir,
-        n_samples=args.n_samples,
-        plot_samples=args.plot_samples
-    )
+    if fls:
+        build_data_file(
+            files=fls,
+            output_dir=args.output_data_dir,
+            n_samples=args.n_samples,
+            min_j=args.min_j,
+            max_j=args.max_j,
+            plot_samples=args.plot_samples,
+        )
+    else:
+        print(f'No files to generate data from !')
