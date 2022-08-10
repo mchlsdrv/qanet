@@ -26,7 +26,7 @@ class Swish(Layer):
         super().__init__()
         self.supports_masking = True
 
-    def call(self, inputs):
+    def call(self, inputs, **kwargs):
         return tf.keras.activations.swish(inputs)
 
     @tf_utils.shape_type_conversion

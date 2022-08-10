@@ -102,7 +102,10 @@ def line_plot(x: list or np.ndarray, ys: list or np.ndarray, suptitle: str, labe
 
     plt.legend()
 
-    save_figure(figure=fig, save_file=pathlib.Path(save_file), logger=logger)
+    try:
+        save_figure(figure=fig.figure, save_file=save_file, logger=logger)
+    except Exception as err:
+        err_log(logger=logger, message=f'{err}')
 
 
 def scatter_plot(x: np.ndarray, y: np.ndarray, save_file: pathlib.Path or str = './new_scatter_plot.png', logger: logging.Logger = None):
@@ -111,7 +114,10 @@ def scatter_plot(x: np.ndarray, y: np.ndarray, save_file: pathlib.Path or str = 
     g.ax_joint.plot(np.linspace(0, 1), np.linspace(0, 1), ':g', label='Perfect estimation')
     g.figure.legend()
 
-    save_figure(figure=g.figure, save_file=pathlib.Path(save_file), logger=logger)
+    try:
+        save_figure(figure=g.figure, save_file=save_file, logger=logger)
+    except Exception as err:
+        err_log(logger=logger, message=f'{err}')
 
 
 def save_figure(figure, save_file, verbose: bool = False, logger: logging.Logger = None):
@@ -449,7 +455,7 @@ def calc_jaccard(R: np.ndarray, S: np.ndarray):
 def plot_hist(data: np.ndarray or list, hist_range: list or tuple, bins: int, save_name: str, output_dir: pathlib.Path, density: bool = True):
     # - Plot histogram
     heights, ranges = np.histogram(data, range=hist_range[:-1], bins=bins, density=density)
-    fig, ax = plt.subplots()
+    fig, ax = plt.subplots(figsize=(15, 10))
     ax.bar(ranges[:-1], heights)
     ax.set(xticks=np.arange(hist_range[0], hist_range[1]+hist_range[2], hist_range[2]), xlim=[0, 1])
     plt.savefig(output_dir / f'{save_name}.png')

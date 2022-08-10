@@ -9,15 +9,50 @@ N_SAMPLES = 10000
 MIN_J = 0.01
 MAX_J = 0.99
 
-# DATA_TYPE = 'train'
-DATA_TYPE = 'test'
-# SUB_DIR = ''
-SUB_DIR = 'GT'
-# SUB_DIR = 'ST'
-# INPUT_DATA_DIR = pathlib.Path(f'../data/{DATA_TYPE}/Fluo-N2DH-SIM+')
-INPUT_DATA_DIR = pathlib.Path(f'../data/{DATA_TYPE}/Fluo-N2DH-GOWT1/{SUB_DIR}')
-OUTPUT_DATA_DIR = pathlib.Path(f'../data/gen_data/Fluo-N2DH-SIM+/{DATA_TYPE}/{SUB_DIR}')
+# PATHS
+# > DATA
+# - DATA ROOT -
+DATA_ROOT_DIR = pathlib.Path('../data')
 
+# - TRAIN -
+TRAIN_INPUT_DATA_DIR = 'Fluo-N2DH-SIM+'
+TRAIN_OUTPUT_DATA_DIR = DATA_ROOT_DIR / f'generated/train/{TRAIN_INPUT_DATA_DIR}'
+TRAIN_DATA_FILE = TRAIN_OUTPUT_DATA_DIR / f'3942_samples/data.npy'
+
+# - TEST -
+TEST_INPUT_DATA_DIR = 'Fluo-N2DH-GOWT1-ST'
+TEST_OUTPUT_DATA_DIR = DATA_ROOT_DIR / f'generated/test/{TEST_INPUT_DATA_DIR}'
+TEST_DATA_FILE = TEST_OUTPUT_DATA_DIR / f'106_samples/data.npy'
+# TEST_DATA_FILE = TEST_OUTPUT_DATA_DIR / f'56_samples/data.npy'
+
+# - INFERENCE -
+INFERENCE_INPUT_DATA_DIR = 'UNSW-AU-Fluo-N2DH-GOWT1'
+# INFERENCE_INPUT_DATA_DIR = 'BGU-IL-Fluo-N2DH-GOWT1'
+# INFERENCE_INPUT_DATA_DIR = 'UNSW-AU-Fluo-N2DH-GOWT1'
+# INFERENCE_INPUT_DATA_DIR = 'UNSW-AU-Fluo-N2DH-SIM+'
+# INFERENCE_INPUT_DATA_DIR = 'DKFZ-GE-Fluo-N2DH-SIM+'
+# INFERENCE_INPUT_DATA_DIR = 'BGU-IL-Fluo-N2DH-GOWT1'
+# INFERENCE_INPUT_DATA_DIR = 'BGU-IL-Fluo-N2DH-GOWT1(1)'
+INFERENCE_DATA_DIR = DATA_ROOT_DIR / f'inference/{INFERENCE_INPUT_DATA_DIR}'
+
+# - OUTPUT -
+OUTPUT_DIR = pathlib.Path('./output')
+
+CONFIGS_DIR = pathlib.Path('./configs')
+
+MODEL_CONFIGS_FILE = CONFIGS_DIR / 'ribcage_configs.yml'
+
+# > CHECK POINTS
+# -*- PyTorch
+# TR_CHECKPOINT_FILE_BEST_MODEL = pathlib.Path('/media/rrtammyfs/Users/sidorov/QANet/output/pytorch_2022-07-27_22-57-53/checkpoints/best_val_loss_chkpt.pth.tar')
+TR_CHECKPOINT_FILE_BEST_MODEL = pathlib.Path('/home/sidorov/Projects/QANetV2/qanet/output/train/pytorch_2022-08-08_17-28-30/checkpoints/best_val_loss_chkpt.pth.tar')
+
+# -*-  TensorFlow
+TF_CHECKPOINT_DIR = pathlib.Path('/media/rrtammyfs/Users/sidorov/QANet/output/train/tensor_flow_2022-07-27_22-57-53/checkpoints')
+TF_CHECKPOINT_FILE_TEMPLATE = 'checkpoints/cp-{epoch:04d}.ckpt'  # <- may be used in case we want to save all teh check points, and not only the best
+TF_CHECKPOINT_FILE_BEST_MODEL = 'checkpoints/best_model.ckpt'  # <- overwrites the second-best model weights in case MODEL_CHECKPOINT_SAVE_BEST_ONLY = True
+
+# > STRINGS
 SEG_DIR_POSTFIX = 'GT'
 IMAGE_PREFIX = 't0'
 SEG_PREFIX = 'man_seg0'
@@ -28,37 +63,11 @@ SEG_PREFIX = 'man_seg0'
 
 # ========= MAIN MODULE =========
 # TOGGLES
-DEFAULT_MODEL_LIB = 'pytorch'
 DEBUG_LEVEL = 0
 PROFILE = False
 
 # CONSTANTS
 EPSILON = 1e-7
-
-# PATHS
-# - TRAIN -
-TRAIN_DATA_FILE = OUTPUT_DATA_DIR / '3942_samples/data.npy'
-
-# - TEST -
-TEST_DATA_FILE = OUTPUT_DATA_DIR / 'gt_data.npy'  # <= Gold (experts) standard test
-# TEST_DATA_FILE = OUTPUT_DATA_DIR / 'st_data.npy'  # <= Gold (experts) standard test
-
-# - INFERENCE -
-INFERENCE_DATA_DIR = '../data/inference/UNSW-AU-Fluo-N2DH-GOWT1'
-# INFERENCE_DATA_DIR = '../data/inference/BGU-IL-Fluo-N2DH-GOWT1'
-# INFERENCE_DATA_DIR = '../data/inference/UNSW-AU-Fluo-N2DH-GOWT1'
-# INFERENCE_DATA_DIR = '../data/inference/UNSW-AU-Fluo-N2DH-SIM+'
-# INFERENCE_DATA_DIR = '../data/inference/DKFZ-GE-Fluo-N2DH-SIM+'
-# INFERENCE_DATA_DIR = '../data/inference/BGU-IL-Fluo-N2DH-GOWT1'
-# INFERENCE_DATA_DIR = '../data/inference/BGU-IL-Fluo-N2DH-GOWT1(1)'
-
-# - OUTPUT -
-OUTPUT_DIR = pathlib.Path('./output')
-
-CONFIGS_DIR = pathlib.Path('./configs')
-
-# PATHS
-MODEL_CONFIGS_FILE = CONFIGS_DIR / 'ribcage_configs.yml'
 
 IMAGE_HEIGHT = 419
 IMAGE_WIDTH = 419
@@ -169,7 +178,8 @@ PLOT_VALIDATION_DATA_BATCHES = True
 LOSS_DELTA_TH = 0.01
 N_OUTLIERS = 5
 OUTLIER_TH = .7
-PROGRESS_LOG = True
+# PROGRESS_LOG = True
+PROGRESS_LOG = False
 PROGRESS_LOG_INTERVAL = 5
 SCATTER_PLOT_FIGSIZE = (25, 15)
 SCATTER_PLOT_FONTSIZE = 40
@@ -179,13 +189,6 @@ TERMINATE_ON_NAN = True
 
 # - Checkpoint
 CHECKPOINT = True
-# - PyTorch
-# TR_CHECKPOINT_FILE_BEST_MODEL = pathlib.Path('/media/rrtammyfs/Users/sidorov/QANet/output/pytorch_2022-07-27_22-57-53/checkpoints/best_val_loss_chkpt.pth.tar')
-TR_CHECKPOINT_FILE_BEST_MODEL = pathlib.Path('/home/sidorov/Projects/QANetV2/qanet/output/train/pytorch_2022-08-08_17-28-30/checkpoints/best_val_loss_chkpt.pth.tar')
-# - TensorFlow
-TF_CHECKPOINT_DIR = pathlib.Path('/media/rrtammyfs/Users/sidorov/QANet/output/train/tensor_flow_2022-07-27_22-57-53/checkpoints')
-TF_CHECKPOINT_FILE_TEMPLATE = 'checkpoints/cp-{epoch:04d}.ckpt'  # <- may be used in case we want to save all teh check points, and not only the best
-TF_CHECKPOINT_FILE_BEST_MODEL = 'checkpoints/best_model.ckpt'  # <- overwrites the second-best model weights in case MODEL_CHECKPOINT_SAVE_BEST_ONLY = True
 CHECKPOINT_MONITOR = 'val_loss'
 CHECKPOINT_VERBOSE = 1
 CHECKPOINT_SAVE_BEST_ONLY = True

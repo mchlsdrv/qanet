@@ -15,12 +15,13 @@ from configs.general_configs import (
     N_SAMPLES,
     MIN_J,
     MAX_J,
-    INPUT_DATA_DIR,
-    OUTPUT_DATA_DIR,
     SEG_DIR_POSTFIX,
     SEG_PREFIX,
     IMAGE_PREFIX,
-    DATA_TYPE,
+    TRAIN_INPUT_DATA_DIR,
+    TEST_INPUT_DATA_DIR,
+    TRAIN_OUTPUT_DATA_DIR,
+    TEST_OUTPUT_DATA_DIR, DATA_ROOT_DIR
 )
 
 logging.getLogger('PIL').setLevel(logging.WARNING)
@@ -69,8 +70,10 @@ def build_data_file(files: list, output_dir: pathlib.Path, n_samples, min_j: int
             data_dir = data_dir / ts
 
         os.makedirs(data_dir, exist_ok=True)
+
+        print(f'> Saving data to \'{data_dir}/data.npy\'...')
         np.save(str(data_dir / f'data.npy'), data, allow_pickle=True)
-        print(f'Data was saved to \'{data_dir}/data.npy\'')
+        print(f'> Data was saved to \'{data_dir}/data.npy\'')
 
         if plot_samples:
             print(f'Plotting samples..')
@@ -99,9 +102,7 @@ def build_data_file(files: list, output_dir: pathlib.Path, n_samples, min_j: int
 def get_arg_parser():
     parser = argparse.ArgumentParser()
 
-    parser.add_argument('--input_data_dir', type=str, default=INPUT_DATA_DIR, help='The path to the directory where the train images and corresponding masks are stored')
-
-    parser.add_argument('--output_data_dir', type=str, default=OUTPUT_DATA_DIR, help='The path to the directory where the outputs will be placed')
+    parser.add_argument('--data_type', type=str, choices=['train', 'test'], help='The type of the data (i.e, train or test)')
 
     parser.add_argument('--seg_dir_postfix', type=str, default=SEG_DIR_POSTFIX, help='The postfix of the directory which holds the segmentations')
 
@@ -129,7 +130,7 @@ if __name__ == '__main__':
     # - Scan the files in the data dir
 
     fls = scan_files(
-        root_dir=args.input_data_dir,
+        root_dir=DATA_ROOT_DIR / f'train/{TRAIN_INPUT_DATA_DIR}' if args.data_type == 'train' else DATA_ROOT_DIR / f'test/{TEST_INPUT_DATA_DIR}',
         seg_dir_postfix=args.seg_dir_postfix,
         image_prefix=args.image_prefix,
         seg_prefix=args.seg_prefix
@@ -139,7 +140,7 @@ if __name__ == '__main__':
     if fls:
         build_data_file(
             files=fls,
-            output_dir=args.output_data_dir,
+            output_dir=TRAIN_OUTPUT_DATA_DIR if args.data_type == 'train' else TEST_OUTPUT_DATA_DIR,
             n_samples=args.n_samples,
             min_j=args.min_j,
             max_j=args.max_j,

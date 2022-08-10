@@ -29,7 +29,7 @@ class ImageDS(Dataset):
         img, mask = aug_res.get('image'), aug_res.get('mask')
         img, mask = np.expand_dims(img, 0), np.expand_dims(mask, 0)
 
-        return torch.tensor(img, dtype=torch.float), torch.tensor(mask, dtype=torch.float), torch.tensor(jaccard, dtype=torch.float)
+        return torch.tensor(img, dtype=torch.float), torch.tensor(mask.astype(np.int16), dtype=torch.float), torch.tensor(jaccard, dtype=torch.float)
 
 
 def get_data_loaders(data: list or np.ndarray, train_batch_size: int, train_augs, val_augs, test_augs, val_prop: float = .2, logger: logging.Logger = None):
