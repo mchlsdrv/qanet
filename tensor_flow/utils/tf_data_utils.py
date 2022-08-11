@@ -73,20 +73,12 @@ def get_data_loaders(data: list or np.ndarray, train_batch_size: int, train_augs
         test_dl = DataLoader(
             data_tuples=data,
             batch_size=TEST_BATCH_SIZE,
-            augs=train_augs,
+            augs=test_augs,
             loader_type='test',
             logger=logger
         )
-    elif inf_augs is not None:
-        inf_dl = DataLoader(
-            data_tuples=data,
-            batch_size=INF_BATCH_SIZE,
-            augs=inf_augs,
-            loader_type='inference',
-            logger=logger
-        )
 
-    return train_dl, val_dl, test_dl, inf_dl
+    return train_dl, val_dl, test_dl
 
 
 def get_image_from_figure(figure):

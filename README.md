@@ -7,11 +7,35 @@ Execution Instructions:
         Builds data in a form of list of tuples (image, segmentation, augmented segmentation, Jaccard(segmentation, augmented_segmentation))
         
         Expected Input Data Format:
-            The files are expected to be in two separate directories (i.e., one for images and one for corresponding segemtnations), 
-            where the directory with the segmentations is the same as the directory with the images, but with some postfix (e.g., 01 
-            with images and 01_RES with segmentations etc.). Each image and the corresponding segmentation files should have some 
-            predefined prefix (e.g., "t01.tif" and "mask01.tif", where the image prefix is "t0", and segmentation prefix is "mask0" etc.)
+            1) The files are expected to be located in two separate directories (i.e., one for images and one for corresponding segemtnations), 
+            where the directory with the segmentations should have the same name as the directory with the images, but with 'MASK' postfix 
+            (e.g., "01" with images and "01_MASK" with the corresponding masks). 
+            2) Each image and the corresponding mask file should have "image0" and "mask0" prefixes respectively (e.g., "image01.tif" and 
+            "mask01.tif", where the image prefix is "img0", and segmentation prefix is "mask0" etc.)
 
+            EXAMPLE:
+                DATA ROOT - 
+                    01 - 
+                        image01.tif
+                        image02.tif
+                        image03.tif
+                           ...
+                    01_MASK - 
+                        mask01.tif
+                        mask02.tif
+                        mask03.tif
+                           ...
+                    02 - 
+                        image01.tif
+                        image02.tif
+                        image03.tif
+                           ...
+                    02_MASK - 
+                        mask01.tif
+                        mask02.tif
+                        mask03.tif
+                           ...
+                    ...
         - Flags (*):
             --input_data_dir (str) - Path to the directory where the input images and segmentations are located. 
             --output_data_dir (str) - Path to the directory where the output images and segmentations will be placed

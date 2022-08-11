@@ -1,11 +1,9 @@
 import os
-import pathlib
 
 from utils.aux_funcs import err_log
 from .utils.tf_utils import (
     choose_gpu,
     train_model,
-    test_model,
 )
 
 import warnings
@@ -41,53 +39,3 @@ def run(args, output_dir, logger):
         )
     except Exception as err:
         err_log(logger=logger, message=f'{err}')
-
-    # - TEST -
-    # -- Custom
-    # -*- Get the test data loader
-    if trained_model is not None:
-        try:
-            test_data_file = pathlib.Path(args.test_data_file)
-            if test_data_file.is_file():
-                print(f'Testing on custom data from {args.test_data_file}...')
-                test_model(
-                    model=trained_model,
-                    data_file=test_data_file,
-                    args=args,
-                    output_dir=output_dir,
-                    logger=logger
-                )
-        except Exception as err:
-            err_log(logger=logger, message=f'{err}')
-
-        # -- GT
-        # -*- Get the gold standard test data loader
-        try:
-            test_gt_data_file = pathlib.Path(args.test_gt_data_file)
-            if test_gt_data_file.is_file():
-                print(f'Testing on custom data from gold standard {args.test_gt_data_file}...')
-                test_model(
-                    model=trained_model,
-                    data_file=test_gt_data_file,
-                    args=args,
-                    output_dir=output_dir,
-                    logger=logger
-                )
-        except Exception as err:
-            err_log(logger=logger, message=f'{err}')
-
-        # -- ST
-        # -*- Get the silver standard test data loader
-        try:
-            test_st_data_file = pathlib.Path(args.test_st_data_file)
-            if test_st_data_file.is_file():
-                print(f'Testing on custom data from silver standard {args.test_st_data_file}...')
-                test_model(
-                    model=trained_model,
-                    data_file=test_st_data_file,
-                    args=args,
-                    output_dir=output_dir,
-                    logger=logger
-                )
-        except Exception as err:
-            err_log(logger=logger, message=f'{err}')

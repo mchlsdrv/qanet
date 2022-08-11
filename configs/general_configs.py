@@ -44,13 +44,10 @@ MODEL_CONFIGS_FILE = CONFIGS_DIR / 'ribcage_configs.yml'
 
 # > CHECK POINTS
 # -*- PyTorch
-# TR_CHECKPOINT_FILE_BEST_MODEL = pathlib.Path('/media/rrtammyfs/Users/sidorov/QANet/output/pytorch_2022-07-27_22-57-53/checkpoints/best_val_loss_chkpt.pth.tar')
 TR_CHECKPOINT_FILE_BEST_MODEL = pathlib.Path('/home/sidorov/Projects/QANetV2/qanet/output/train/pytorch_2022-08-08_17-28-30/checkpoints/best_val_loss_chkpt.pth.tar')
 
 # -*-  TensorFlow
-TF_CHECKPOINT_DIR = pathlib.Path('/media/rrtammyfs/Users/sidorov/QANet/output/train/tensor_flow_2022-07-27_22-57-53/checkpoints')
-TF_CHECKPOINT_FILE_TEMPLATE = 'checkpoints/cp-{epoch:04d}.ckpt'  # <- may be used in case we want to save all teh check points, and not only the best
-TF_CHECKPOINT_FILE_BEST_MODEL = 'checkpoints/best_model.ckpt'  # <- overwrites the second-best model weights in case MODEL_CHECKPOINT_SAVE_BEST_ONLY = True
+TF_CHECKPOINT_DIR = pathlib.Path('/home/sidorov/Projects/QANetV2/qanet/output/train/tensor_flow_2022-08-04_14-37-43/checkpoints')
 
 # > STRINGS
 SEG_DIR_POSTFIX = 'GT'
@@ -189,6 +186,8 @@ TERMINATE_ON_NAN = True
 
 # - Checkpoint
 CHECKPOINT = True
+TF_CHECKPOINT_FILE_TEMPLATE = 'checkpoints/cp-{epoch:04d}.ckpt'  # <- may be used in case we want to save all teh check points, and not only the best
+TF_CHECKPOINT_FILE_BEST_MODEL = 'checkpoints/best_model.ckpt'  # <- overwrites the second-best model weights in case MODEL_CHECKPOINT_SAVE_BEST_ONLY = True
 CHECKPOINT_MONITOR = 'val_loss'
 CHECKPOINT_VERBOSE = 1
 CHECKPOINT_SAVE_BEST_ONLY = True

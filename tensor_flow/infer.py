@@ -3,7 +3,7 @@ import pathlib
 import logging.config
 
 from configs.general_configs import SEG_PREFIX, IMAGE_PREFIX, SEG_DIR_POSTFIX
-from utils.augs import inference_augs
+from .. utils.augs import inference_augs
 from utils.aux_funcs import err_log, scan_files
 
 from . utils.tf_utils import (
@@ -55,6 +55,17 @@ def run(args, output_dir, logger: logging.Logger = None):
                     threshold=args.activation_relu_threshold,
                     alpha=args.activation_leaky_relu_alpha
                 )
+            ),
+            compilation_configs=dict(
+                algorithm=args.optimizer,
+                learning_rate=args.optimizer_lr,
+                rho=args.optimizer_rho,
+                beta_1=args.optimizer_beta_1,
+                beta_2=args.optimizer_beta_2,
+                amsgrad=args.optimizer_amsgrad,
+                momentum=args.optimizer_momentum,
+                nesterov=args.optimizer_nesterov,
+                centered=args.optimizer_centered,
             ),
             checkpoint_dir=pathlib.Path(args.tf_checkpoint_dir),
             logger=logger

@@ -82,7 +82,7 @@ def load_image(image_file):
     return img
 
 
-def show_images(images, labels, suptitle='', figsize=(25, 10), save_file: pathlib.Path or str = './new_images_plot.png', verbose: bool = False, logger: logging.Logger = None) -> None:
+def show_images(images, labels, suptitle='', figsize=(25, 10), save_file: pathlib.Path or str = None, verbose: bool = False, logger: logging.Logger = None) -> None:
     fig, ax = plt.subplots(1, len(images), figsize=figsize)
     for idx, (img, lbl) in enumerate(zip(images, labels)):
         ax[idx].imshow(img, cmap='gray')
@@ -93,7 +93,7 @@ def show_images(images, labels, suptitle='', figsize=(25, 10), save_file: pathli
     save_figure(figure=fig, save_file=pathlib.Path(save_file), verbose=verbose, logger=logger)
 
 
-def line_plot(x: list or np.ndarray, ys: list or np.ndarray, suptitle: str, labels: list, colors: tuple = ('r', 'g', 'b'), save_file: pathlib.Path or str = './new_line_plot.png', logger: logging.Logger = None):
+def line_plot(x: list or np.ndarray, ys: list or np.ndarray, suptitle: str, labels: list, colors: tuple = ('r', 'g', 'b'), save_file: pathlib.Path or str = None, logger: logging.Logger = None):
     assert len(ys) == len(labels) == len(colors), f'The number of data items ({len(ys)}) does not match the number of labels ({len(labels)}) or the number of colors ({len(colors)})!'
 
     fig, ax = plt.subplots()
@@ -108,7 +108,7 @@ def line_plot(x: list or np.ndarray, ys: list or np.ndarray, suptitle: str, labe
         err_log(logger=logger, message=f'{err}')
 
 
-def scatter_plot(x: np.ndarray, y: np.ndarray, save_file: pathlib.Path or str = './new_scatter_plot.png', logger: logging.Logger = None):
+def scatter_plot(x: np.ndarray, y: np.ndarray, save_file: pathlib.Path or str = None, logger: logging.Logger = None):
     D = pd.DataFrame(dict(true=x, predicted=y))
     g = sns.jointplot(x='true', y='predicted', data=D, height=15, space=0.02, kind='reg')
     g.ax_joint.plot(np.linspace(0, 1), np.linspace(0, 1), ':g', label='Perfect estimation')
@@ -120,7 +120,13 @@ def scatter_plot(x: np.ndarray, y: np.ndarray, save_file: pathlib.Path or str = 
         err_log(logger=logger, message=f'{err}')
 
 
-def save_figure(figure, save_file, verbose: bool = False, logger: logging.Logger = None):
+def str_2_path(path: str):
+    return pathlib.Path(path) if isinstance(path, str) else path
+
+
+def save_figure(figure, save_file: pathlib.Path or str, verbose: bool = False, logger: logging.Logger = None):
+    save_file = str_2_path(path=save_file)
+
     if isinstance(save_file, pathlib.Path):
         os.makedirs(save_file.parent, exist_ok=True)
         figure.savefig(str(save_file))
@@ -180,8 +186,8 @@ def check_dir(path: str or pathlib.Path):
     dir_valid = False
 
     # - Convert path to pathlib.Path object
-    if isinstance(path, str):
-        dir_path = pathlib.Path(path)
+
+    dir_path = str_2_path(path=path)
 
     # - Check if file exists
     if dir_path.is_file():

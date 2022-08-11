@@ -11,7 +11,7 @@ import tensorflow as tf
 from utils import augs
 from configs.general_configs import TF_LOSS, METRICS, TENSOR_BOARD, TENSOR_BOARD_WRITE_IMAGES, TENSOR_BOARD_WRITE_STEPS_PER_SECOND, TENSOR_BOARD_UPDATE_FREQ, PROGRESS_LOG, SCATTER_PLOT_FIGSIZE, PROGRESS_LOG_INTERVAL, TENSOR_BOARD_LAUNCH, EARLY_STOPPING, EARLY_STOPPING_MONITOR, EARLY_STOPPING_MIN_DELTA, EARLY_STOPPING_PATIENCE, EARLY_STOPPING_MODE, EARLY_STOPPING_RESTORE_BEST_WEIGHTS, EARLY_STOPPING_VERBOSE, TERMINATE_ON_NAN, REDUCE_LR_ON_PLATEAU, REDUCE_LR_ON_PLATEAU_MONITOR, \
     REDUCE_LR_ON_PLATEAU_FACTOR, REDUCE_LR_ON_PLATEAU_PATIENCE, REDUCE_LR_ON_PLATEAU_MIN_DELTA, REDUCE_LR_ON_PLATEAU_COOLDOWN, REDUCE_LR_ON_PLATEAU_MIN_LR, REDUCE_LR_ON_PLATEAU_MODE, REDUCE_LR_ON_PLATEAU_VERBOSE, CHECKPOINT, TF_CHECKPOINT_FILE_BEST_MODEL, CHECKPOINT_MONITOR, CHECKPOINT_SAVE_FREQ, CHECKPOINT_SAVE_WEIGHTS_ONLY, CHECKPOINT_MODE, CHECKPOINT_SAVE_BEST_ONLY, CHECKPOINT_VERBOSE, VAL_PROP
-from utils.aux_funcs import check_file, info_log, scatter_plot
+from utils.aux_funcs import check_file, info_log, scatter_plot, err_log
 from . tf_data_utils import get_data_loaders
 from ..custom.tf_models import (
     RibCage
@@ -112,12 +112,12 @@ def launch_tensorboard(logdir):
     return tensorboard_th
 
 
-def get_model(model_configs, checkpoint_dir: pathlib.Path = None, wandb_callback: bool = False, logger: logging.Logger = None):
+def get_model(model_configs, compilation_configs, checkpoint_dir: pathlib.Path = None, logger: logging.Logger = None):
     weights_loaded = False
 
     model = RibCage(model_configs=model_configs, logger=logger)
 
-    if checkpoint_dir.is_dir:
+    if model_configs.get('load_checkpoint') and checkpoint_dir.is_dir:
         try:
             latest_cpt = tf.train.latest_checkpoint(checkpoint_dir)
             if latest_cpt is not None:
@@ -135,6 +135,25 @@ def get_model(model_configs, checkpoint_dir: pathlib.Path = None, wandb_callback
     if isinstance(logger, logging.Logger):
         logger.info(model.summary())
 
+    # -2- Compile the model
+    model.compile(
+        loss=TF_LOSS,
+        optimizer=get_optimizer(
+            algorithm=compilation_configs.get('algorithm'),
+            args=dict(
+                learning_rate=compilation_configs.get('learning_rate'),
+                rho=compilation_configs.get('rho'),
+                beta_1=compilation_configs.get('beta_1'),
+                beta_2=compilation_configs.get('beta_2'),
+                amsgrad=compilation_configs.get('amsgrad'),
+                momentum=compilation_configs.get('momentum'),
+                nesterov=compilation_configs.get('nesterov'),
+                centered=compilation_configs.get('centered'),
+            )
+        ),
+        run_eagerly=True,
+        metrics=METRICS
+    )
     return model, weights_loaded
 
 
@@ -191,22 +210,22 @@ def choose_gpu(gpu_id: int = 0, logger: logging.Logger = None):
                 physical_gpus = tf.config.list_physical_devices('GPU')
                 logical_gpus = tf.config.list_logical_devices('GPU')
                 print(f'''
-    =================================================================================
-    = Running on: {logical_gpus} (GPU #{gpu_id}) =
-    =================================================================================
+    ===================================================================================
+    == Running on: {logical_gpus} (GPU #{gpu_id}) ==
+    ===================================================================================
                 ''')
             elif gpu_id > len(gpus) - 1:
                 print(f'''
-    ====================================
-    =       Running on all GPUs        =
-    ====================================
+    ======================================
+    ==       Running on all GPUs        ==
+    ======================================
                 ''')
             elif gpu_id < 0:
                 os.environ['CUDA_VISIBLE_DEVICES'] = ''
                 print(f'''
-    ====================================
-    =          Running on CPU          =
-    ====================================
+    ======================================
+    ==          Running on CPU          ==
+    ======================================
                 ''')
 
         except RuntimeError as err:
@@ -282,6 +301,7 @@ def train_model(args, output_dir: pathlib.Path, logger: logging.Logger = None):
         # -1- Build the model and optionally load the weights
         model, weights_loaded = get_model(
             model_configs=dict(
+                load_checkpoint=args.continue_train,
                 input_image_dims=(args.image_height, args.image_width),
                 drop_block=dict(
                     use=args.drop_block,
@@ -303,32 +323,23 @@ def train_model(args, output_dir: pathlib.Path, logger: logging.Logger = None):
                     alpha=args.activation_leaky_relu_alpha
                 )
             ),
+            compilation_configs=dict(
+                algorithm=args.optimizer,
+                learning_rate=args.optimizer_lr,
+                rho=args.optimizer_rho,
+                beta_1=args.optimizer_beta_1,
+                beta_2=args.optimizer_beta_2,
+                amsgrad=args.optimizer_amsgrad,
+                momentum=args.optimizer_momentum,
+                nesterov=args.optimizer_nesterov,
+                centered=args.optimizer_centered,
+            ),
             checkpoint_dir=pathlib.Path(args.tf_checkpoint_dir),
             logger=logger
         )
 
-        # -2- Compile the model
-        model.compile(
-            loss=TF_LOSS,
-            optimizer=get_optimizer(
-                algorithm=args.optimizer,
-                args=dict(
-                    learning_rate=args.optimizer_lr,
-                    rho=args.optimizer_rho,
-                    beta_1=args.optimizer_beta_1,
-                    beta_2=args.optimizer_beta_2,
-                    amsgrad=args.optimizer_amsgrad,
-                    momentum=args.optimizer_momentum,
-                    nesterov=args.optimizer_nesterov,
-                    centered=args.optimizer_centered,
-                )
-            ),
-            run_eagerly=True,
-            metrics=METRICS
-        )
-
         # - Get the train and the validation data loaders
-        train_dl, val_dl, _, _ = get_data_loaders(
+        train_dl, val_dl, _ = get_data_loaders(
             data=data,
             train_batch_size=args.batch_size,
             val_prop=args.val_prop,
@@ -363,43 +374,48 @@ def train_model(args, output_dir: pathlib.Path, logger: logging.Logger = None):
         # -> If the setting is to launch the tensorboard process automatically
         if tb_prc is not None and args.lunch_tb:
             tb_prc.join()
+    else:
+        err_log(logger=logger, message=f'No train data was found!')
 
 
 def test_model(model, data_file, args, output_dir: pathlib.Path, logger: logging.Logger = None):
-    # -  Load the test data
-    data = np.load(str(data_file), allow_pickle=True)
+    if check_file(file_path=args.test_data_file):
+        # -  Load the test data
+        data = np.load(str(data_file), allow_pickle=True)
 
-    # - Get the GT data loader
-    _, _, test_dl = get_data_loaders(
-        data=data,
-        train_batch_size=0,
-        val_prop=VAL_PROP,
-        train_augs=None,
-        val_augs=None,
-        test_augs=augs.test_augs,
-        inf_augs=None,
-        logger=logger
-    )
+        # - Get the GT data loader
+        _, _, test_dl = get_data_loaders(
+            data=data,
+            train_batch_size=0,
+            val_prop=VAL_PROP,
+            train_augs=None,
+            val_augs=None,
+            test_augs=augs.test_augs,
+            inf_augs=None,
+            logger=logger
+        )
 
-    # -> Get the callbacks and optionally the thread which runs the tensorboard
-    callbacks, tb_prc = get_callbacks(
-        callback_type='test',
-        output_dir=output_dir,
-        logger=logger
-    )
+        # -> Get the callbacks and optionally the thread which runs the tensorboard
+        callbacks, tb_prc = get_callbacks(
+            callback_type='test',
+            output_dir=output_dir,
+            logger=logger
+        )
 
-    # -> If the setting is to launch the tensorboard process automatically
-    if tb_prc is not None and args.lunch_tb:
-        tb_prc.start()
+        # -> If the setting is to launch the tensorboard process automatically
+        if tb_prc is not None and args.lunch_tb:
+            tb_prc.start()
 
-    # -> Run the test
-    print(f'Evaluating')
-    model.evaluate(
-        test_dl,
-        verbose=1,
-        callbacks=callbacks
-    )
+        # -> Run the test
+        print(f'Evaluating')
+        model.evaluate(
+            test_dl,
+            verbose=1,
+            callbacks=callbacks
+        )
 
-    # -> If the setting is to launch the tensorboard process automatically
-    if tb_prc is not None and args.lunch_tb:
-        tb_prc.join()
+        # -> If the setting is to launch the tensorboard process automatically
+        if tb_prc is not None and args.lunch_tb:
+            tb_prc.join()
+    else:
+        err_log(logger=logger, message=f'No test data was found!')
