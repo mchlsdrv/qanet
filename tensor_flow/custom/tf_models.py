@@ -255,7 +255,7 @@ class RibCage(keras.Model):
         results = np.array([])
 
         # - Get the data of the current epoch
-        for (imgs, segs), _ in tqdm(data_loader):
+        for imgs, segs, _ in tqdm(data_loader):
             # - Get the predictions
             pred_seg_msrs = self.model([imgs, segs], training=False)
             pred_seg_msrs = pred_seg_msrs.numpy()[:, 0]

@@ -18,13 +18,13 @@ def load_checkpoint(checkpoint, model):
 def get_device(gpu_id: int = 0, logger: logging.Logger = None):
     n_gpus = torch.cuda.device_count()
 
-    print('Available GPUs:')
-    print(f'\t- Number of GPUs: {n_gpus}')
+    print('> Available GPUs:')
+    print(f'\t- Number of GPUs: {n_gpus}\n')
     device = 'cpu'
     if n_gpus > 0:
         try:
             if -1 < gpu_id < n_gpus - 1:
-                print(f'Setting GPU to: {gpu_id}')
+                print(f'> Setting GPU to: {gpu_id}\n')
 
                 device = f'cuda:{gpu_id}'
 

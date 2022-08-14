@@ -103,7 +103,7 @@ def line_plot(x: list or np.ndarray, ys: list or np.ndarray, suptitle: str, labe
     plt.legend()
 
     try:
-        save_figure(figure=fig.figure, save_file=save_file, logger=logger)
+        save_figure(figure=fig, save_file=save_file, logger=logger)
     except Exception as err:
         err_log(logger=logger, message=f'{err}')
 

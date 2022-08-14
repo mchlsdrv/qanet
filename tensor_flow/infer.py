@@ -2,17 +2,17 @@ import os
 import pathlib
 import logging.config
 
-from configs.general_configs import SEG_PREFIX, IMAGE_PREFIX, SEG_DIR_POSTFIX
-from .. utils.augs import inference_augs
+from configs.general_configs import SEG_PREFIX, IMAGE_PREFIX, SEG_DIR_POSTFIX, INF_BATCH_SIZE
 from utils.aux_funcs import err_log, scan_files
+from utils.augs import inference_augs
 
 from . utils.tf_utils import (
     choose_gpu,
     get_model,
 )
 
-from . utils.tf_data_utils import (
-    get_data_loaders,
+from .utils.tf_data_utils import (
+    DataLoader,
 )
 
 import warnings
@@ -40,6 +40,7 @@ def run(args, output_dir, logger: logging.Logger = None):
     try:
         trained_model, weights_loaded = get_model(
             model_configs=dict(
+                load_checkpoint=True,
                 input_image_dims=(args.image_height, args.image_width),
                 kernel_regularizer=dict(
                     type=args.kernel_regularizer_type,
@@ -84,14 +85,11 @@ def run(args, output_dir, logger: logging.Logger = None):
 
         # - Create the DataLoader object
         # - Get the train and the validation data loaders
-        _, _, _, inf_dl = get_data_loaders(
-            data=data_tuples,
-            train_batch_size=0,
-            val_prop=0,
-            train_augs=None,
-            val_augs=None,
-            test_augs=None,
-            inf_augs=inference_augs,
+        inf_dl = DataLoader(
+            data_tuples=data_tuples,
+            batch_size=INF_BATCH_SIZE,
+            augs=inference_augs,
+            loader_type='inference',
             logger=logger
         )
 

@@ -117,7 +117,7 @@ def get_model(model_configs, compilation_configs, checkpoint_dir: pathlib.Path =
 
     model = RibCage(model_configs=model_configs, logger=logger)
 
-    if model_configs.get('load_checkpoint') and checkpoint_dir.is_dir:
+    if model_configs.get('load_checkpoint') and checkpoint_dir.is_dir():
         try:
             latest_cpt = tf.train.latest_checkpoint(checkpoint_dir)
             if latest_cpt is not None:
@@ -407,7 +407,7 @@ def test_model(model, data_file, args, output_dir: pathlib.Path, logger: logging
             tb_prc.start()
 
         # -> Run the test
-        print(f'Evaluating')
+        print(f'> Testing ...')
         model.evaluate(
             test_dl,
             verbose=1,

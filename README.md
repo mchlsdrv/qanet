@@ -11,7 +11,7 @@ Execution Instructions:
             where the directory with the segmentations should have the same name as the directory with the images, but with 'MASK' postfix 
             (e.g., "01" with images and "01_MASK" with the corresponding masks). 
             2) Each image and the corresponding mask file should have "image0" and "mask0" prefixes respectively (e.g., "image01.tif" and 
-            "mask01.tif", where the image prefix is "img0", and segmentation prefix is "mask0" etc.)
+            "mask01.tif", where the image prefix is "img0", and segmentation prefix is "mask0" etc.)**
 
             EXAMPLE:
                 DATA ROOT - 
@@ -36,7 +36,8 @@ Execution Instructions:
                         mask03.tif
                            ...
                     ...
-        - Flags (*):
+
+        - (*) Flags:
             --input_data_dir (str) - Path to the directory where the input images and segmentations are located. 
             --output_data_dir (str) - Path to the directory where the output images and segmentations will be placed
             --seg_dir_postfix (str) - The postfix of the directories with the segmentations (as described above)
@@ -46,6 +47,14 @@ Execution Instructions:
             --min_j (int) - The minimal jaccard to add to the samples
             --max_j (int) - The maximal jaccard to add to the samples
             --plot_samples (flag) - If to plot the generated samples (takes considerable amount of time)
+
+        - (**) To ensure your format fits the models' format (the format of the data dir may be changed at './configs/general_configs.py'), 
+        in the beggining run the 'format_data_dir.py' with flags:
+            - current_seg_dir_postfix (str) - the postfix of the folder(s) with the segmentations
+            - current_image_prefix (str) - the prefix of the images
+            - current_seg_prefix (str) - the prefix of the segmentations
+
+           
 
     - Train / Test / Infer:
         - Before running one of the train / test procedures - data must be build with the:

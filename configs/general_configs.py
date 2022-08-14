@@ -50,13 +50,9 @@ TR_CHECKPOINT_FILE_BEST_MODEL = pathlib.Path('/home/sidorov/Projects/QANetV2/qan
 TF_CHECKPOINT_DIR = pathlib.Path('/home/sidorov/Projects/QANetV2/qanet/output/train/tensor_flow_2022-08-04_14-37-43/checkpoints')
 
 # > STRINGS
-SEG_DIR_POSTFIX = 'GT'
-IMAGE_PREFIX = 't0'
-SEG_PREFIX = 'man_seg0'
-
-# SEG_DIR_POSTFIX = 'RES'
-# IMAGE_PREFIX = 't0'
-# SEG_PREFIX = 'mask0'
+SEG_DIR_POSTFIX = 'MASKS'
+IMAGE_PREFIX = 'image0'
+SEG_PREFIX = 'mask0'
 
 # ========= MAIN MODULE =========
 # TOGGLES

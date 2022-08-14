@@ -6,7 +6,7 @@ from configs.general_configs import MODEL_CONFIGS_FILE
 from utils.aux_funcs import get_model_configs
 from .custom.torch_models import RibCage
 from .utils.torch_aux import get_device, load_checkpoint
-from . utils.torch_utils import (
+from .utils.torch_utils import (
     test_model,
 )
 import warnings

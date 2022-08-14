@@ -1,4 +1,6 @@
 import io
+
+import cv2
 import matplotlib.pyplot as plt
 import numpy as np
 import tensorflow as tf
@@ -37,12 +39,16 @@ class DataLoader(tf.keras.utils.Sequence):
             data_item = (tf.convert_to_tensor(img, dtype=tf.float32), tf.convert_to_tensor(mask, dtype=tf.float32)), (tf.convert_to_tensor(jaccard, dtype=tf.float32))
 
         if self.loader_type == 'inference':
-            img, mask = self.data_tuples[index]
+            img_fl, mask_fl = self.data_tuples[index]
+
+            img = cv2.imread(str(img_fl), -1)
+            mask = cv2.imread(str(mask_fl), -1)
+
             aug_res = self.augs(image=img.astype(np.uint8), mask=mask)
             img, mask = aug_res.get('image'), aug_res.get('mask')
             img, mask = np.expand_dims(img, 0), np.expand_dims(mask, 0)
 
-            data_item = tf.convert_to_tensor(img, dtype=tf.float32), tf.convert_to_tensor(mask, dtype=tf.float32)
+            data_item = tf.convert_to_tensor(img, dtype=tf.float32), tf.convert_to_tensor(mask, dtype=tf.float32), None
 
         return data_item
 
