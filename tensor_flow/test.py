@@ -1,19 +1,13 @@
 import os
 import pathlib
-import logging.config
 
-from configs.general_configs import SEG_PREFIX, IMAGE_PREFIX, SEG_DIR_POSTFIX, INF_BATCH_SIZE
-from utils.aux_funcs import err_log, scan_files
-from utils.augs import inference_augs
-
-from . utils.tf_utils import (
+from utils.aux_funcs import err_log
+from .utils.tf_utils import (
     choose_gpu,
+    test_model,
     get_model,
 )
 
-from .utils.tf_data_utils import (
-    DataLoader,
-)
 
 import warnings
 warnings.filterwarnings("ignore")
@@ -30,18 +24,22 @@ by changing the value of TF_CPP_MIN_LOG_LEVEL:
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
 
 
-def run(args, output_dir, logger: logging.Logger = None):
+def run(args, output_dir, logger):
     # - Configure the GPU to run on
-    choose_gpu(gpu_id=args.gpu_id, logger=logger)
-
-    # MODEL
-    # -1- Build the model and optionally load the weights
-    trained_model = None
+    weights_loaded = False
     try:
+        choose_gpu(gpu_id=args.gpu_id, logger=logger)
+
+        # - Load the trained model
         trained_model, weights_loaded = get_model(
             model_configs=dict(
                 load_checkpoint=True,
                 input_image_dims=(args.image_height, args.image_width),
+                drop_block=dict(
+                    use=args.drop_block,
+                    keep_prob=args.drop_block_keep_prob,
+                    block_size=args.drop_block_block_size
+                ),
                 kernel_regularizer=dict(
                     type=args.kernel_regularizer_type,
                     l1=args.kernel_regularizer_l1,
@@ -74,31 +72,20 @@ def run(args, output_dir, logger: logging.Logger = None):
     except Exception as err:
         err_log(logger=logger, message=f'{err}')
 
-    if trained_model is not None and weights_loaded:
-        # - Get the inference data loader
-        data_tuples = scan_files(
-            root_dir=args.inference_data_dir,
-            seg_dir_postfix=SEG_DIR_POSTFIX,
-            image_prefix=IMAGE_PREFIX,
-            seg_prefix=SEG_PREFIX
-        )
-
-        # - Create the DataLoader object
-        # - Get the train and the validation data loaders
-        inf_dl = DataLoader(
-            data_tuples=data_tuples,
-            batch_size=INF_BATCH_SIZE,
-            augs=inference_augs,
-            loader_type='inference',
-            logger=logger
-        )
-
-        # - Inference -
-        preds = trained_model.infer(
-            inf_dl
-        )
-        print(preds)
-        print(f'''
-        PREDICTIONS:
-            mean: {preds.mean():.3f} +/- {preds.std():.4f}
-        ''')
+    # - TEST -
+    # -- Custom
+    # -*- Get the test data loader
+    if weights_loaded:
+        try:
+            test_data_file = pathlib.Path(args.test_data_file)
+            if test_data_file.is_file():
+                print(f'> Testing on custom data from {args.test_data_file}...')
+                test_model(
+                    model=trained_model,
+                    data_file=test_data_file,
+                    args=args,
+                    output_dir=output_dir,
+                    logger=logger
+                )
+        except Exception as err:
+            err_log(logger=logger, message=f'{err}')

@@ -10,18 +10,14 @@ from configs.general_configs import (
     PLOT_OUTLIERS,
     N_OUTLIERS
 )
-from utils.plotting_funcs import (
-    plot_scatter,
-    plot
+from utils.aux_funcs import (
+    info_log,
+    scatter_plot,
+    show_images
 )
-# from utils.image_utils.image_aux import (
-from utils.image_funcs import (
+from ..utils.tf_data_utils import (
     get_image_from_figure,
 )
-from utils import aux_funcs
-
-# this is the order in which my classes will be displayed
-# this is a reverse map of the integer class id to the string class label
 
 
 def log_masks(image, mask, true_seg_measure, pred_seg_measure):
@@ -68,7 +64,7 @@ class ProgressLogCallback(tf.keras.callbacks.Callback):
                     tf.summary.image(
                         '1 - Scatter',
                         get_image_from_figure(
-                            figure=plot_scatter(
+                            figure=scatter_plot(
                                 x=data.get('Scatter')['x'],
                                 y=data.get('Scatter')['y'],
                                 save_file=save_file
@@ -124,7 +120,7 @@ class ProgressLogCallback(tf.keras.callbacks.Callback):
     def on_epoch_end(self, epoch, logs=None):
         self.epoch = epoch
         if epoch % self.log_interval == 0 or self.end or self.log_type == 'test':
-            aux_funcs.info_log(logger=self.logger, message=f'\nSaving scatter plot of the seg measures for epoch #{epoch} to: \'{self.log_dir}\'...')
+            info_log(logger=self.logger, message=f'\nSaving scatter plot of the seg measures for epoch #{epoch} to: \'{self.log_dir}\'...')
 
             # - Write to tensorboard
             # -- Train log
@@ -160,10 +156,10 @@ class ProgressLogCallback(tf.keras.callbacks.Callback):
 
             # - Save the outlier images locally
             if PLOT_OUTLIERS:
-                aux_funcs.info_log(logger=self.logger, message=f'Adding {N_OUTLIERS} outlier train and validation plots to {self.log_dir} directory...')
+                info_log(logger=self.logger, message=f'Adding {N_OUTLIERS} outlier train and validation plots to {self.log_dir} directory...')
                 if self.log_type == 'train':
                     for idx, outlier in enumerate(self.model.train_epoch_outliers):
-                        plot(
+                        show_images(
                             images=[outlier[0], outlier[1]],
                             labels=['', ''],
                             suptitle=f'Epoch: {epoch}, Seg Measures: Target - {outlier[2]:.2f}, Predicted - {outlier[3]:.2f}, Pixel Sum - {outlier[1].sum():.0f}',
@@ -173,7 +169,7 @@ class ProgressLogCallback(tf.keras.callbacks.Callback):
                             break
 
                 for idx, outlier in enumerate(self.model.val_epoch_outliers):
-                    plot(
+                    show_images(
                         images=[outlier[0], outlier[1]],
                         labels=['', ''],
                         suptitle=f'Epoch: {epoch}, Seg Measures: Target - {outlier[2]:.2f}, Predicted - {outlier[3]:.2f}, Pixel Sum - {outlier[1].sum()}',
@@ -184,10 +180,10 @@ class ProgressLogCallback(tf.keras.callbacks.Callback):
 
             if PLOT_TRAIN_DATA_BATCHES:
                 if self.model.train_loss_delta > LOSS_DELTA_TH:
-                    aux_funcs.info_log(logger=self.logger, message=f'Adding train data batches plots to {self.log_dir} directory...')
+                    info_log(logger=self.logger, message=f'Adding train data batches plots to {self.log_dir} directory...')
                     if self.log_type == 'train':
                         for idx, (img, seg, trgt_seg_msr, pred_seg_msr) in enumerate(zip(self.model.train_imgs, self.model.train_aug_segs, self.model.train_trgt_seg_msrs, self.model.train_pred_seg_msrs)):
-                            plot(
+                            show_images(
                                 images=[img, seg],
                                 labels=['', ''],
                                 suptitle=f'Epoch: {epoch}, Seg Measures: Target - {trgt_seg_msr:.2f}, Predicted - {pred_seg_msr:.2f}, Pixel Sum - {seg.sum():.0f}',
@@ -196,9 +192,9 @@ class ProgressLogCallback(tf.keras.callbacks.Callback):
 
             if PLOT_VALIDATION_DATA_BATCHES:
                 if self.model.val_loss_delta > LOSS_DELTA_TH:
-                    aux_funcs.info_log(logger=self.logger, message=f'Adding validation data batches plots to {self.log_dir} directory...')
+                    info_log(logger=self.logger, message=f'Adding validation data batches plots to {self.log_dir} directory...')
                     for idx, (img, seg, trgt_seg_msr, pred_seg_msr) in enumerate(zip(self.model.val_imgs, self.model.val_aug_segs, self.model.val_trgt_seg_msrs, self.model.val_pred_seg_msrs)):
-                        plot(
+                        show_images(
                             images=[img, seg],
                             labels=['', ''],
                             suptitle=f'Epoch: {epoch}, Seg Measures: Target - {trgt_seg_msr:.2f}, Predicted - {pred_seg_msr:.2f}, Pixel Sum - {seg.sum():.0f}',

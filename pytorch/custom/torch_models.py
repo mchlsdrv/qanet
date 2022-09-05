@@ -60,9 +60,13 @@ class RibCage(nn.Module):
 
     def _build_convs(self):
 
+        print(f'''
+    ==========================
+    == Building Conv blocks ==
+    ==========================
+        ''')
         in_chnls = self.in_channels
         for idx, (out_chnls, k_sz) in enumerate(zip(self.conv2d_out_channels, self.conv2d_kernel_sizes)):
-
             self.left_rib_convs.append(self.Conv2DBlk(in_channels=in_chnls, out_channels=out_chnls, kernel_size=k_sz))
 
             self.right_rib_convs.append(self.Conv2DBlk(in_channels=in_chnls, out_channels=out_chnls, kernel_size=k_sz))
@@ -72,6 +76,11 @@ class RibCage(nn.Module):
             in_chnls = out_chnls
 
     def _build_fcs(self):
+        print(f'''
+    ========================
+    == Building FC blocks ==
+    ========================
+        ''')
         out_feats = self.fc_out_features[0]
         for lyr_idx in range(len(self.fc_out_features)):
             if lyr_idx == 0:
@@ -81,6 +90,8 @@ class RibCage(nn.Module):
                 in_feats = out_feats
                 out_feats = self.fc_out_features[lyr_idx]
                 self.fc_lyrs.append(self.FCBlk(in_features=in_feats, out_features=out_feats))
+
+        self.fc_lyrs.append(nn.Linear(in_features=out_feats, out_features=1))
 
     def convs(self, image, mask):
         x_l = image
@@ -100,6 +111,7 @@ class RibCage(nn.Module):
         for fc_lyr in self.fc_lyrs:
             # print(f'x.shape: {x.shape}')
             x = fc_lyr(x)
+
         return x
 
     def _get_flat_channels(self):
