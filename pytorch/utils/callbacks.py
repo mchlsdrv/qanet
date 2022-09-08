@@ -1,96 +1,19 @@
-from functools import partial
-
 import pathlib
 
-import torch
-
-from configs.general_configs import (
+from global_configs.general_configs import (
     REDUCE_LR_ON_PLATEAU_MIN,
     REDUCE_LR_ON_PLATEAU,
     EARLY_STOPPING,
     EARLY_STOPPING_PATIENCE,
     REDUCE_LR_ON_PLATEAU_FACTOR,
     REDUCE_LR_ON_PLATEAU_PATIENCE,
-    OPTIMIZER_EPS,
     MIN_IMPROVEMENT_DELTA,
     LR_REDUCTION_SCHEDULER,
     LR_REDUCTION_SCHEDULER_PATIENCE,
     LR_REDUCTION_SCHEDULER_FACTOR,
     LR_REDUCTION_SCHEDULER_MIN
 )
-from pytorch.utils.torch_aux import save_checkpoint
-
-
-def get_optimizer(params, algorithm: str, args: dict):
-    optimizer = None
-    if algorithm == 'sgd':
-        optimizer = partial(
-            torch.optim.SGD,
-            params=params,
-            momentum=args.get('momentum'),
-            weight_decay=args.get('weight_decay'),
-            nesterov=args.get('nesterov'),
-            eps=OPTIMIZER_EPS,
-        )
-    elif algorithm == 'adam':
-        optimizer = partial(
-            torch.optim.Adam,
-            params=params,
-            betas=args.get('betas'),
-            weight_decay=args.get('weight_decay'),
-            amsgrad=args.get('amsgrad'),
-            eps=OPTIMIZER_EPS,
-        )
-    elif algorithm == 'adamw':
-        optimizer = partial(
-            torch.optim.AdamW,
-            params=params,
-            betas=args.get('betas'),
-            weight_decay=args.get('weight_decay'),
-            amsgrad=args.get('amsgrad'),
-            eps=OPTIMIZER_EPS,
-        )
-    elif algorithm == 'sparse_adam':
-        optimizer = partial(
-            torch.optim.SparseAdam,
-            params=params,
-            betas=args.get('betas'),
-            eps=OPTIMIZER_EPS,
-        )
-    elif algorithm == 'nadam':
-        optimizer = partial(
-            torch.optim.NAdam,
-            params=params,
-            betas=args.get('betas'),
-            weight_decay=args.get('weight_decay'),
-            momentum_decay=args.get('momentum_decay'),
-            eps=OPTIMIZER_EPS,
-        )
-    elif algorithm == 'adamax':
-        optimizer = partial(
-            torch.optim.Adamax,
-            params=params,
-            betas=args.get('betas'),
-            weight_decay=args.get('weight_decay'),
-            eps=OPTIMIZER_EPS,
-        )
-    elif algorithm == 'adadelta':
-        optimizer = partial(
-            torch.optim.Adadelta,
-            params=params,
-            rho=args.get('rho'),
-            weight_decay=args.get('weight_decay'),
-            eps=OPTIMIZER_EPS,
-        )
-    elif algorithm == 'adagrad':
-        optimizer = partial(
-            torch.optim.Adadelta,
-            params=params,
-            lr_decay=args.get('lr_decay'),
-            weight_decay=args.get('weight_decay'),
-            eps=OPTIMIZER_EPS,
-        )
-    return optimizer(lr=args.get('lr'))
+from pytorch.utils.aux_funcs import save_checkpoint
 
 
 # - CALLBACKS

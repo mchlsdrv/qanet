@@ -16,7 +16,7 @@ import logging
 import matplotlib.pyplot as plt
 import seaborn as sns
 
-from configs.general_configs import (
+from global_configs.general_configs import (
     TRAIN_DATA_FILE,
     OUTPUT_DIR,
     IMAGE_WIDTH,
@@ -27,8 +27,6 @@ from configs.general_configs import (
     TRAIN_BATCH_SIZE,
     NUM_WORKERS,
     VAL_PROP,
-    TR_CHECKPOINT_FILE_BEST_MODEL,
-    TF_CHECKPOINT_FILE_BEST_MODEL,
     OPTIMIZER_LR,
     OPTIMIZER_LR_DECAY,
     OPTIMIZER_BETA_1,
@@ -38,8 +36,12 @@ from configs.general_configs import (
     OPTIMIZER_MOMENTUM,
     OPTIMIZER_DAMPENING,
     OPTIMIZER_MOMENTUM_DECAY,
-    OPTIMIZER, DEBUG_LEVEL, TF_CHECKPOINT_DIR, DROP_BLOCK_KEEP_PROB, DROP_BLOCK_BLOCK_SIZE, KERNEL_REGULARIZER_TYPE, KERNEL_REGULARIZER_L1, KERNEL_REGULARIZER_L2, KERNEL_REGULARIZER_FACTOR, KERNEL_REGULARIZER_MODE, ACTIVATION, ACTIVATION_RELU_MAX_VALUE, ACTIVATION_RELU_NEGATIVE_SLOPE, ACTIVATION_RELU_THRESHOLD, ACTIVATION_LEAKY_RELU_ALPHA, INFERENCE_DATA_DIR, TEST_DATA_FILE
+    OPTIMIZER, DEBUG_LEVEL, DROP_BLOCK_KEEP_PROB, DROP_BLOCK_BLOCK_SIZE, KERNEL_REGULARIZER_TYPE, KERNEL_REGULARIZER_L1, KERNEL_REGULARIZER_L2, KERNEL_REGULARIZER_FACTOR, KERNEL_REGULARIZER_MODE, ACTIVATION, ACTIVATION_RELU_MAX_VALUE, ACTIVATION_RELU_NEGATIVE_SLOPE, ACTIVATION_RELU_THRESHOLD, ACTIVATION_LEAKY_RELU_ALPHA, INFERENCE_DATA_DIR, TEST_DATA_FILE
 )
+
+from pytorch.configs import general_configs as tr_configs
+from tensor_flow.configs import general_configs as tf_configs
+
 plt.style.use('seaborn')
 
 sns.set(font_scale=2)
@@ -344,6 +346,7 @@ def get_data_files(data_dir: str, metadata_configs: dict, val_prop: float = .2, 
 
 
 def get_model_configs(configs_file: pathlib.Path, logger: logging.Logger):
+    model_configs = None
     if configs_file.is_file():
         model_configs = read_yaml(configs_file)
         if model_configs is not None:
@@ -500,9 +503,9 @@ def get_arg_parser():
     parser.add_argument('--batch_size', type=int, default=TRAIN_BATCH_SIZE, help='The number of samples in each batch')
     parser.add_argument('--num_workers', type=int, default=NUM_WORKERS, help='The number of workers to load the data')
     parser.add_argument('--val_prop', type=float, default=VAL_PROP, help=f'The proportion of the data which will be set aside, and be used in the process of validation')
-    parser.add_argument('--tr_checkpoint_file', type=str, default=TR_CHECKPOINT_FILE_BEST_MODEL, help=f'The path to the file which contains the checkpoints of the model')
-    parser.add_argument('--tf_checkpoint_dir', type=str, default=TF_CHECKPOINT_DIR, help=f'The path to the directory which contains the checkpoints of the model')
-    parser.add_argument('--tf_checkpoint_file', type=str, default=TF_CHECKPOINT_FILE_BEST_MODEL, help=f'The path to the file which contains the checkpoints of the model')
+    parser.add_argument('--tr_checkpoint_file', type=str, default=tr_configs.CHECKPOINT_FILE_BEST_MODEL, help=f'The path to the file which contains the checkpoints of the model')
+    parser.add_argument('--tf_checkpoint_dir', type=str, default=tf_configs.CHECKPOINT_DIR, help=f'The path to the directory which contains the checkpoints of the model')
+    parser.add_argument('--tf_checkpoint_file', type=str, default=tf_configs.CHECKPOINT_FILE_BEST_MODEL, help=f'The path to the file which contains the checkpoints of the model')
 
     # - DROP BLOCK
     parser.add_argument('--drop_block', default=False, action='store_true', help=f'If to use the drop_block in the network')

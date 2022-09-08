@@ -3,7 +3,7 @@ import tensorflow as tf
 import numpy as np
 import logging
 import wandb
-from configs.general_configs import (
+from global_configs.general_configs import (
     PLOT_TRAIN_DATA_BATCHES,
     PLOT_VALIDATION_DATA_BATCHES,
     LOSS_DELTA_TH,

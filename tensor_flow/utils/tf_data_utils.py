@@ -5,7 +5,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import tensorflow as tf
 import logging
-from configs.general_configs import VAL_BATCH_SIZE, TEST_BATCH_SIZE, INF_BATCH_SIZE
+from global_configs.general_configs import VAL_BATCH_SIZE, TEST_BATCH_SIZE
 
 from utils.aux_funcs import (
     get_train_val_split,

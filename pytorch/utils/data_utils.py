@@ -3,7 +3,7 @@ import torch
 from torch.utils.data import Dataset, DataLoader
 import logging
 
-from configs.general_configs import (
+from global_configs.general_configs import (
     VAL_BATCH_SIZE,
     TEST_BATCH_SIZE,
     NUM_WORKERS

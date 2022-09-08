@@ -1,6 +1,6 @@
 import pathlib
-import torch.nn as nn
-import tensorflow as tf
+# import torch.nn as nn
+# import tensorflow as tf
 
 __author__ = 'sidorov@post.bgu.ac.il'
 
@@ -38,16 +38,16 @@ INFERENCE_DATA_DIR = DATA_ROOT_DIR / f'inference/{INFERENCE_INPUT_DATA_DIR}'
 # - OUTPUT -
 OUTPUT_DIR = pathlib.Path('./output')
 
-CONFIGS_DIR = pathlib.Path('./configs')
+CONFIGS_DIR = pathlib.Path('./global_configs')
 
 MODEL_CONFIGS_FILE = CONFIGS_DIR / 'ribcage_configs.yml'
 
 # > CHECK POINTS
 # -*- PyTorch
-TR_CHECKPOINT_FILE_BEST_MODEL = pathlib.Path('/home/sidorov/Projects/QANetV2/qanet/output/train/pytorch_2022-08-08_17-28-30/checkpoints/best_val_loss_chkpt.pth.tar')
+# TR_CHECKPOINT_FILE_BEST_MODEL = pathlib.Path('/home/sidorov/Projects/QANetV2/qanet/output/train/pytorch_2022-08-08_17-28-30/checkpoints/best_val_loss_chkpt.pth.tar')
 
 # -*-  TensorFlow
-TF_CHECKPOINT_DIR = pathlib.Path('/home/sidorov/Projects/QANetV2/qanet/output/train/tensor_flow_2022-08-04_14-37-43/checkpoints')
+# TF_CHECKPOINT_DIR = pathlib.Path('/home/sidorov/Projects/QANetV2/qanet/output/train/tensor_flow_2022-08-04_14-37-43/checkpoints')
 
 # > STRINGS
 SEG_DIR_POSTFIX = 'MASKS'
@@ -73,8 +73,8 @@ SHUFFLE = True
 # TRAINING
 # - Loss
 # TR_LOSS = nn.MSELoss()
-TR_LOSS = nn.L1Loss()
-TF_LOSS = tf.keras.losses.MeanSquaredError()
+# TR_LOSS = nn.L1Loss()
+# TF_LOSS = tf.keras.losses.MeanSquaredError()
 
 LOAD_MODEL = False
 EPOCHS = 10
@@ -155,38 +155,38 @@ REDUCE_LR_ON_PLATEAU_MIN_LR = 1e-7
 REDUCE_LR_ON_PLATEAU_MODE = 'auto'
 REDUCE_LR_ON_PLATEAU_VERBOSE = 1
 
-# - Tensor Board
-TENSOR_BOARD_LAUNCH = True
-TENSOR_BOARD = True
-TENSOR_BOARD_WRITE_IMAGES = True
-TENSOR_BOARD_WRITE_STEPS_PER_SECOND = True
-TENSOR_BOARD_UPDATE_FREQ = 'epoch'
-TENSOR_BOARD_SCALARS_LOG_INTERVAL = 1
-TENSOR_BOARD_IMAGES_LOG_INTERVAL = 1
-
-# - Scatter Plot
-PLOT_OUTLIERS = True
-PLOT_TRAIN_DATA_BATCHES = False
-PLOT_VALIDATION_DATA_BATCHES = True
-LOSS_DELTA_TH = 0.01
-N_OUTLIERS = 5
-OUTLIER_TH = .7
-# PROGRESS_LOG = True
-PROGRESS_LOG = False
-PROGRESS_LOG_INTERVAL = 5
-SCATTER_PLOT_FIGSIZE = (25, 15)
-SCATTER_PLOT_FONTSIZE = 40
-
-# - Terminate on NaN
-TERMINATE_ON_NAN = True
+# # - Tensor Board
+# TENSOR_BOARD_LAUNCH = True
+# TENSOR_BOARD = True
+# TENSOR_BOARD_WRITE_IMAGES = True
+# TENSOR_BOARD_WRITE_STEPS_PER_SECOND = True
+# TENSOR_BOARD_UPDATE_FREQ = 'epoch'
+# TENSOR_BOARD_SCALARS_LOG_INTERVAL = 1
+# TENSOR_BOARD_IMAGES_LOG_INTERVAL = 1
+#
+# # - Scatter Plot
+# PLOT_OUTLIERS = True
+# PLOT_TRAIN_DATA_BATCHES = False
+# PLOT_VALIDATION_DATA_BATCHES = True
+# LOSS_DELTA_TH = 0.01
+# N_OUTLIERS = 5
+# OUTLIER_TH = .7
+# # PROGRESS_LOG = True
+# PROGRESS_LOG = False
+# PROGRESS_LOG_INTERVAL = 5
+# SCATTER_PLOT_FIGSIZE = (25, 15)
+# SCATTER_PLOT_FONTSIZE = 40
+#
+# # - Terminate on NaN
+# TERMINATE_ON_NAN = True
 
 # - Checkpoint
-CHECKPOINT = True
-TF_CHECKPOINT_FILE_TEMPLATE = 'checkpoints/cp-{epoch:04d}.ckpt'  # <- may be used in case we want to save all teh check points, and not only the best
-TF_CHECKPOINT_FILE_BEST_MODEL = 'checkpoints/best_model.ckpt'  # <- overwrites the second-best model weights in case MODEL_CHECKPOINT_SAVE_BEST_ONLY = True
-CHECKPOINT_MONITOR = 'val_loss'
-CHECKPOINT_VERBOSE = 1
-CHECKPOINT_SAVE_BEST_ONLY = True
-CHECKPOINT_MODE = 'auto'
-CHECKPOINT_SAVE_WEIGHTS_ONLY = True
-CHECKPOINT_SAVE_FREQ = 'epoch'
+# CHECKPOINT = True
+# TF_CHECKPOINT_FILE_TEMPLATE = 'checkpoints/cp-{epoch:04d}.ckpt'  # <- may be used in case we want to save all teh check points, and not only the best
+# TF_CHECKPOINT_FILE_BEST_MODEL = 'checkpoints/best_model.ckpt'  # <- overwrites the second-best model weights in case MODEL_CHECKPOINT_SAVE_BEST_ONLY = True
+# CHECKPOINT_MONITOR = 'val_loss'
+# CHECKPOINT_VERBOSE = 1
+# CHECKPOINT_SAVE_BEST_ONLY = True
+# CHECKPOINT_MODE = 'auto'
+# CHECKPOINT_SAVE_WEIGHTS_ONLY = True
+# CHECKPOINT_SAVE_FREQ = 'epoch'

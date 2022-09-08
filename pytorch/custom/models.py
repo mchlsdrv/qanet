@@ -1,14 +1,17 @@
-import logging
 import pathlib
 
 import torch
 import torch.nn as nn
-
+from torch.optim import Adam
+import pytorch_lightning as pl
+from ..configs.general_configs import LOSS
 
 __author__ = 'sidorov@post.bgu.ac.il'
 
+OPTIMIZER = Adam
 
-class RibCage(nn.Module):
+
+class LitRibCage(pl.LightningModule):
     class Conv2DBlk(nn.Module):
         def __init__(self, in_channels, out_channels, kernel_size):
             super().__init__()
@@ -35,7 +38,7 @@ class RibCage(nn.Module):
         def forward(self, x):
             return self.lyr(x)
 
-    def __init__(self, in_channels, out_channels, input_image_shape: tuple, conv2d_out_channels: tuple = (32, 64, 128, 256), conv2d_kernel_sizes: tuple = (5, 5, 5, 5), fc_out_features: tuple = (512, 1024), output_dir: pathlib.Path = pathlib.Path('./output'), logger: logging.Logger = None):
+    def __init__(self, in_channels, out_channels, input_image_shape: tuple, conv2d_out_channels: tuple = (32, 64, 128, 256), conv2d_kernel_sizes: tuple = (5, 5, 5, 5), fc_out_features: tuple = (512, 1024), optimizer=Adam, output_dir: pathlib.Path = pathlib.Path('./output')):
         super().__init__()
         self.in_channels = in_channels
         self.input_image_shape = input_image_shape
@@ -44,7 +47,6 @@ class RibCage(nn.Module):
         self.conv2d_kernel_sizes = conv2d_kernel_sizes
         self.fc_out_features = fc_out_features
         self.output_dir = output_dir
-        self.logger = logger
 
         self.left_rib_convs = nn.ModuleList()
         self.right_rib_convs = nn.ModuleList()
@@ -57,6 +59,8 @@ class RibCage(nn.Module):
         # - Build the fc layers
         self.flat_channels = self._get_flat_channels()
         self._build_fcs()
+
+        self.optimizer = optimizer
 
     def _build_convs(self):
 
@@ -125,3 +129,33 @@ class RibCage(nn.Module):
         x = self.fcs(x=x)
 
         return torch.sigmoid(x)
+
+    def configure_optimizers(self):
+        return self.optimizer(self.parameters())
+
+    def training_step(self, batch, batch_idx):
+        imgs, aug_segs, seg_msrs = batch
+
+        preds = self(imgs, aug_segs)
+
+        loss = LOSS(preds, seg_msrs)
+
+        self.log('train_loss', loss)
+
+        return {'loss': loss}
+
+    def validation_step(self, val_batch, batch_idx):
+        imgs, aug_segs, seg_msrs = val_batch
+
+        preds = self(imgs, aug_segs)
+
+        loss = LOSS(preds, seg_msrs)
+
+        self.log('val_loss', loss)
+
+        return {'val_loss': loss}
+
+    def validation_epoch_end(self, outputs):
+        avg_loss = torch.stack([x['val_loss'] for x in outputs]).mean()
+        tensorboard_logs = {'val_loss': avg_loss}
+        return {'val_loss': avg_loss, 'log': tensorboard_logs}

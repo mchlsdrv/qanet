@@ -7,7 +7,7 @@ import numpy as np
 import tensorflow as tf
 from tensorflow import keras
 from tensorflow.keras import layers
-from configs.general_configs import (
+from global_configs.general_configs import (
     MODEL_CONFIGS_FILE,
     OUTLIER_TH,
 )

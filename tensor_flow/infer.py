@@ -2,7 +2,7 @@ import os
 import pathlib
 import logging.config
 
-from configs.general_configs import SEG_PREFIX, IMAGE_PREFIX, SEG_DIR_POSTFIX, INF_BATCH_SIZE
+from global_configs.general_configs import SEG_PREFIX, IMAGE_PREFIX, SEG_DIR_POSTFIX, INF_BATCH_SIZE
 from utils.aux_funcs import err_log, scan_files
 from utils.augs import inference_augs
 
