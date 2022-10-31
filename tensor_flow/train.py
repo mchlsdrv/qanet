@@ -25,7 +25,7 @@ os.environ['TF_FORCE_GPU_ALLOW_GROWTH'] = 'true'
 # os.environ['CUDA_VISIBLE_DEVICES'] = ''
 
 
-def run(args, output_dir, logger):
+def run(data_tuples: list, args, output_dir, logger):
     # - Configure the GPU to run on
     choose_gpu(gpu_id=args.gpu_id, logger=logger)
 
@@ -33,6 +33,7 @@ def run(args, output_dir, logger):
     trained_model = None
     try:
         trained_model = train_model(
+            data_tuples=data_tuples,
             args=args,
             output_dir=output_dir,
             logger=logger

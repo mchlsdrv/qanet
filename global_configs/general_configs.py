@@ -1,6 +1,4 @@
 import pathlib
-# import torch.nn as nn
-# import tensorflow as tf
 
 __author__ = 'sidorov@post.bgu.ac.il'
 
@@ -8,6 +6,7 @@ __author__ = 'sidorov@post.bgu.ac.il'
 N_SAMPLES = 10000
 MIN_J = 0.01
 MAX_J = 0.99
+MAX_J_TRIES = 1
 
 # PATHS
 # > DATA
@@ -15,9 +14,11 @@ MAX_J = 0.99
 DATA_ROOT_DIR = pathlib.Path('../data')
 
 # - TRAIN -
+TRAIN_DATA_ROOT_DIR = '../data/train/Fluo-N2DH-SIM+/Train/'
+# TRAIN_DATA_ROOT_DIR = '/media/rrtammyfs/labDatabase/CellTrackingChallenge/BGUSIM/Fluo-N2DH-BGUSIM/Train/'
 TRAIN_INPUT_DATA_DIR = 'Fluo-N2DH-SIM+'
 TRAIN_OUTPUT_DATA_DIR = DATA_ROOT_DIR / f'generated/train/{TRAIN_INPUT_DATA_DIR}'
-TRAIN_DATA_FILE = TRAIN_OUTPUT_DATA_DIR / f'3942_samples/data.npy'
+TRAIN_DATA_FILE = TRAIN_OUTPUT_DATA_DIR / f'4350_samples/data.npy'
 
 # - TEST -
 TEST_INPUT_DATA_DIR = 'Fluo-N2DH-GOWT1-ST'
@@ -50,9 +51,10 @@ MODEL_CONFIGS_FILE = CONFIGS_DIR / 'ribcage_configs.yml'
 # TF_CHECKPOINT_DIR = pathlib.Path('/home/sidorov/Projects/QANetV2/qanet/output/train/tensor_flow_2022-08-04_14-37-43/checkpoints')
 
 # > STRINGS
-SEG_DIR_POSTFIX = 'MASKS'
-IMAGE_PREFIX = 'image0'
-SEG_PREFIX = 'mask0'
+SEG_DIR_POSTFIX = 'GT'
+IMAGE_PREFIX = 't0'
+SEG_PREFIX = 'man_seg0'
+SEG_SUB_DIR = 'SEG'
 
 # ========= MAIN MODULE =========
 # TOGGLES
@@ -71,21 +73,26 @@ OUT_CHANNELS = 1
 SHUFFLE = True
 
 # TRAINING
-# - Loss
-# TR_LOSS = nn.MSELoss()
-# TR_LOSS = nn.L1Loss()
-# TF_LOSS = tf.keras.losses.MeanSquaredError()
-
-LOAD_MODEL = False
-EPOCHS = 10
+LOAD_MODEL = True
+EPOCHS = 1000
 TRAIN_BATCH_SIZE = 32
 VAL_BATCH_SIZE = 10
 TEST_BATCH_SIZE = 5
 INF_BATCH_SIZE = 5
 VAL_PROP = .2
 
+NUM_TRAIN_WORKERS = 4
+NUM_VAL_WORKERS = 4
 PIN_MEMORY = True
-NUM_WORKERS = 2
+
+# - Scatter Plot
+N_OUTLIERS = 5
+OUTLIER_TH = .7
+
+PLOT_OUTLIERS = True
+PLOT_TRAIN_DATA_BATCHES = False
+PLOT_VALIDATION_DATA_BATCHES = True
+LOSS_DELTA_TH = 0.01
 
 # OPTIMIZER
 # > Arguments
@@ -129,16 +136,16 @@ DROP_BLOCK_BLOCK_SIZE = 20
 MIN_IMPROVEMENT_DELTA = 0.00001
 
 # - Early Stopping
-EARLY_STOPPING = True
-EARLY_STOPPING_PATIENCE = 20
+EARLY_STOPPING = False
+EARLY_STOPPING_PATIENCE = 10
 EARLY_STOPPING_MONITOR = 'val_loss'
-EARLY_STOPPING_MIN_DELTA = 0.001
+EARLY_STOPPING_MIN_DELTA = 0.0001
 EARLY_STOPPING_MODE = 'auto'
 EARLY_STOPPING_RESTORE_BEST_WEIGHTS = True
 EARLY_STOPPING_VERBOSE = 1
 
 # - LR Reduction Scheduler
-LR_REDUCTION_SCHEDULER = True
+LR_REDUCTION_SCHEDULER = False
 LR_REDUCTION_SCHEDULER_PATIENCE = [150, 300]
 LR_REDUCTION_SCHEDULER_FACTOR = 0.5
 LR_REDUCTION_SCHEDULER_MIN = 1e-9
@@ -154,39 +161,3 @@ REDUCE_LR_ON_PLATEAU_COOLDOWN = 0
 REDUCE_LR_ON_PLATEAU_MIN_LR = 1e-7
 REDUCE_LR_ON_PLATEAU_MODE = 'auto'
 REDUCE_LR_ON_PLATEAU_VERBOSE = 1
-
-# # - Tensor Board
-# TENSOR_BOARD_LAUNCH = True
-# TENSOR_BOARD = True
-# TENSOR_BOARD_WRITE_IMAGES = True
-# TENSOR_BOARD_WRITE_STEPS_PER_SECOND = True
-# TENSOR_BOARD_UPDATE_FREQ = 'epoch'
-# TENSOR_BOARD_SCALARS_LOG_INTERVAL = 1
-# TENSOR_BOARD_IMAGES_LOG_INTERVAL = 1
-#
-# # - Scatter Plot
-# PLOT_OUTLIERS = True
-# PLOT_TRAIN_DATA_BATCHES = False
-# PLOT_VALIDATION_DATA_BATCHES = True
-# LOSS_DELTA_TH = 0.01
-# N_OUTLIERS = 5
-# OUTLIER_TH = .7
-# # PROGRESS_LOG = True
-# PROGRESS_LOG = False
-# PROGRESS_LOG_INTERVAL = 5
-# SCATTER_PLOT_FIGSIZE = (25, 15)
-# SCATTER_PLOT_FONTSIZE = 40
-#
-# # - Terminate on NaN
-# TERMINATE_ON_NAN = True
-
-# - Checkpoint
-# CHECKPOINT = True
-# TF_CHECKPOINT_FILE_TEMPLATE = 'checkpoints/cp-{epoch:04d}.ckpt'  # <- may be used in case we want to save all teh check points, and not only the best
-# TF_CHECKPOINT_FILE_BEST_MODEL = 'checkpoints/best_model.ckpt'  # <- overwrites the second-best model weights in case MODEL_CHECKPOINT_SAVE_BEST_ONLY = True
-# CHECKPOINT_MONITOR = 'val_loss'
-# CHECKPOINT_VERBOSE = 1
-# CHECKPOINT_SAVE_BEST_ONLY = True
-# CHECKPOINT_MODE = 'auto'
-# CHECKPOINT_SAVE_WEIGHTS_ONLY = True
-# CHECKPOINT_SAVE_FREQ = 'epoch'

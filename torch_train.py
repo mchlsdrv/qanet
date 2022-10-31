@@ -7,22 +7,16 @@ import datetime
 from global_configs.general_configs import CONFIGS_DIR
 from utils.aux_funcs import get_arg_parser, get_runtime, get_logger
 
-import numpy as np
 import pytorch_lightning as pl
-from torch.utils.data import DataLoader
 from pytorch_lightning.plugins import DDPPlugin
 
 from global_configs.general_configs import (
     MODEL_CONFIGS_FILE,
-    VAL_PROP,
-    TRAIN_BATCH_SIZE,
-    VAL_BATCH_SIZE,
-    NUM_WORKERS
 )
 from utils.augs import train_augs, val_augs
-from utils.aux_funcs import get_model_configs, get_train_val_split
+from utils.aux_funcs import get_model_configs
 from pytorch.custom.models import LitRibCage
-from pytorch.utils.data_utils import ImageDS
+from pytorch.utils.data_utils import get_data_loaders
 from pytorch.utils.aux_funcs import get_optimizer
 import warnings
 
@@ -84,26 +78,11 @@ if __name__ == '__main__':
     )
 
     # - Load the data
-    data = np.load(str(args.train_data_file), allow_pickle=True)
-
-    # - Split data into train / validation datasets
-    train_data, val_data = get_train_val_split(data_list=data, val_prop=VAL_PROP, logger=logger)
-
-    # - Create the train / validation dataloaders
-    train_dl = DataLoader(
-        ImageDS(data_tuples=train_data, augs=train_augs()),
-        batch_size=TRAIN_BATCH_SIZE,
-        num_workers=1,
-        pin_memory=True,
-        shuffle=True
-    )
-
-    val_dl = DataLoader(
-        ImageDS(data_tuples=val_data, augs=val_augs()),
-        batch_size=VAL_BATCH_SIZE,
-        num_workers=NUM_WORKERS,
-        pin_memory=True,
-        shuffle=False
+    train_dl, val_dl = get_data_loaders(
+        data_file=args.train_data_file,
+        train_augs=train_augs,
+        val_augs=val_augs,
+        logger=logger
     )
 
     # - Create trainer

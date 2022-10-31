@@ -15,6 +15,7 @@ import logging
 
 import matplotlib.pyplot as plt
 import seaborn as sns
+from tqdm import tqdm
 
 from global_configs.general_configs import (
     TRAIN_DATA_FILE,
@@ -25,7 +26,6 @@ from global_configs.general_configs import (
     OUT_CHANNELS,
     EPOCHS,
     TRAIN_BATCH_SIZE,
-    NUM_WORKERS,
     VAL_PROP,
     OPTIMIZER_LR,
     OPTIMIZER_LR_DECAY,
@@ -44,7 +44,7 @@ from tensor_flow.configs import general_configs as tf_configs
 
 plt.style.use('seaborn')
 
-sns.set(font_scale=2)
+sns.set(font_scale=1.5)
 
 
 def get_contours(image: np.ndarray):
@@ -110,13 +110,51 @@ def line_plot(x: list or np.ndarray, ys: list or np.ndarray, suptitle: str, labe
         err_log(logger=logger, message=f'{err}')
 
 
+def hit_rate_plot(true: np.ndarray, pred: np.ndarray, save_file: pathlib.Path or str = None, logger: logging.Logger = None):
+    sns.set(font_scale=1)
+    abs_err = np.abs(true - pred)
+    abs_err_hist, abs_err = np.histogram(abs_err, bins=100, range=(0., 1.))
+    abs_err_prob = abs_err_hist / np.sum(abs_err_hist)
+
+    fig, ax = plt.subplots()
+    ax.plot(abs_err[:-1], np.cumsum(abs_err_prob), linewidth=2)
+    ax.set(xlabel='Absolute Error Tolerance', xlim=(0, 1), ylabel='Hit Rate', ylim=(0, 1))
+    fig.suptitle('Hit Rate vs Absolute Error Tolerance Plot')
+    save_dir = pathlib.Path(save_file).parent
+    if not save_dir.is_dir():
+        os.makedirs(save_dir)
+    plt.savefig(str(save_file))
+    plt.close()
+
+
+def absolute_error_plot(true: np.ndarray, pred: np.ndarray, save_file: pathlib.Path or str = None, logger: logging.Logger = None):
+    sns.set(font_scale=1.5)
+    abs_err = np.abs(true - pred)
+    err_hist, abs_err_bins = np.histogram(abs_err, bins=100, range=(0, 1))
+
+    D = pd.DataFrame({'Absolute Error': abs_err_bins[:-1], 'Frequency': err_hist})
+    g = sns.jointplot(x='Absolute Error', y='Frequency', data=D, height=15, space=0.02)
+
+    try:
+        save_dir = pathlib.Path(save_file).parent
+        if not save_dir.is_dir():
+            os.makedirs(save_dir)
+        save_figure(figure=g.figure, save_file=save_file, logger=logger)
+    except Exception as err:
+        err_log(logger=logger, message=f'{err}')
+
+
 def scatter_plot(x: np.ndarray, y: np.ndarray, save_file: pathlib.Path or str = None, logger: logging.Logger = None):
-    D = pd.DataFrame(dict(true=x, predicted=y))
-    g = sns.jointplot(x='true', y='predicted', data=D, height=15, space=0.02, kind='reg')
+    sns.set(font_scale=1.5)
+    D = pd.DataFrame({'True Seg Measure': x, 'Predicted Seg Measure': y})
+    g = sns.jointplot(x='True Seg Measure', y='Predicted Seg Measure', data=D, height=15, space=0.02, kind='reg')
     g.ax_joint.plot(np.linspace(0, 1), np.linspace(0, 1), ':g', label='Perfect estimation')
     g.figure.legend()
 
     try:
+        save_dir = pathlib.Path(save_file).parent
+        if not save_dir.is_dir():
+            os.makedirs(save_dir)
         save_figure(figure=g.figure, save_file=save_file, logger=logger)
     except Exception as err:
         err_log(logger=logger, message=f'{err}')
@@ -358,7 +396,7 @@ def get_model_configs(configs_file: pathlib.Path, logger: logging.Logger):
     return model_configs
 
 
-def scan_files(root_dir: pathlib.Path or str, seg_dir_postfix: str, image_prefix: str, seg_prefix: str):
+def scan_files(root_dir: pathlib.Path or str, seg_dir_postfix: str, image_prefix: str, seg_prefix: str, seg_sub_dir: str = None):
     file_tuples = list()
     for root, dirs, _ in os.walk(root_dir):
         root = pathlib.Path(root)
@@ -368,10 +406,40 @@ def scan_files(root_dir: pathlib.Path or str, seg_dir_postfix: str, image_prefix
                 for sub_root, _, files in os.walk(root / dir):
                     for file in files:
                         img_fl = pathlib.Path(f'{sub_root}/{file}')
-                        seg_fl = pathlib.Path(f'{seg_dir}/{file.replace(image_prefix, seg_prefix)}')
+                        if seg_sub_dir is not None:
+                            seg_fl = pathlib.Path(f'{seg_dir}/{seg_sub_dir}/{file.replace(image_prefix, seg_prefix)}')
+                        else:
+                            seg_fl = pathlib.Path(f'{seg_dir}/{file.replace(image_prefix, seg_prefix)}')
                         if img_fl.is_file() and seg_fl.is_file():
                             file_tuples.append((img_fl, seg_fl))
     return file_tuples
+
+
+def load_images_from_tuple_list(data_file_tuples: list):
+    imgs = []
+    msks = []
+
+    print('> Loading images and corresponding segmentations...')
+    files_pbar = tqdm(data_file_tuples)
+    for img_fl, msk_fl in files_pbar:
+        img = cv2.imread(str(img_fl), -1).astype(np.uint8)
+        # - Add the channel dim
+        if len(img.shape) < 3:
+            img = np.expand_dims(img, axis=-1)
+
+        msk = cv2.imread(str(msk_fl), -1).astype(np.uint8)
+        # - Add the channel dim
+        if len(msk.shape) < 3:
+            msk = np.expand_dims(msk, axis=-1)
+
+        imgs.append(img)
+        msks.append(msk)
+
+    data = np.array(list(zip(imgs, msks)), dtype=object)
+
+    print(f'> Images and corresponding segmentations were loaded! Total samples: {len(data)}.')
+
+    return data
 
 
 def get_runtime(seconds: float):
@@ -415,12 +483,15 @@ def calc_jaccard(R: np.ndarray, S: np.ndarray):
         # - Discard the background (0)
         cls = cls[cls > 0]
 
-        one_hot_masks = np.zeros((len(cls), *mlt_cls_mask.shape), dtype=np.float32)
-        for lbl_idx, lbl in enumerate(one_hot_masks):
-            # for obj_mask_idx, _ in enumerate(lbl):
+        mlt_cls_msk_shape = mlt_cls_mask.shape
+        if len(mlt_cls_msk_shape) > 2:
+            mlt_cls_msk_shape = mlt_cls_msk_shape[:-1]
+
+        one_hot_masks = np.zeros((*mlt_cls_msk_shape, len(cls)), dtype=np.float32)
+        for lbl_idx in range(len(cls)):
             idxs = np.argwhere(mlt_cls_mask == cls[lbl_idx])
             x, y = idxs[:, 0], idxs[:, 1]
-            one_hot_masks[lbl_idx, x, y] = 1.
+            one_hot_masks[x, y, lbl_idx] = 1.
         return one_hot_masks
 
     # - In case there's no other classes besides background (i.e., 0) J = 0.
@@ -435,12 +506,14 @@ def calc_jaccard(R: np.ndarray, S: np.ndarray):
         S = _get_one_hot_masks(multi_class_mask=S, classes=cls)
 
         # - Calculate the intersection of R and S
-        I_sums = np.sum(R[:, np.newaxis, ...] * S[np.newaxis, ...], axis=(-2, -1))
+        I_sums = np.sum(np.logical_and(R[..., np.newaxis, :], S[..., np.newaxis]), axis=(0, 1))
+        # I_sums = np.sum(R[:, np.newaxis, ...] * S[np.newaxis, ...], axis=(-2, -1))
         x, y = np.arange(len(I_sums)), np.argmax(I_sums, axis=1)  # <= Choose the once that have the largest overlap with the ground truth label
         I = I_sums[x, y]
 
         # - Calculate the union of R and S
-        U_sums = np.sum(np.logical_or(R[:, np.newaxis, ...], S[np.newaxis, ...]), axis=(-2, -1))
+        U_sums = np.sum(np.logical_or(R[..., np.newaxis, :], S[..., np.newaxis]), axis=(0, 1))
+        # U_sums = np.sum(np.logical_or(R[:, np.newaxis, ...], S[np.newaxis, ...]), axis=(-2, -1))
         U = U_sums[x, y]
 
         # - Mean Jaccard on the valid items only
@@ -448,7 +521,7 @@ def calc_jaccard(R: np.ndarray, S: np.ndarray):
         J = (I / U)
 
         # - Calculate the areas of the reference items
-        R_areas = R.sum(axis=(-2, -1))
+        R_areas = R.sum(axis=(0, 1))
         R_areas[R_areas <= 0] = 1  # <= To avoid division by 0
 
         # - Find out the indices of the items which do not satisfy |I| / |R| > 0.5 and replace them with 0
@@ -459,6 +532,32 @@ def calc_jaccard(R: np.ndarray, S: np.ndarray):
         # J = J[J > 0].mean() if J[J > 0].any() else 0.0
 
     return J.mean() if isinstance(J, np.ndarray) else J
+
+
+def monitor_data(image: np.ndarray,  ground_truth: np.ndarray or None, segmentation: np.ndarray, image_label: str = 'Image', ground_truth_label: str = 'Ground Truth', segmentation_label: str = 'Segmentation', figsize: tuple = (20, 10), save_file: str = 'data_test.png'):
+
+    if ground_truth is not None:
+        fig, ax = plt.subplots(1, 3, figsize=figsize)
+
+        ax[0].imshow(image, cmap='gray')
+        ax[0].set(title=image_label)
+
+        ax[1].imshow(ground_truth, cmap='gray')
+        ax[1].set(title=ground_truth_label)
+
+        ax[2].imshow(segmentation, cmap='gray')
+        ax[2].set(title=segmentation_label)
+    else:
+        fig, ax = plt.subplots(1, 2, figsize=figsize)
+
+        ax[0].imshow(image, cmap='gray')
+        ax[0].set(title=image_label)
+
+        ax[1].imshow(segmentation, cmap='gray')
+        ax[1].set(title=segmentation_label)
+
+    plt.savefig(save_file)
+    plt.close()
 
 
 def plot_hist(data: np.ndarray or list, hist_range: list or tuple, bins: int, save_name: str, output_dir: pathlib.Path, density: bool = True):
@@ -484,7 +583,7 @@ def get_arg_parser():
     # - GENERAL PARAMETERS
     parser.add_argument('--gpu_id', type=int, default=0 if torch.cuda.device_count() > 0 else -1, help='The ID of the GPU (if there is any) to run the network on (e.g., --gpu_id 1 will run the network on GPU #1 etc.)')
 
-    parser.add_argument('--continue_train', default=False, action='store_true', help=f'If to continue the training from the checkpoint saved at the checkpoint file')
+    parser.add_argument('--load_model', default=False, action='store_true', help=f'If to continue the training from the checkpoint saved at the checkpoint file')
     parser.add_argument('--lunch_tb', default=False, action='store_true', help=f'If to lunch tensorboard')
     parser.add_argument('--train_data_file', type=str, default=TRAIN_DATA_FILE, help='The path to the train data file')
     parser.add_argument('--test_data_file', type=str, default=TEST_DATA_FILE, help='The path to the custom test file')
@@ -501,7 +600,6 @@ def get_arg_parser():
     # - TRAINING
     parser.add_argument('--epochs', type=int, default=EPOCHS, help='Number of epochs to train the model')
     parser.add_argument('--batch_size', type=int, default=TRAIN_BATCH_SIZE, help='The number of samples in each batch')
-    parser.add_argument('--num_workers', type=int, default=NUM_WORKERS, help='The number of workers to load the data')
     parser.add_argument('--val_prop', type=float, default=VAL_PROP, help=f'The proportion of the data which will be set aside, and be used in the process of validation')
     parser.add_argument('--tr_checkpoint_file', type=str, default=tr_configs.CHECKPOINT_FILE_BEST_MODEL, help=f'The path to the file which contains the checkpoints of the model')
     parser.add_argument('--tf_checkpoint_dir', type=str, default=tf_configs.CHECKPOINT_DIR, help=f'The path to the directory which contains the checkpoints of the model')

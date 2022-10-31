@@ -10,8 +10,8 @@ from scipy.ndimage import (
 
 __author__ = 'sidorov@post.bgu.ac.il'
 
-EROSION_SIZES = [5, 10, 15, 20, 25]
-DILATION_SIZES = [5, 10, 15, 20, 25]
+EROSION_SIZES = [5, 10, 15, 20]
+DILATION_SIZES = [5, 10, 15, 20]
 CLAHE_CLIP_LIMIT = 2
 CLAHE_TILE_GRID_SIZE = 8
 IMAGE_WIDTH = 419
@@ -51,6 +51,11 @@ def train_augs():
                 width=IMAGE_WIDTH,
                 p=1.
             ),
+            A.RandomBrightnessContrast(
+                brightness_limit=0.2,
+                contrast_limit=(0.5, 1.5),
+                p=0.5
+            ),
             A.OneOf([
                 A.Flip(p=0.5),
                 A.HorizontalFlip(p=0.5),
@@ -61,19 +66,14 @@ def train_augs():
                     interpolation=cv2.INTER_LANCZOS4,
                     p=0.5
                 ),
-                A.SafeRotate(
-                    limit=90,
-                    interpolation=cv2.INTER_LANCZOS4,
-                    p=0.5
-                )
             ],
-                p=.75
+                p=.5
             ),
-            # A.CLAHE(
-            #     clip_limit=CLAHE_CLIP_LIMIT,
-            #     tile_grid_size=(CLAHE_TILE_GRID_SIZE, CLAHE_TILE_GRID_SIZE),
-            #     p=1.
-            # ),
+            A.CLAHE(
+                clip_limit=CLAHE_CLIP_LIMIT,
+                tile_grid_size=(CLAHE_TILE_GRID_SIZE, CLAHE_TILE_GRID_SIZE),
+                p=1.
+            ),
             A.ToFloat(p=1.),
         ]
     )
@@ -110,7 +110,7 @@ def mask_augs():
                         p=0.5
                     ),
                 ],
-                p=.75
+                p=.5
             ),
             A.ToFloat(p=1.),
         ]
@@ -125,11 +125,11 @@ def val_augs():
                 width=IMAGE_WIDTH,
                 p=1.
             ),
-            # A.CLAHE(
-            #     clip_limit=CLAHE_CLIP_LIMIT,
-            #     tile_grid_size=(CLAHE_TILE_GRID_SIZE, CLAHE_TILE_GRID_SIZE),
-            #     p=1.
-            # ),
+            A.CLAHE(
+                clip_limit=CLAHE_CLIP_LIMIT,
+                tile_grid_size=(CLAHE_TILE_GRID_SIZE, CLAHE_TILE_GRID_SIZE),
+                p=1.
+            ),
             A.ToFloat(p=1.),
         ]
     )
@@ -143,11 +143,11 @@ def test_augs():
                 width=IMAGE_WIDTH,
                 p=1.
             ),
-            # A.CLAHE(
-            #     clip_limit=CLAHE_CLIP_LIMIT,
-            #     tile_grid_size=(CLAHE_TILE_GRID_SIZE, CLAHE_TILE_GRID_SIZE),
-            #     p=1.
-            # ),
+            A.CLAHE(
+                clip_limit=CLAHE_CLIP_LIMIT,
+                tile_grid_size=(CLAHE_TILE_GRID_SIZE, CLAHE_TILE_GRID_SIZE),
+                p=1.
+            ),
             A.ToFloat(p=1.),
         ]
     )

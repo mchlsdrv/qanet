@@ -11,7 +11,7 @@ import logging
 
 from utils import augs
 from utils.aux_funcs import calc_jaccard, get_runtime, scan_files, plot_hist, show_images
-from configs.general_configs import (
+from global_configs.general_configs import (
     N_SAMPLES,
     MIN_J,
     MAX_J,

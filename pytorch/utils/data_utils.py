@@ -1,16 +1,19 @@
+import pathlib
+
 import numpy as np
 import torch
 from torch.utils.data import Dataset, DataLoader
 import logging
 
 from global_configs.general_configs import (
+    VAL_PROP,
+    TRAIN_BATCH_SIZE,
     VAL_BATCH_SIZE,
-    TEST_BATCH_SIZE,
-    NUM_WORKERS
+    NUM_TRAIN_WORKERS,
+    NUM_VAL_WORKERS,
+    PIN_MEMORY,
 )
 from utils.aux_funcs import get_train_val_split
-
-logging.getLogger('PIL').setLevel(logging.WARNING)
 
 __author__ = 'sidorov@post.bgu.ac.il'
 
@@ -32,36 +35,28 @@ class ImageDS(Dataset):
         return torch.tensor(img, dtype=torch.float), torch.tensor(mask.astype(np.int16), dtype=torch.float), torch.tensor(jaccard, dtype=torch.float)
 
 
-def get_data_loaders(data: list or np.ndarray, train_batch_size: int, train_augs, val_augs, test_augs, val_prop: float = .2, logger: logging.Logger = None):
+def get_data_loaders(data_file: str or pathlib.Path, train_augs, val_augs, logger: logging.Logger = None):
+    # - Load the data
+    data = np.load(str(data_file), allow_pickle=True)
 
-    train_dl = val_dl = test_dl = None
-    if train_batch_size > 0 and train_augs is not None and val_augs is not None:
-        train_data, val_data = get_train_val_split(data_list=data, val_prop=val_prop, logger=logger)
+    # - Split data into train / validation datasets
+    train_data, val_data = get_train_val_split(data_list=data, val_prop=VAL_PROP, logger=logger)
 
-        # - Create the DataLoader object
-        train_dl = DataLoader(
-            ImageDS(data_tuples=train_data, augs=train_augs()),
-            batch_size=train_batch_size,
-            num_workers=NUM_WORKERS,
-            pin_memory=True,
-            shuffle=True
-        )
+    # - Create the train / validation dataloaders
+    train_dl = DataLoader(
+        ImageDS(data_tuples=train_data, augs=train_augs()),
+        batch_size=TRAIN_BATCH_SIZE,
+        num_workers=NUM_TRAIN_WORKERS,
+        pin_memory=PIN_MEMORY,
+        shuffle=True
+    )
 
-        if isinstance(val_data, np.ndarray) and val_data.shape[0] > 0:
-            val_dl = DataLoader(
-                ImageDS(data_tuples=val_data, augs=val_augs()),
-                batch_size=VAL_BATCH_SIZE,
-                num_workers=NUM_WORKERS,
-                pin_memory=True,
-                shuffle=True
-            )
-    elif test_augs is not None:
-        test_dl = DataLoader(
-            ImageDS(data_tuples=data, augs=test_augs()),
-            batch_size=TEST_BATCH_SIZE,
-            num_workers=NUM_WORKERS,
-            pin_memory=True,
-            shuffle=True
-        )
+    val_dl = DataLoader(
+        ImageDS(data_tuples=val_data, augs=val_augs()),
+        batch_size=VAL_BATCH_SIZE,
+        num_workers=NUM_VAL_WORKERS,
+        pin_memory=PIN_MEMORY,
+        shuffle=False
+    )
 
-    return train_dl, val_dl, test_dl
+    return train_dl, val_dl

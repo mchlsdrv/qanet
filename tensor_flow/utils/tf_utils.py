@@ -1,17 +1,55 @@
 import os
-from functools import partial
 import numpy as np
+from functools import partial
 import logging
 import logging.config
 import threading
 import multiprocessing as mlp
 import pathlib
 import tensorflow as tf
+from keras import backend as K
 
 from utils import augs
-from global_configs.general_configs import TF_LOSS, METRICS, TENSOR_BOARD, TENSOR_BOARD_WRITE_IMAGES, TENSOR_BOARD_WRITE_STEPS_PER_SECOND, TENSOR_BOARD_UPDATE_FREQ, PROGRESS_LOG, SCATTER_PLOT_FIGSIZE, PROGRESS_LOG_INTERVAL, TENSOR_BOARD_LAUNCH, EARLY_STOPPING, EARLY_STOPPING_MONITOR, EARLY_STOPPING_MIN_DELTA, EARLY_STOPPING_PATIENCE, EARLY_STOPPING_MODE, EARLY_STOPPING_RESTORE_BEST_WEIGHTS, EARLY_STOPPING_VERBOSE, TERMINATE_ON_NAN, REDUCE_LR_ON_PLATEAU, REDUCE_LR_ON_PLATEAU_MONITOR, \
-    REDUCE_LR_ON_PLATEAU_FACTOR, REDUCE_LR_ON_PLATEAU_PATIENCE, REDUCE_LR_ON_PLATEAU_MIN_DELTA, REDUCE_LR_ON_PLATEAU_COOLDOWN, REDUCE_LR_ON_PLATEAU_MIN_LR, REDUCE_LR_ON_PLATEAU_MODE, REDUCE_LR_ON_PLATEAU_VERBOSE, CHECKPOINT, TF_CHECKPOINT_FILE_BEST_MODEL, CHECKPOINT_MONITOR, CHECKPOINT_SAVE_FREQ, CHECKPOINT_SAVE_WEIGHTS_ONLY, CHECKPOINT_MODE, CHECKPOINT_SAVE_BEST_ONLY, CHECKPOINT_VERBOSE, VAL_PROP
-from utils.aux_funcs import check_file, info_log, scatter_plot, err_log
+from global_configs.general_configs import (
+    METRICS,
+    EARLY_STOPPING,
+    EARLY_STOPPING_MONITOR,
+    EARLY_STOPPING_MIN_DELTA,
+    EARLY_STOPPING_PATIENCE,
+    EARLY_STOPPING_MODE,
+    EARLY_STOPPING_RESTORE_BEST_WEIGHTS,
+    EARLY_STOPPING_VERBOSE,
+    REDUCE_LR_ON_PLATEAU,
+    REDUCE_LR_ON_PLATEAU_MONITOR,
+    REDUCE_LR_ON_PLATEAU_FACTOR,
+    REDUCE_LR_ON_PLATEAU_PATIENCE,
+    REDUCE_LR_ON_PLATEAU_MIN_DELTA,
+    REDUCE_LR_ON_PLATEAU_COOLDOWN,
+    REDUCE_LR_ON_PLATEAU_MIN_LR,
+    REDUCE_LR_ON_PLATEAU_MODE,
+    REDUCE_LR_ON_PLATEAU_VERBOSE,
+
+    VAL_PROP, DATA_ROOT_DIR, TEST_INPUT_DATA_DIR, SEG_DIR_POSTFIX, IMAGE_PREFIX, SEG_PREFIX
+)
+from tensor_flow.configs.general_configs import (
+    LOSS,
+    TENSOR_BOARD,
+    TENSOR_BOARD_WRITE_IMAGES,
+    TENSOR_BOARD_WRITE_STEPS_PER_SECOND,
+    TENSOR_BOARD_UPDATE_FREQ,
+    PROGRESS_LOG,
+    TENSOR_BOARD_LAUNCH,
+    CHECKPOINT,
+    CHECKPOINT_FILE_BEST_MODEL,
+    CHECKPOINT_MONITOR,
+    CHECKPOINT_SAVE_FREQ,
+    CHECKPOINT_SAVE_WEIGHTS_ONLY,
+    CHECKPOINT_MODE,
+    CHECKPOINT_SAVE_BEST_ONLY,
+    CHECKPOINT_VERBOSE,
+    TERMINATE_ON_NAN,
+)
+from utils.aux_funcs import check_file, info_log, scatter_plot, err_log, scan_files
 from . tf_data_utils import get_data_loaders
 from ..custom.tf_models import (
     RibCage
@@ -22,6 +60,55 @@ from ..custom.tf_callbacks import (
 )
 
 from .tf_data_utils import get_image_from_figure
+
+
+class WeightedMSE(tf.keras.losses.MeanSquaredError):
+    def __init__(self):
+        super().__init__()
+
+    def __call__(self, true, pred):
+        btch_js = true.numpy()
+        seg_measure_hist, _ = np.histogram(btch_js, bins=np.arange(0.0, 1.1, 0.1))
+        seg_measure_hist[seg_measure_hist == 0] = 1
+        seg_measure_weights = 1 / seg_measure_hist
+
+        btch_weights = btch_js
+        btch_weights[(btch_weights >= 0.0) & (btch_weights < 0.1)] = seg_measure_weights[0]
+        btch_weights[(btch_weights >= 0.1) & (btch_weights < 0.2)] = seg_measure_weights[1]
+        btch_weights[(btch_weights >= 0.2) & (btch_weights < 0.3)] = seg_measure_weights[2]
+        btch_weights[(btch_weights >= 0.3) & (btch_weights < 0.4)] = seg_measure_weights[3]
+        btch_weights[(btch_weights >= 0.4) & (btch_weights < 0.5)] = seg_measure_weights[4]
+        btch_weights[(btch_weights >= 0.5) & (btch_weights < 0.6)] = seg_measure_weights[5]
+        btch_weights[(btch_weights >= 0.6) & (btch_weights < 0.7)] = seg_measure_weights[6]
+        btch_weights[(btch_weights >= 0.7) & (btch_weights < 0.8)] = seg_measure_weights[7]
+        btch_weights[(btch_weights >= 0.8) & (btch_weights < 0.9)] = seg_measure_weights[8]
+        btch_weights[(btch_weights >= 0.9) & (btch_weights < 1.0)] = seg_measure_weights[9]
+        btch_weights = tf.convert_to_tensor(btch_weights, dtype=tf.float32)
+        return tf.reduce_mean(tf.reduce_sum(btch_weights * tf.square(true-pred)))
+
+
+def weighted_mse(true, pred):
+    btch_js = true.numpy()
+    seg_measure_hist, _ = np.histogram(btch_js, bins=np.arange(0.0, 1.1, 0.1))
+    seg_measure_hist[seg_measure_hist == 0] = 1
+    seg_measure_weights = 1 / seg_measure_hist
+
+    btch_weights = btch_js
+    btch_weights[(btch_weights >= 0.0) & (btch_weights < 0.1)] = seg_measure_weights[0]
+    btch_weights[(btch_weights >= 0.1) & (btch_weights < 0.2)] = seg_measure_weights[1]
+    btch_weights[(btch_weights >= 0.2) & (btch_weights < 0.3)] = seg_measure_weights[2]
+    btch_weights[(btch_weights >= 0.3) & (btch_weights < 0.4)] = seg_measure_weights[3]
+    btch_weights[(btch_weights >= 0.4) & (btch_weights < 0.5)] = seg_measure_weights[4]
+    btch_weights[(btch_weights >= 0.5) & (btch_weights < 0.6)] = seg_measure_weights[5]
+    btch_weights[(btch_weights >= 0.6) & (btch_weights < 0.7)] = seg_measure_weights[6]
+    btch_weights[(btch_weights >= 0.7) & (btch_weights < 0.8)] = seg_measure_weights[7]
+    btch_weights[(btch_weights >= 0.8) & (btch_weights < 0.9)] = seg_measure_weights[8]
+    btch_weights[(btch_weights >= 0.9) & (btch_weights < 1.0)] = seg_measure_weights[9]
+    btch_weights = tf.convert_to_tensor(btch_weights, dtype=tf.float32)
+    # print('btch_weights: ', btch_weights)
+    # print('true: ', true)
+    # print('pred: ', pred)
+    return K.mean(K.sum(btch_weights * K.square(true-pred)))
 
 
 def get_callbacks(callback_type: str, output_dir: pathlib.Path, logger: logging.Logger = None):
@@ -42,10 +129,7 @@ def get_callbacks(callback_type: str, output_dir: pathlib.Path, logger: logging.
         if PROGRESS_LOG:
             callbacks.append(
                 ProgressLogCallback(
-                    log_type=callback_type,
-                    figsize=SCATTER_PLOT_FIGSIZE,
                     log_dir=output_dir,
-                    log_interval=PROGRESS_LOG_INTERVAL,
                     logger=logger
                 )
             )
@@ -90,7 +174,7 @@ def get_callbacks(callback_type: str, output_dir: pathlib.Path, logger: logging.
     if CHECKPOINT:
         callbacks.append(
             tf.keras.callbacks.ModelCheckpoint(
-                filepath=output_dir / TF_CHECKPOINT_FILE_BEST_MODEL,
+                filepath=output_dir / CHECKPOINT_FILE_BEST_MODEL,
                 monitor=CHECKPOINT_MONITOR,
                 verbose=CHECKPOINT_VERBOSE,
                 save_best_only=CHECKPOINT_SAVE_BEST_ONLY,
@@ -112,12 +196,12 @@ def launch_tensorboard(logdir):
     return tensorboard_th
 
 
-def get_model(model_configs, compilation_configs, checkpoint_dir: pathlib.Path = None, logger: logging.Logger = None):
+def get_model(model_configs, compilation_configs, output_dir: pathlib.Path, checkpoint_dir: pathlib.Path = None, logger: logging.Logger = None):
     weights_loaded = False
 
-    model = RibCage(model_configs=model_configs, logger=logger)
+    model = RibCage(model_configs=model_configs, output_dir=output_dir, logger=logger)
 
-    if model_configs.get('load_checkpoint') and checkpoint_dir.is_dir():
+    if model_configs.get('load_model') and checkpoint_dir.is_dir():
         try:
             latest_cpt = tf.train.latest_checkpoint(checkpoint_dir)
             if latest_cpt is not None:
@@ -137,7 +221,9 @@ def get_model(model_configs, compilation_configs, checkpoint_dir: pathlib.Path =
 
     # -2- Compile the model
     model.compile(
-        loss=TF_LOSS,
+        loss=weighted_mse,
+        # loss=WeightedMSE(),
+        # loss=LOSS,
         optimizer=get_optimizer(
             algorithm=compilation_configs.get('algorithm'),
             args=dict(
@@ -292,16 +378,13 @@ def write_images_to_tensorboard(writer, data: dict, step: int):
             )
 
 
-def train_model(args, output_dir: pathlib.Path, logger: logging.Logger = None):
+def train_model(data_tuples: list, args, output_dir: pathlib.Path, logger: logging.Logger = None):
     if check_file(file_path=args.train_data_file):
-        # - Load the data
-        data = np.load(str(args.train_data_file), allow_pickle=True)
-
         # MODEL
         # -1- Build the model and optionally load the weights
         model, weights_loaded = get_model(
             model_configs=dict(
-                load_checkpoint=args.continue_train,
+                load_model=args.load_model,
                 input_image_dims=(args.image_height, args.image_width),
                 drop_block=dict(
                     use=args.drop_block,
@@ -335,12 +418,15 @@ def train_model(args, output_dir: pathlib.Path, logger: logging.Logger = None):
                 centered=args.optimizer_centered,
             ),
             checkpoint_dir=pathlib.Path(args.tf_checkpoint_dir),
+            output_dir=output_dir,
             logger=logger
         )
 
+        # latest_cpt = tf.train.latest_checkpoint(pathlib.Path(args.tf_checkpoint_dir))
+        # model.load_weights(latest_cpt)
         # - Get the train and the validation data loaders
         train_dl, val_dl, _ = get_data_loaders(
-            data=data,
+            data_tuples=data_tuples,
             train_batch_size=args.batch_size,
             val_prop=args.val_prop,
             train_augs=augs.train_augs,
@@ -381,11 +467,16 @@ def train_model(args, output_dir: pathlib.Path, logger: logging.Logger = None):
 def test_model(model, data_file, args, output_dir: pathlib.Path, logger: logging.Logger = None):
     if check_file(file_path=args.test_data_file):
         # -  Load the test data
-        data = np.load(str(data_file), allow_pickle=True)
+        fl_tupls = scan_files(
+            root_dir=DATA_ROOT_DIR / f'test/{TEST_INPUT_DATA_DIR}',
+            seg_dir_postfix=SEG_DIR_POSTFIX,
+            image_prefix=IMAGE_PREFIX,
+            seg_prefix=SEG_PREFIX
+        )
 
         # - Get the GT data loader
         _, _, test_dl = get_data_loaders(
-            data=data,
+            data_tuples=fl_tupls,
             train_batch_size=0,
             val_prop=VAL_PROP,
             train_augs=None,

@@ -1,3 +1,5 @@
+import datetime
+import os
 import yaml
 from tqdm import tqdm
 import logging
@@ -9,27 +11,29 @@ from tensorflow import keras
 from tensorflow.keras import layers
 from global_configs.general_configs import (
     MODEL_CONFIGS_FILE,
-    OUTLIER_TH,
 )
 
 from utils.aux_funcs import (
-    scatter_plot
+    monitor_data
 )
 from .tf_activations import (
     Swish
 )
-from .tf_callbacks import (
-    log_masks,
-)
 
 
 class RibCage(keras.Model):
-    def __init__(self, model_configs: dict, logger: logging.Logger = None):
+    def __init__(self, model_configs: dict, output_dir: pathlib.Path or str, logger: logging.Logger = None):
         super().__init__()
         self.input_image_dims = model_configs.get('input_image_dims')
         self.logger = logger
         self.activation_layer = self._get_activation(configs=model_configs.get('activation'))
         self.kernel_regularizer = self._get_kernel_regularizer(configs=model_configs.get('kernel_regularizer'))
+        self.output_dir = output_dir
+        if isinstance(self.output_dir, str):
+            self.output_dir = pathlib.Path(output_dir)
+        assert isinstance(self.output_dir, pathlib.Path), f'The save_dir parameter must be of types str or pathlib.Path, but {type(output_dir)} was provided!'
+        if not self.output_dir.is_dir():
+            os.makedirs(self.output_dir)
 
         # - Open the models' configurations file
         self.ribcage_configs = None
@@ -40,28 +44,12 @@ class RibCage(keras.Model):
         self.model = self.build_model()
 
         # - Train epoch history
-        self.train_losses = []
-        self.train_loss_prev = 1.
-        self.train_loss_delta = 0.
-        self.train_imgs = None
-        self.train_aug_segs = None
-        self.train_trgt_seg_msrs = None
-        self.train_pred_seg_msrs = None
-        self.train_epoch_trgt_seg_msrs = np.array([])
-        self.train_epoch_pred_seg_msrs = np.array([])
-        self.train_epoch_outliers = list()
+        self.train_true_seg_msrs = np.array([])
+        self.train_pred_seg_msrs = np.array([])
 
         # - Validation epoch history
-        self.val_losses = []
-        self.val_loss_prev = 1.
-        self.val_loss_delta = 0.
-        self.val_imgs = None
-        self.val_aug_segs = None
-        self.val_trgt_seg_msrs = None
-        self.val_pred_seg_msrs = None
-        self.val_epoch_trgt_seg_msrs = np.array([])
-        self.val_epoch_pred_seg_msrs = np.array([])
-        self.val_epoch_outliers = list()
+        self.val_true_seg_msrs = np.array([])
+        self.val_pred_seg_msrs = np.array([])
 
     @staticmethod
     def _get_activation(configs: dict):
@@ -98,7 +86,6 @@ class RibCage(keras.Model):
             ]
         )
 
-    # @staticmethod
     def _build_fully_connected_block(self, units: int, drop_rate: float):
         return keras.Sequential(
             [
@@ -146,106 +133,78 @@ class RibCage(keras.Model):
         return self.model.summary()
 
     def train_step(self, data) -> dict:
-        t_strt = time.time()
         # - Get the data of the current epoch
-        (imgs, aug_segs), trgt_seg_msrs = data
+        (btch_imgs_aug, btch_msks_aug), btch_true_seg_msrs = data
 
         # - Compute the loss according to the predictions
         with tf.GradientTape() as tape:
-            pred_seg_msrs = self.model([imgs, aug_segs], training=True)
-            loss = self.compiled_loss(trgt_seg_msrs, pred_seg_msrs)
+            btch_pred_seg_msrs = self.model([btch_imgs_aug, btch_msks_aug], training=True)
+            loss = self.compiled_loss(btch_true_seg_msrs, btch_pred_seg_msrs)
 
-        trgt_seg_msrs = trgt_seg_msrs.numpy()
-        pred_seg_msrs = pred_seg_msrs.numpy()[:, 0]
         # - Get the weights to adjust according to the loss calculated
         trainable_vars = self.trainable_variables
 
         # - Calculate gradients
         gradients = tape.gradient(loss, trainable_vars)
 
-        self.train_loss_delta = loss - self.train_loss_prev
-        self.train_loss_prev = loss
-
         # - Update weights
         self.optimizer.apply_gradients(zip(gradients, trainable_vars))
 
-        # - Add images
-        self.train_imgs = imgs.numpy()
-        self.train_aug_segs = aug_segs.numpy()
-        self.train_trgt_seg_msrs = trgt_seg_msrs
-        self.train_pred_seg_msrs = pred_seg_msrs
+        # Logs
+        with tf.device('CPU:0'):
+            ts = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+            train_imgs_dir = self.output_dir / 'train_batch_imgs'
+            os.makedirs(train_imgs_dir, exist_ok=True)
 
-        train_segs = []
-        for idx, (img, seg, trgt_seg_msr, pred_seg_msr) in enumerate(zip(self.train_imgs, self.train_aug_segs, self.train_trgt_seg_msrs, self.train_pred_seg_msrs)):
-            train_segs.append(log_masks(image=img, mask=seg, true_seg_measure=trgt_seg_msr, pred_seg_measure=pred_seg_msr))
-            if idx == 5:
-                break
-            # train_segs = log_bboxes(image=self.train_imgs[0], mask=self.train_aug_segs[0], true_seg_measure=self.train_trgt_seg_msrs[0], pred_seg_measure=self.train_pred_seg_msrs[0], procedure='train')
+            rnd_idx = np.random.randint(0, len(btch_imgs_aug)-1)
 
-        train_scatter_plot = scatter_plot(
-            x=trgt_seg_msrs,
-            y=pred_seg_msrs,
-        )
+            btch_true_seg_msrs = btch_true_seg_msrs.numpy()
+            btch_pred_seg_msrs = btch_pred_seg_msrs.numpy()[:, 0]
+            monitor_data(image=btch_imgs_aug.numpy()[rnd_idx],  ground_truth=None, segmentation=btch_msks_aug.numpy()[rnd_idx], image_label='Image', ground_truth_label='Ground Truth', segmentation_label=f'Prediction (gt={btch_true_seg_msrs[rnd_idx]:.3f}, pred={btch_pred_seg_msrs[rnd_idx]:.3f})', save_file=str(train_imgs_dir / f'train_btch_{ts}.png'))
 
-        # - Add the target seg measures to epoch history
-        self.train_epoch_trgt_seg_msrs = np.append(self.train_epoch_trgt_seg_msrs, trgt_seg_msrs)
+            # --------------------------------------------------------------
+            # - ADD THE HISTORY OF THE TRUE AND THE PREDICTED SEG MEASURES -
+            # --------------------------------------------------------------
+            # - Add the target seg measures to epoch history
+            self.train_true_seg_msrs = np.append(self.train_true_seg_msrs, btch_true_seg_msrs)
 
-        # - Add the modified seg measures to epoch history
-        self.train_epoch_pred_seg_msrs = np.append(self.train_epoch_pred_seg_msrs, pred_seg_msrs)
+            # - Add the modified seg measures to epoch history
+            self.train_pred_seg_msrs = np.append(self.train_pred_seg_msrs, btch_pred_seg_msrs)
 
-        # - Add the outliers, if there's any
-        seg_msrs_diff = np.abs(trgt_seg_msrs - pred_seg_msrs)
-        outliers_idxs = np.argwhere(seg_msrs_diff > OUTLIER_TH).flatten()
-
-        train_outlier_segs = []
-        for idx, (img, seg, trgt_seg_msr, pred_seg_msr) in enumerate(zip(self.train_imgs[outliers_idxs], self.train_aug_segs[outliers_idxs], trgt_seg_msrs[outliers_idxs], pred_seg_msrs[outliers_idxs])):
-            train_outlier_segs.append(log_masks(image=img, mask=seg, true_seg_measure=trgt_seg_msr, pred_seg_measure=pred_seg_msr))
+            err = np.abs(btch_true_seg_msrs - btch_pred_seg_msrs)
+            err_hist, bins = np.histogram(err, bins=100, range=(0, 1))
 
         # - Return the mapping metric names to current value
         return {metric.name: metric.result() for metric in self.metrics}
 
     def test_step(self, data) -> dict:
         # - Get the data of the current epoch
-        (imgs, aug_segs), trgt_seg_msrs = data
+        (btch_imgs, btch_msks_aug), btch_true_seg_msrs = data
 
         # - Compute the loss according to the predictions
-        pred_seg_msrs = self.model([imgs, aug_segs], training=True)
-        loss = self.compiled_loss(trgt_seg_msrs, pred_seg_msrs)
+        btch_pred_seg_msrs = self.model([btch_imgs, btch_msks_aug], training=True)
+        loss = self.compiled_loss(btch_true_seg_msrs, btch_pred_seg_msrs)
 
-        self.val_loss_delta = loss - self.val_loss_prev
-        self.val_loss_prev = loss
+        with tf.device('CPU:0'):
+            ts = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+            test_imgs_dir = self.output_dir / 'val_batch_imgs'
+            os.makedirs(test_imgs_dir, exist_ok=True)
 
-        trgt_seg_msrs = trgt_seg_msrs.numpy()
-        pred_seg_msrs = pred_seg_msrs.numpy()[:, 0]
+            btch_true_seg_msrs = btch_true_seg_msrs.numpy()
+            btch_pred_seg_msrs = btch_pred_seg_msrs[:, 0].numpy()
 
-        # - Update images
-        self.val_imgs = imgs.numpy()
-        self.val_aug_segs = aug_segs.numpy()
-        self.val_trgt_seg_msrs = trgt_seg_msrs
-        self.val_pred_seg_msrs = pred_seg_msrs
-        # val_segs = log_bboxes(image=self.val_imgs[0], mask=self.val_aug_segs[0], true_seg_measure=self.val_trgt_seg_msrs[0], pred_seg_measure=self.val_pred_seg_msrs[0], procedure='validation')
-        val_segs = []
-        for idx, (img, seg, trgt_seg_msr, pred_seg_msr) in enumerate(zip(self.val_imgs, self.val_aug_segs, self.val_trgt_seg_msrs, self.val_pred_seg_msrs)):
-            val_segs.append(log_masks(image=img, mask=seg, true_seg_measure=trgt_seg_msr, pred_seg_measure=pred_seg_msr))
-            if idx == 5:
-                break
-        val_scatter_plot = scatter_plot(
-            x=trgt_seg_msrs,
-            y=pred_seg_msrs,
-        )
-        # - Add the target seg measures to epoch history
-        self.val_epoch_trgt_seg_msrs = np.append(self.val_epoch_trgt_seg_msrs, trgt_seg_msrs)
+            rnd_idx = np.random.randint(0, len(btch_imgs)-1)
 
-        # - Add the modified seg measures to epoch history
-        self.val_epoch_pred_seg_msrs = np.append(self.val_epoch_pred_seg_msrs, pred_seg_msrs)
+            monitor_data(image=btch_imgs.numpy()[rnd_idx],  ground_truth=None, segmentation=btch_msks_aug.numpy()[rnd_idx], image_label='Image', ground_truth_label='Ground Truth', segmentation_label=f'Prediction (gt={btch_true_seg_msrs[rnd_idx]:.3f}, pred={btch_pred_seg_msrs[rnd_idx]:.3f})', save_file=str(test_imgs_dir / f'val_btch_{ts}.png'))
 
-        # - Add the outliers, if there's any
-        seg_msrs_diff = np.abs(trgt_seg_msrs - pred_seg_msrs)
-        outliers_idxs = np.argwhere(seg_msrs_diff > OUTLIER_TH).flatten()
+            # --------------------------------------------------------------
+            # - ADD THE HISTORY OF THE TRUE AND THE PREDICTED SEG MEASURES -
+            # --------------------------------------------------------------
+            # - Add the target seg measures to epoch history
+            self.val_true_seg_msrs = np.append(self.val_true_seg_msrs, btch_true_seg_msrs)
 
-        val_outlier_segs = []
-        for idx, (img, seg, trgt_seg_msr, pred_seg_msr) in enumerate(zip(self.val_imgs[outliers_idxs], self.val_aug_segs[outliers_idxs], trgt_seg_msrs[outliers_idxs], pred_seg_msrs[outliers_idxs])):
-            val_outlier_segs.append(log_masks(image=img, mask=seg, true_seg_measure=trgt_seg_msr, pred_seg_measure=pred_seg_msr))
+            # - Add the modified seg measures to epoch history
+            self.val_pred_seg_msrs = np.append(self.val_pred_seg_msrs, btch_pred_seg_msrs)
 
         return {metric.name: metric.result() for metric in self.metrics}
 
