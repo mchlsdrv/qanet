@@ -32,7 +32,6 @@ from global_configs.general_configs import (
     VAL_PROP, DATA_ROOT_DIR, TEST_INPUT_DATA_DIR, SEG_DIR_POSTFIX, IMAGE_PREFIX, SEG_PREFIX
 )
 from tensor_flow.configs.general_configs import (
-    LOSS,
     TENSOR_BOARD,
     TENSOR_BOARD_WRITE_IMAGES,
     TENSOR_BOARD_WRITE_STEPS_PER_SECOND,
@@ -47,7 +46,7 @@ from tensor_flow.configs.general_configs import (
     CHECKPOINT_MODE,
     CHECKPOINT_SAVE_BEST_ONLY,
     CHECKPOINT_VERBOSE,
-    TERMINATE_ON_NAN,
+    TERMINATE_ON_NAN, LOSS,
 )
 from utils.aux_funcs import check_file, info_log, scatter_plot, err_log, scan_files
 from . tf_data_utils import get_data_loaders
@@ -88,26 +87,24 @@ class WeightedMSE(tf.keras.losses.MeanSquaredError):
 
 
 def weighted_mse(true, pred):
-    btch_js = true.numpy()
-    seg_measure_hist, _ = np.histogram(btch_js, bins=np.arange(0.0, 1.1, 0.1))
-    seg_measure_hist[seg_measure_hist == 0] = 1
-    seg_measure_weights = 1 / seg_measure_hist
+    true_seg_measure_hist = tf.histogram_fixed_width(true, value_range=[0.0, 1.0], nbins=10)
+    true_seg_measure_hist = tf.where(tf.equal(true_seg_measure_hist, 0), tf.ones_like(true_seg_measure_hist), true_seg_measure_hist)
+    seg_measure_weights = tf.divide(1, true_seg_measure_hist)
+    seg_measure_weights = tf.cast(seg_measure_weights, dtype=tf.float32)
 
-    btch_weights = btch_js
-    btch_weights[(btch_weights >= 0.0) & (btch_weights < 0.1)] = seg_measure_weights[0]
-    btch_weights[(btch_weights >= 0.1) & (btch_weights < 0.2)] = seg_measure_weights[1]
-    btch_weights[(btch_weights >= 0.2) & (btch_weights < 0.3)] = seg_measure_weights[2]
-    btch_weights[(btch_weights >= 0.3) & (btch_weights < 0.4)] = seg_measure_weights[3]
-    btch_weights[(btch_weights >= 0.4) & (btch_weights < 0.5)] = seg_measure_weights[4]
-    btch_weights[(btch_weights >= 0.5) & (btch_weights < 0.6)] = seg_measure_weights[5]
-    btch_weights[(btch_weights >= 0.6) & (btch_weights < 0.7)] = seg_measure_weights[6]
-    btch_weights[(btch_weights >= 0.7) & (btch_weights < 0.8)] = seg_measure_weights[7]
-    btch_weights[(btch_weights >= 0.8) & (btch_weights < 0.9)] = seg_measure_weights[8]
-    btch_weights[(btch_weights >= 0.9) & (btch_weights < 1.0)] = seg_measure_weights[9]
-    btch_weights = tf.convert_to_tensor(btch_weights, dtype=tf.float32)
-    # print('btch_weights: ', btch_weights)
-    # print('true: ', true)
-    # print('pred: ', pred)
+    btch_weights = tf.ones_like(true, dtype=tf.float32)
+
+    tf.where(tf.greater_equal(true, 0.0) & tf.less(true, 0.1), seg_measure_weights[0], btch_weights)
+    tf.where(tf.greater_equal(true, 0.1) & tf.less(true, 0.2), seg_measure_weights[1], btch_weights)
+    tf.where(tf.greater_equal(true, 0.2) & tf.less(true, 0.3), seg_measure_weights[2], btch_weights)
+    tf.where(tf.greater_equal(true, 0.3) & tf.less(true, 0.4), seg_measure_weights[3], btch_weights)
+    tf.where(tf.greater_equal(true, 0.4) & tf.less(true, 0.5), seg_measure_weights[4], btch_weights)
+    tf.where(tf.greater_equal(true, 0.5) & tf.less(true, 0.6), seg_measure_weights[5], btch_weights)
+    tf.where(tf.greater_equal(true, 0.6) & tf.less(true, 0.7), seg_measure_weights[6], btch_weights)
+    tf.where(tf.greater_equal(true, 0.7) & tf.less(true, 0.8), seg_measure_weights[7], btch_weights)
+    tf.where(tf.greater_equal(true, 0.8) & tf.less(true, 0.9), seg_measure_weights[8], btch_weights)
+    tf.where(tf.greater_equal(true, 0.9) & tf.less(true, 1.0), seg_measure_weights[9], btch_weights)
+
     return K.mean(K.sum(btch_weights * K.square(true-pred)))
 
 
@@ -448,15 +445,20 @@ def train_model(data_tuples: list, args, output_dir: pathlib.Path, logger: loggi
             tb_prc.start()
 
         # - Train -
-        model.fit(
-            train_dl,
-            batch_size=args.batch_size,
-            validation_data=val_dl,
-            shuffle=True,
+        model.train(
             epochs=args.epochs,
-            callbacks=callbacks
+            train_data_loader=train_dl,
+            val_data_loader=val_dl
         )
-
+        # model.fit(
+        #     train_dl,
+        #     batch_size=args.batch_size,
+        #     validation_data=val_dl,
+        #     shuffle=True,
+        #     epochs=args.epochs,
+        #     callbacks=callbacks
+        # )
+        #
         # -> If the setting is to launch the tensorboard process automatically
         if tb_prc is not None and args.lunch_tb:
             tb_prc.join()

@@ -31,6 +31,7 @@ TERMINATE_ON_NAN = True
 # - Checkpoint
 CHECKPOINT = True
 CHECKPOINT_FILE_TEMPLATE = 'checkpoints/cp-{epoch:04d}.ckpt'  # <- may be used in case we want to save all teh check points, and not only the best
+CHECKPOINT_FILE_BEST_MODEL_FILE_NAME = 'best_model.ckpt'  # <- overwrites the second-best model weights in case MODEL_CHECKPOINT_SAVE_BEST_ONLY = True
 CHECKPOINT_FILE_BEST_MODEL = 'checkpoints/best_model.ckpt'  # <- overwrites the second-best model weights in case MODEL_CHECKPOINT_SAVE_BEST_ONLY = True
 CHECKPOINT_MONITOR = 'val_loss'
 CHECKPOINT_VERBOSE = 1

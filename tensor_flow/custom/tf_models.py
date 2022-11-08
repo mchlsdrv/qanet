@@ -1,4 +1,3 @@
-import datetime
 import os
 import yaml
 from tqdm import tqdm
@@ -12,13 +11,12 @@ from tensorflow.keras import layers
 from global_configs.general_configs import (
     MODEL_CONFIGS_FILE,
 )
+from utils.aux_funcs import scatter_plot, absolute_error_plot, hit_rate_plot, monitor_seg_error, line_plot
 
-from utils.aux_funcs import (
-    monitor_data
-)
 from .tf_activations import (
     Swish
 )
+from ..configs.general_configs import CHECKPOINT_FILE_BEST_MODEL, CHECKPOINT_FILE_BEST_MODEL_FILE_NAME
 
 
 class RibCage(keras.Model):
@@ -44,12 +42,16 @@ class RibCage(keras.Model):
         self.model = self.build_model()
 
         # - Train epoch history
-        self.train_true_seg_msrs = np.array([])
-        self.train_pred_seg_msrs = np.array([])
+        self.train_gt_seg_msrs = []
+        self.train_pred_seg_msrs = []
+        self.train_gt_msks = []
+        self.train_aug_msks = []
 
         # - Validation epoch history
-        self.val_true_seg_msrs = np.array([])
-        self.val_pred_seg_msrs = np.array([])
+        self.val_gt_seg_msrs = []
+        self.val_pred_seg_msrs = []
+        self.val_gt_msks = []
+        self.val_aug_msks = []
 
     @staticmethod
     def _get_activation(configs: dict):
@@ -132,81 +134,29 @@ class RibCage(keras.Model):
     def summary(self):
         return self.model.summary()
 
-    def train_step(self, data) -> dict:
-        # - Get the data of the current epoch
-        (btch_imgs_aug, btch_msks_aug), btch_true_seg_msrs = data
+    @tf.function
+    def train_step(self, btch_imgs_aug, btch_msks_aug, btch_gt_seg_msrs):
 
         # - Compute the loss according to the predictions
         with tf.GradientTape() as tape:
             btch_pred_seg_msrs = self.model([btch_imgs_aug, btch_msks_aug], training=True)
-            loss = self.compiled_loss(btch_true_seg_msrs, btch_pred_seg_msrs)
-
-        # - Get the weights to adjust according to the loss calculated
-        trainable_vars = self.trainable_variables
+            loss = self.compiled_loss(btch_gt_seg_msrs, btch_pred_seg_msrs)
 
         # - Calculate gradients
-        gradients = tape.gradient(loss, trainable_vars)
+        gradients = tape.gradient(loss, self.trainable_variables)
 
         # - Update weights
-        self.optimizer.apply_gradients(zip(gradients, trainable_vars))
+        self.optimizer.apply_gradients(zip(gradients, self.trainable_variables))
 
-        # Logs
-        with tf.device('CPU:0'):
-            ts = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-            train_imgs_dir = self.output_dir / 'train_batch_imgs'
-            os.makedirs(train_imgs_dir, exist_ok=True)
+        return loss, btch_pred_seg_msrs
 
-            rnd_idx = np.random.randint(0, len(btch_imgs_aug)-1)
-
-            btch_true_seg_msrs = btch_true_seg_msrs.numpy()
-            btch_pred_seg_msrs = btch_pred_seg_msrs.numpy()[:, 0]
-            monitor_data(image=btch_imgs_aug.numpy()[rnd_idx],  ground_truth=None, segmentation=btch_msks_aug.numpy()[rnd_idx], image_label='Image', ground_truth_label='Ground Truth', segmentation_label=f'Prediction (gt={btch_true_seg_msrs[rnd_idx]:.3f}, pred={btch_pred_seg_msrs[rnd_idx]:.3f})', save_file=str(train_imgs_dir / f'train_btch_{ts}.png'))
-
-            # --------------------------------------------------------------
-            # - ADD THE HISTORY OF THE TRUE AND THE PREDICTED SEG MEASURES -
-            # --------------------------------------------------------------
-            # - Add the target seg measures to epoch history
-            self.train_true_seg_msrs = np.append(self.train_true_seg_msrs, btch_true_seg_msrs)
-
-            # - Add the modified seg measures to epoch history
-            self.train_pred_seg_msrs = np.append(self.train_pred_seg_msrs, btch_pred_seg_msrs)
-
-            err = np.abs(btch_true_seg_msrs - btch_pred_seg_msrs)
-            err_hist, bins = np.histogram(err, bins=100, range=(0, 1))
-
-        # - Return the mapping metric names to current value
-        return {metric.name: metric.result() for metric in self.metrics}
-
-    def test_step(self, data) -> dict:
-        # - Get the data of the current epoch
-        (btch_imgs, btch_msks_aug), btch_true_seg_msrs = data
-
+    @tf.function
+    def test_step(self, btch_imgs_aug, btch_msks_aug, btch_gt_seg_msrs):
         # - Compute the loss according to the predictions
-        btch_pred_seg_msrs = self.model([btch_imgs, btch_msks_aug], training=True)
-        loss = self.compiled_loss(btch_true_seg_msrs, btch_pred_seg_msrs)
+        btch_pred_seg_msrs = self.model([btch_imgs_aug, btch_msks_aug], training=False)
+        loss = self.compiled_loss(btch_gt_seg_msrs, btch_pred_seg_msrs)
 
-        with tf.device('CPU:0'):
-            ts = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-            test_imgs_dir = self.output_dir / 'val_batch_imgs'
-            os.makedirs(test_imgs_dir, exist_ok=True)
-
-            btch_true_seg_msrs = btch_true_seg_msrs.numpy()
-            btch_pred_seg_msrs = btch_pred_seg_msrs[:, 0].numpy()
-
-            rnd_idx = np.random.randint(0, len(btch_imgs)-1)
-
-            monitor_data(image=btch_imgs.numpy()[rnd_idx],  ground_truth=None, segmentation=btch_msks_aug.numpy()[rnd_idx], image_label='Image', ground_truth_label='Ground Truth', segmentation_label=f'Prediction (gt={btch_true_seg_msrs[rnd_idx]:.3f}, pred={btch_pred_seg_msrs[rnd_idx]:.3f})', save_file=str(test_imgs_dir / f'val_btch_{ts}.png'))
-
-            # --------------------------------------------------------------
-            # - ADD THE HISTORY OF THE TRUE AND THE PREDICTED SEG MEASURES -
-            # --------------------------------------------------------------
-            # - Add the target seg measures to epoch history
-            self.val_true_seg_msrs = np.append(self.val_true_seg_msrs, btch_true_seg_msrs)
-
-            # - Add the modified seg measures to epoch history
-            self.val_pred_seg_msrs = np.append(self.val_pred_seg_msrs, btch_pred_seg_msrs)
-
-        return {metric.name: metric.result() for metric in self.metrics}
+        return loss, btch_pred_seg_msrs
 
     def infer(self, data_loader) -> np.ndarray:
         t_strt = time.time()
@@ -223,3 +173,174 @@ class RibCage(keras.Model):
             results = np.append(results, pred_seg_msrs)
 
         return results
+
+    def train(self, epochs, train_data_loader, val_data_loader):
+
+        train_losses = np.array([])
+        val_losses = np.array([])
+        best_val_loss = np.inf
+        for epch in range(epochs):
+            print(f'\n > Starting epoch #{epch+1}')
+
+            # - TRAIN
+            # - Iterate over the batches of the data loader
+            data_tuples_pbar = tqdm(train_data_loader)
+            step = 0
+            for btch_imgs, btch_gt_msks, btch_aug_msks, btch_gt_seg_msrs in data_tuples_pbar:
+                train_loss, btch_pred_seg_msrs = self.train_step(btch_imgs, btch_aug_msks, btch_gt_seg_msrs)
+
+                # if step % 100 == 0:
+                #     print(f'Train loss for step {step}: {float(train_loss):.4f}')
+
+                btch_train_losses = np.array([])
+                with tf.device('CPU:0'):
+                    btch_train_losses = np.append(btch_train_losses, train_loss)
+                    data_tuples_pbar.set_postfix({'train_loss': np.round(train_loss, decimals=4)})
+                    # --------------------------------------------------------------
+                    # - ADD THE HISTORY OF THE TRUE AND THE PREDICTED SEG MEASURES -
+                    # --------------------------------------------------------------
+                    # - Add the target seg measures to epoch history
+                    self.train_gt_seg_msrs.append(btch_gt_seg_msrs)
+
+                    # - Add the modified seg measures to epoch history
+                    self.train_pred_seg_msrs.append(btch_pred_seg_msrs)
+
+                    # - Add the ground truth segmentations batch
+                    self.train_gt_msks.append(btch_gt_msks)
+
+                    # - Add the predicted segmentations batch
+                    self.train_aug_msks.append(btch_aug_msks)
+                step += 1
+
+            with tf.device('CPU:0'):
+                train_losses = np.append(train_losses, btch_train_losses.mean())
+                # - Scatter plot
+                scatter_plot(
+                    x=np.array(self.train_gt_seg_msrs).flatten(),
+                    y=np.array(self.train_pred_seg_msrs).flatten(),
+                    save_file=self.output_dir / f'train/plots/scatter_plots/step_{epch}.png',
+                    logger=self.logger
+                )
+                # - Absolute error plot
+                absolute_error_plot(
+                    true=np.array(self.train_gt_seg_msrs).flatten(),
+                    pred=np.array(self.train_pred_seg_msrs).flatten(),
+                    save_file=self.output_dir / f'train/plots/abs_err_plots/step_{epch}.png',
+                    logger=self.logger
+                )
+                # - Hit rate plot
+                hit_rate_plot(
+                    true=np.array(self.train_gt_seg_msrs).flatten(),
+                    pred=np.array(self.train_pred_seg_msrs).flatten(),
+                    save_file=self.output_dir / f'train/plots/hit_rate_plots/step_{epch}.png',
+                    logger=self.logger
+                )
+
+                train_rnd_idx = np.random.randint(0, len(self.train_gt_seg_msrs)-1)
+                monitor_seg_error(
+                    ground_truth=self.train_gt_msks[train_rnd_idx],
+                    prediction=self.train_aug_msks[train_rnd_idx],
+                    seg_measures=self.train_gt_seg_msrs[train_rnd_idx],
+                    save_dir=self.output_dir / f'train/plots/error_monitor/epoch_{epch}'
+                )
+
+            # - VALIDATION
+            data_tuples_pbar = tqdm(val_data_loader)
+            step = 0
+            btch_val_losses = np.array([])
+            for btch_imgs, btch_gt_msks, btch_aug_msks, btch_gt_seg_msrs in data_tuples_pbar:
+                val_loss, btch_pred_seg_msrs = self.test_step(btch_imgs, btch_aug_msks, btch_gt_seg_msrs)
+
+                with tf.device('CPU:0'):
+                    btch_val_losses = np.append(btch_val_losses, val_loss)
+                    data_tuples_pbar.set_postfix({'val_loss': np.round(val_loss, decimals=4)})
+                    # if step % 100 == 0:
+                    #     print(f'Val loss for step {step}: {float(val_loss):.4f}')
+                    # - Return the mapping metric names to current value
+                    # --------------------------------------------------------------
+                    # - ADD THE HISTORY OF THE TRUE AND THE PREDICTED SEG MEASURES -
+                    # --------------------------------------------------------------
+                    # - Add the target seg measures to epoch history
+                    self.val_gt_seg_msrs.append(btch_gt_seg_msrs)
+
+                    # - Add the modified seg measures to epoch history
+                    self.val_pred_seg_msrs.append(btch_pred_seg_msrs)
+
+                    # - Add the ground truth segmentations batch
+                    self.val_gt_msks.append(btch_gt_msks)
+
+                    # - Add the predicted segmentations batch
+                    self.val_aug_msks.append(btch_aug_msks)
+
+                step += 1
+            with tf.device('CPU:0'):
+                val_losses = np.append(val_losses, btch_val_losses.mean())
+                # - Scatter plot
+                scatter_plot(
+                    x=np.array(self.val_gt_seg_msrs).flatten(),
+                    y=np.array(self.val_pred_seg_msrs).flatten(),
+                    save_file=self.output_dir / f'validation/plots/scatter_plots/step_{epch}.png',
+                    logger=self.logger
+                )
+                # - Absolute error plot
+                absolute_error_plot(
+                    true=np.array(self.val_gt_seg_msrs).flatten(),
+                    pred=np.array(self.val_pred_seg_msrs).flatten(),
+                    save_file=self.output_dir / f'validation/plots/abs_err_plots/step_{epch}.png',
+                    logger=self.logger
+                )
+                # - Hit rate plot
+                hit_rate_plot(
+                    true=np.array(self.val_gt_seg_msrs).flatten(),
+                    pred=np.array(self.val_pred_seg_msrs).flatten(),
+                    save_file=self.output_dir / f'validation/plots/hit_rate_plots/step_{epch}.png',
+                    logger=self.logger
+                )
+                val_rnd_idx = np.random.randint(0, len(self.val_gt_seg_msrs)-1)
+                monitor_seg_error(
+                    ground_truth=self.val_gt_msks[val_rnd_idx],
+                    prediction=self.val_aug_msks[val_rnd_idx],
+                    seg_measures=self.val_gt_seg_msrs[val_rnd_idx],
+                    save_dir=self.output_dir / f'validation/plots/error_monitor/epoch_{epch}'
+                )
+
+                if val_loss < best_val_loss:
+                    chpt_dir = self.output_dir / 'checkpoints'
+                    os.makedirs(chpt_dir, exist_ok=True)
+
+                    print(f'''
+                    - Loss improved from {best_val_loss:.4f} to {val_loss:.4f}!
+                        > Saving checkpoint to {chpt_dir / 'best_val_loss'} 
+                    ''')
+                    # self.save(chpt_dir / CHECKPOINT_FILE_BEST_MODEL_FILE_NAME)
+                    self.save_weights(chpt_dir / 'beast_val_loss')
+                    best_val_loss = val_loss
+
+            line_plot(
+                x=np.arange(len(train_losses)),
+                ys=[train_losses, val_losses],
+                suptitle=f'Train Validation Loss Plot Epoch {epch}',
+                labels=['train', 'val'],
+                colors=('g', 'r', 'b'),
+                save_file=self.output_dir / 'loss_plot.png'
+            )
+
+            print(f'''
+            ==============================================================
+            Epoch #{epch+1} Stats:
+                - Train loss: {btch_train_losses.mean():.4f}+/-{btch_train_losses.std():.4f}
+                - Val loss: {btch_val_losses.mean():.4f}+/-{btch_val_losses.std():.4f}
+            ==============================================================
+            ''')
+
+            # Clean the data for the next epoch
+            self.model.train_gt_seg_msrs = []
+            self.model.train_pred_seg_msrs = []
+            self.model.train_gt_msks = []
+            self.model.train_aug_msks = []
+
+            self.model.val_gt_seg_msrs = []
+            self.model.val_pred_seg_msrs = []
+            self.model.val_gt_msks = []
+            self.model.val_aug_msks = []
+

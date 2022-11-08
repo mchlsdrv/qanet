@@ -3,10 +3,9 @@ import pathlib
 import time
 import datetime
 import numpy as np
-from global_configs.general_configs import CONFIGS_DIR, SEG_DIR_POSTFIX, IMAGE_PREFIX, SEG_PREFIX, TRAIN_DATA_ROOT_DIR, SEG_SUB_DIR
-from utils.aux_funcs import get_arg_parser, get_runtime, get_logger, scan_files, load_images_from_tuple_list
-from tensor_flow import train
-
+from global_configs.general_configs import CONFIGS_DIR, SEG_DIR_POSTFIX, IMAGE_PREFIX, SEG_PREFIX, TRAIN_DATA_ROOT_DIR, SEG_SUB_DIR, TEMP_TRAIN_DATA_FILE
+from tensor_flow.utils.tf_utils import train_model, choose_gpu
+from utils.aux_funcs import get_arg_parser, get_runtime, get_logger, scan_files, load_images_from_tuple_list, err_log, clean_items_with_empty_masks
 
 if __name__ == '__main__':
     t_start = time.time()
@@ -44,14 +43,33 @@ if __name__ == '__main__':
 
     np.random.shuffle(fl_tupls)
 
-    data_tuples = load_images_from_tuple_list(data_file_tuples=fl_tupls)
+    # - Load the data
+    if TEMP_TRAIN_DATA_FILE.is_file():
+        data_tuples = np.load(TEMP_TRAIN_DATA_FILE, allow_pickle=True)
+    else:
+        # - Load images and their masks
+        data_tuples = load_images_from_tuple_list(data_file_tuples=fl_tupls)
+
+        # - Clean data items with no objects in them
+        if not TEMP_TRAIN_DATA_FILE.parent.is_dir():
+            os.makedirs(TEMP_TRAIN_DATA_FILE.parent)
+        data_tuples = clean_items_with_empty_masks(data_tuples=data_tuples, save_file=TEMP_TRAIN_DATA_FILE)
 
     # - Train the model
-    train.run(
-        data_tuples=data_tuples,
-        args=args,
-        output_dir=current_run_dir,
-        logger=logger
-    )
+
+    # - Configure the GPU to run on
+    choose_gpu(gpu_id=args.gpu_id, logger=logger)
+
+    # - Train model
+    trained_model = None
+    try:
+        trained_model = train_model(
+            data_tuples=data_tuples,
+            args=args,
+            output_dir=current_run_dir,
+            logger=logger
+        )
+    except Exception as err:
+        err_log(logger=logger, message=f'{err}')
 
     print(f'\n== Total runtime: {get_runtime(seconds=time.time() - t_start)} ==\n')

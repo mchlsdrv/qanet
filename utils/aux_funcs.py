@@ -4,6 +4,7 @@ import argparse
 import logging.config
 import pickle as pkl
 import re
+from copy import deepcopy
 
 import numpy as np
 import pandas as pd
@@ -36,7 +37,7 @@ from global_configs.general_configs import (
     OPTIMIZER_MOMENTUM,
     OPTIMIZER_DAMPENING,
     OPTIMIZER_MOMENTUM_DECAY,
-    OPTIMIZER, DEBUG_LEVEL, DROP_BLOCK_KEEP_PROB, DROP_BLOCK_BLOCK_SIZE, KERNEL_REGULARIZER_TYPE, KERNEL_REGULARIZER_L1, KERNEL_REGULARIZER_L2, KERNEL_REGULARIZER_FACTOR, KERNEL_REGULARIZER_MODE, ACTIVATION, ACTIVATION_RELU_MAX_VALUE, ACTIVATION_RELU_NEGATIVE_SLOPE, ACTIVATION_RELU_THRESHOLD, ACTIVATION_LEAKY_RELU_ALPHA, INFERENCE_DATA_DIR, TEST_DATA_FILE
+    OPTIMIZER, DEBUG_LEVEL, DROP_BLOCK_KEEP_PROB, DROP_BLOCK_BLOCK_SIZE, KERNEL_REGULARIZER_TYPE, KERNEL_REGULARIZER_L1, KERNEL_REGULARIZER_L2, KERNEL_REGULARIZER_FACTOR, KERNEL_REGULARIZER_MODE, ACTIVATION, ACTIVATION_RELU_MAX_VALUE, ACTIVATION_RELU_NEGATIVE_SLOPE, ACTIVATION_RELU_THRESHOLD, ACTIVATION_LEAKY_RELU_ALPHA, INFERENCE_DATA_DIR, TEST_DATA_FILE, MIN_CELL_PIXELS
 )
 
 from pytorch.configs import general_configs as tr_configs
@@ -96,7 +97,7 @@ def show_images(images, labels, suptitle='', figsize=(25, 10), save_file: pathli
 
 
 def line_plot(x: list or np.ndarray, ys: list or np.ndarray, suptitle: str, labels: list, colors: tuple = ('r', 'g', 'b'), save_file: pathlib.Path or str = None, logger: logging.Logger = None):
-    assert len(ys) == len(labels) == len(colors), f'The number of data items ({len(ys)}) does not match the number of labels ({len(labels)}) or the number of colors ({len(colors)})!'
+    # assert len(ys) == len(labels) == len(colors), f'The number of data items ({len(ys)}) does not match the number of labels ({len(labels)}) or the number of colors ({len(colors)})!'
 
     fig, ax = plt.subplots()
     for y, lbl, clr in zip(ys, labels, colors):
@@ -419,7 +420,11 @@ def load_images_from_tuple_list(data_file_tuples: list):
     imgs = []
     msks = []
 
-    print('> Loading images and corresponding segmentations...')
+    print('''
+    ====================================================
+    == Loading images and corresponding segmentations ==
+    ====================================================
+    ''')
     files_pbar = tqdm(data_file_tuples)
     for img_fl, msk_fl in files_pbar:
         img = cv2.imread(str(img_fl), -1).astype(np.uint8)
@@ -432,14 +437,55 @@ def load_images_from_tuple_list(data_file_tuples: list):
         if len(msk.shape) < 3:
             msk = np.expand_dims(msk, axis=-1)
 
+        # # - Check if there are enough cells in the segmentation
+        # bin_msk = deepcopy(msk)
+        # bin_msk[bin_msk > 0] = 1
+        #
+        # if bin_msk.sum() > MIN_CELL_PIXELS:
         imgs.append(img)
         msks.append(msk)
 
-    data = np.array(list(zip(imgs, msks)), dtype=object)
+    data_tuples = np.array(list(zip(imgs, msks)), dtype=object)
 
-    print(f'> Images and corresponding segmentations were loaded! Total samples: {len(data)}.')
+    print(f'''
+    =========
+    = Stats =
+    =========
+    - Total data items: {len(data_tuples)}
+    ''')
 
-    return data
+    return data_tuples
+
+
+def clean_items_with_empty_masks(data_tuples: list, save_file: pathlib.Path = None):
+    print('''
+    ==========================================
+    == Cleaning data items with empty masks ==
+    ==========================================
+    ''')
+    data_tuples_pbar = tqdm(data_tuples)
+    clean_imgs, clean_msks = list(), list()
+    for img, msk in data_tuples_pbar:
+        bin_msk = deepcopy(msk)
+        bin_msk[bin_msk > 0] = 1
+
+        # - Check if there are enough cells in the segmentation
+        if bin_msk.sum() > MIN_CELL_PIXELS:
+            clean_imgs.append(img)
+            clean_msks.append(msk)
+
+    clean_data_tuples = np.array(list(zip(clean_imgs, clean_msks)), dtype=object)
+    if isinstance(save_file, pathlib.Path):
+        np.save(str(save_file), clean_data_tuples)
+
+    print(f'''
+    =========
+    = Stats =
+    =========
+    - {len(data_tuples) - len(clean_data_tuples)} items were filtered
+    - Total clean data items: {len(clean_data_tuples)}
+    ''')
+    return clean_data_tuples
 
 
 def get_runtime(seconds: float):
@@ -461,103 +507,87 @@ def get_runtime(seconds: float):
     return hrs_str + ':' + min_str + ':' + sec_str + '[H:M:S]'
 
 
-def calc_jaccard(R: np.ndarray, S: np.ndarray):
+def calc_seg_measure(gt_masks: np.ndarray, pred_masks: np.ndarray):
     """
-    Calculates the mean Jaccard coefficient for two multi-class labels
-    :param: R - Reference multi-class label
-    :param: S - Segmentation multi-class label
+    Converts a multi-class label into a one-hot labels for each object in the multi-class label
+    :param: multi_class_mask - mask where integers represent different objects
     """
-    def _get_one_hot_masks(multi_class_mask: np.ndarray, classes: np.ndarray = None):
-        """
-        Converts a multi-class label into a one-hot labels for each object in the multi-class label
-        :param: multi_class_mask - mask where integers represent different objects
-        """
-        # - Ensure the multi-class label is populated with int values
-        mlt_cls_mask = multi_class_mask.astype(np.int16)
+    # - Ensure the multi-class label is populated with int values
+    gt_masks = gt_masks.astype(np.int16)
+    pred_masks = pred_masks.astype(np.int16)
 
-        # - Find the classes
-        cls = classes
-        if cls is None:
-            cls = np.unique(mlt_cls_mask)
+    # - Find the classes
+    labels = np.unique(gt_masks)
 
-        # - Discard the background (0)
-        cls = cls[cls > 0]
+    # - Discard the background (0)
+    labels = labels[labels > 0]
 
-        mlt_cls_msk_shape = mlt_cls_mask.shape
-        if len(mlt_cls_msk_shape) > 2:
-            mlt_cls_msk_shape = mlt_cls_msk_shape[:-1]
+    # - Convert the ground truth mask to one-hot class masks
+    gt_one_hot_masks = []
+    for lbl in labels:
+        class_mask = deepcopy(gt_masks)
+        class_mask[class_mask != lbl] = 0
+        class_mask[class_mask > 0] = 1
+        gt_one_hot_masks.append(class_mask)
 
-        one_hot_masks = np.zeros((*mlt_cls_msk_shape, len(cls)), dtype=np.float32)
-        for lbl_idx in range(len(cls)):
-            idxs = np.argwhere(mlt_cls_mask == cls[lbl_idx])
-            x, y = idxs[:, 0], idxs[:, 1]
-            one_hot_masks[x, y, lbl_idx] = 1.
-        return one_hot_masks
+    gt_one_hot_masks = np.array(gt_one_hot_masks, dtype=np.float32)
 
-    # - In case there's no other classes besides background (i.e., 0) J = 0.
-    J = 0.
-    R = np.array(R)
-    S = np.array(S)
-    # - Convert the multi-label mask to multiple one-hot masks
-    cls = np.unique(R.astype(np.int16))
+    # - Calculate the ground truth object area
+    A = gt_one_hot_masks.sum(axis=(-3, -2, -1))
+    A[A == 0] = np.nan
 
-    if cls[cls > 0].any():  # <= If there's any classes besides background (i.e., 0)
-        R = _get_one_hot_masks(multi_class_mask=R, classes=cls)
-        S = _get_one_hot_masks(multi_class_mask=S, classes=cls)
+    # - Convert the predicted mask to one-hot class masks
+    pred_one_hot_masks = []
+    for lbl in labels:
+        class_mask = deepcopy(pred_masks)
+        class_mask[class_mask != lbl] = 0
+        class_mask[class_mask > 0] = 1
+        pred_one_hot_masks.append(class_mask)
 
-        # - Calculate the intersection of R and S
-        I_sums = np.sum(np.logical_and(R[..., np.newaxis, :], S[..., np.newaxis]), axis=(0, 1))
-        # I_sums = np.sum(R[:, np.newaxis, ...] * S[np.newaxis, ...], axis=(-2, -1))
-        x, y = np.arange(len(I_sums)), np.argmax(I_sums, axis=1)  # <= Choose the once that have the largest overlap with the ground truth label
-        I = I_sums[x, y]
+    pred_one_hot_masks = np.array(pred_one_hot_masks, dtype=np.float32)
 
-        # - Calculate the union of R and S
-        U_sums = np.sum(np.logical_or(R[..., np.newaxis, :], S[..., np.newaxis]), axis=(0, 1))
-        # U_sums = np.sum(np.logical_or(R[:, np.newaxis, ...], S[np.newaxis, ...]), axis=(-2, -1))
-        U = U_sums[x, y]
+    # - Calculate the intersection
+    I = np.logical_and(gt_one_hot_masks, pred_one_hot_masks).sum(axis=(-3, -2, -1))
 
-        # - Mean Jaccard on the valid items only
-        U[U <= 0] = 1  # <= To avoid division by 0
-        J = (I / U)
+    # - Calculate the union
+    U = np.logical_or(gt_one_hot_masks, pred_one_hot_masks).sum(axis=(-3, -2, -1))
 
-        # - Calculate the areas of the reference items
-        R_areas = R.sum(axis=(0, 1))
-        R_areas[R_areas <= 0] = 1  # <= To avoid division by 0
+    # - Calculate the IoU
+    U[U == 0] = 1  # to avoid division by 0
+    IoU = I / U
 
-        # - Find out the indices of the items which do not satisfy |I| / |R| > 0.5 and replace them with 0
-        inval = np.argwhere((I / R_areas) <= .5).reshape(-1)
+    # - Fund invalid elements
+    object_coverage_mask = I / A
+    object_coverage_mask[object_coverage_mask <= 0.5] = 0
+    object_coverage_mask[object_coverage_mask > 0.5] = 1
 
-        J[inval] = 0.0
+    # - Zero the invalid IoU
+    IoU = object_coverage_mask * IoU
 
-        # J = J[J > 0].mean() if J[J > 0].any() else 0.0
+    seg_measure = np.nanmean(IoU, axis=0)
+    seg_measure[np.isnan(seg_measure)] = 0.0
+    # print(f'Batch seg_measure: {seg_measure}')
 
-    return J.mean() if isinstance(J, np.ndarray) else J
+    return seg_measure
 
 
-def monitor_data(image: np.ndarray,  ground_truth: np.ndarray or None, segmentation: np.ndarray, image_label: str = 'Image', ground_truth_label: str = 'Ground Truth', segmentation_label: str = 'Segmentation', figsize: tuple = (20, 10), save_file: str = 'data_test.png'):
+def monitor_seg_error(ground_truth: np.ndarray, prediction: np.ndarray, seg_measures: np.ndarray, figsize: tuple = (20, 10), save_dir: str or pathlib.Path = './seg_errors'):
 
-    if ground_truth is not None:
-        fig, ax = plt.subplots(1, 3, figsize=figsize)
+    save_dir = pathlib.Path(save_dir)
+    os.makedirs(save_dir, exist_ok=True)
 
-        ax[0].imshow(image, cmap='gray')
-        ax[0].set(title=image_label)
+    for idx, (gt, pred, seg_msr) in enumerate(zip(ground_truth, prediction, seg_measures)):
+        fig, ax = plt.subplots(figsize=figsize)
+        img = np.zeros((*gt.shape[:-1], 3))
+        img[..., 0] = gt[..., 0]
+        img[..., 2] = pred[..., 0]
 
-        ax[1].imshow(ground_truth, cmap='gray')
-        ax[1].set(title=ground_truth_label)
+        ax.imshow(img)
 
-        ax[2].imshow(segmentation, cmap='gray')
-        ax[2].set(title=segmentation_label)
-    else:
-        fig, ax = plt.subplots(1, 2, figsize=figsize)
+        fig.suptitle(f'GT (red) vs Pred (blue) - Seg Measure = {seg_msr:.4f}')
 
-        ax[0].imshow(image, cmap='gray')
-        ax[0].set(title=image_label)
-
-        ax[1].imshow(segmentation, cmap='gray')
-        ax[1].set(title=segmentation_label)
-
-    plt.savefig(save_file)
-    plt.close()
+        plt.savefig(save_dir / f'item_{idx}.png')
+        plt.close()
 
 
 def plot_hist(data: np.ndarray or list, hist_range: list or tuple, bins: int, save_name: str, output_dir: pathlib.Path, density: bool = True):

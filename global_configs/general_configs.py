@@ -7,6 +7,7 @@ N_SAMPLES = 10000
 MIN_J = 0.01
 MAX_J = 0.99
 MAX_J_TRIES = 1
+MIN_CELL_PIXELS = 1000
 
 # PATHS
 # > DATA
@@ -17,6 +18,7 @@ DATA_ROOT_DIR = pathlib.Path('../data')
 TRAIN_DATA_ROOT_DIR = '../data/train/Fluo-N2DH-SIM+/Train/'
 # TRAIN_DATA_ROOT_DIR = '/media/rrtammyfs/labDatabase/CellTrackingChallenge/BGUSIM/Fluo-N2DH-BGUSIM/Train/'
 TRAIN_INPUT_DATA_DIR = 'Fluo-N2DH-SIM+'
+TEMP_TRAIN_DATA_FILE = pathlib.Path(f'../data/train/temp/{TRAIN_INPUT_DATA_DIR}/clean_data.npy')
 TRAIN_OUTPUT_DATA_DIR = DATA_ROOT_DIR / f'generated/train/{TRAIN_INPUT_DATA_DIR}'
 TRAIN_DATA_FILE = TRAIN_OUTPUT_DATA_DIR / f'4350_samples/data.npy'
 

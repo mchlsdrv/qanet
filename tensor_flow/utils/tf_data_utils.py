@@ -14,7 +14,9 @@ from global_configs.general_configs import (
 from utils import augs
 
 from utils.aux_funcs import (
-    get_train_val_split, calc_jaccard
+    get_train_val_split,
+    calc_seg_measure
+    # calc_jaccard
 )
 
 
@@ -45,33 +47,37 @@ class DataLoader(tf.keras.utils.Sequence):
         btch_js = []
 
         btch_data = self.image_mask_tuples[start_index:end_index, ...]
-        imgs, msks = btch_data[:, 0, ...], btch_data[:, 1, ...]
-        for img, msk in zip(imgs, msks):
+        btch_imgs, btch_msks = btch_data[:, 0, ...], btch_data[:, 1, ...]
+        btch_msks_aug = []
+        btch_msks_dfrmd = []
+        for img, msk in zip(btch_imgs, btch_msks):
             aug_res = self.image_mask_augs(image=img.astype(np.uint8), mask=msk.astype(np.uint8))
             img_aug, msk_aug = aug_res.get('image'), aug_res.get('mask')
 
-            # j_tries = 0
-            # while True:
             msks_aug_res = self.mask_augs(image=img_aug.astype(np.uint8), mask=msk_aug.astype(np.uint8))
-            _, msk_aug = msks_aug_res.get('image'), msks_aug_res.get('mask')
+            _, msk_dfrmd = msks_aug_res.get('image'), msks_aug_res.get('mask')
 
-            j = calc_jaccard(msk, msk_aug)
+            btch_imgs_aug.append(img_aug)
+            btch_msks_aug.append(msk_aug)
+            btch_msks_dfrmd.append(msk_dfrmd)
 
-            # if MIN_J < j < MAX_J or j_tries > MAX_J_TRIES:
-            #     break
-            # j_tries += 1
-
-            btch_imgs_aug.append(tf.convert_to_tensor(img_aug, dtype=tf.float32))
-            btch_msks_aug.append(tf.convert_to_tensor(msk_aug, dtype=tf.float32))
-            btch_js.append(tf.convert_to_tensor(j, dtype=tf.float32))
-
-        btch_imgs = np.array(btch_imgs_aug)
+        # - Calculate the seg measure for the batch
+        # <1> Convert the btch_msks_aug to numpy to calculate the seg measure
         btch_msks_aug = np.array(btch_msks_aug)
-        btch_js = np.array(btch_js)
+        # <2> Convert the btch_msks_dfrmd to numpy to calculate the seg measure
+        btch_msks_dfrmd = np.array(btch_msks_dfrmd)
+        # <3> Calculate the seg measure of the aug masks with the GT masks, and convert it to tensor
+        btch_js = calc_seg_measure(gt_masks=btch_msks_aug, pred_masks=btch_msks_dfrmd)
+        # <4> Convert btch_js to tensor
+        btch_js = tf.convert_to_tensor(btch_js, dtype=tf.float32)
 
-        # print(f'\nBatch which starts at indices [{start_index}:{end_index}) acquisition took: {get_runtime(seconds=time.time() - t_strt)} with {j_tries} retries')
+        # - Convert the btch_imgs_aug to numpy array and then to tensor
+        btch_imgs_aug = tf.convert_to_tensor(np.array(btch_imgs_aug), dtype=tf.float32)
 
-        return (tf.convert_to_tensor(btch_imgs_aug, dtype=tf.float32), tf.convert_to_tensor(btch_msks_aug, dtype=tf.float32)), tf.convert_to_tensor(btch_js, dtype=tf.float32)
+        # - Convert the btch_masks_aug to tensor right away, as it was already converted to numpy in <1>
+        btch_msks_dfrmd = tf.convert_to_tensor(btch_msks_dfrmd, dtype=tf.float32)
+
+        return btch_imgs_aug, btch_msks_aug, btch_msks_dfrmd, btch_js
 
 
 def get_data_loaders(data_tuples: list or np.ndarray, train_batch_size: int, train_augs, val_augs, test_augs, inf_augs, val_prop: float = .2, logger: logging.Logger = None):
