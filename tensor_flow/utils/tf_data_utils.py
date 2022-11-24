@@ -8,25 +8,23 @@ import logging
 
 from global_configs.general_configs import (
     VAL_BATCH_SIZE,
-    TEST_BATCH_SIZE
 )
 
 from utils import augs
 
 from utils.aux_funcs import (
     get_train_val_split,
-    calc_seg_measure
-    # calc_jaccard
+    calc_seg_measure,
 )
 
 
 class DataLoader(tf.keras.utils.Sequence):
-    def __init__(self, data_tuples, batch_size, image_mask_augs, loader_type: str, logger: logging = None):
+    def __init__(self, data_tuples, batch_size, logger: logging = None):
         self.image_mask_tuples = data_tuples  # [:100]
         self.batch_size = batch_size
-        self.image_mask_augs = image_mask_augs()
+        self.image_mask_augs = augs.image_mask_augs()
         self.mask_augs = augs.mask_augs()
-        self.loader_type = loader_type
+        self.transforms = augs.transforms()
         self.logger = logger
 
     def __len__(self):
@@ -51,12 +49,19 @@ class DataLoader(tf.keras.utils.Sequence):
         btch_msks_aug = []
         btch_msks_dfrmd = []
         for img, msk in zip(btch_imgs, btch_msks):
+            # <1> Perform the image transformations
+            aug_res = self.transforms(image=img.astype(np.uint8), mask=msk.astype(np.uint8))
+            img_aug, msk_aug = aug_res.get('image'), aug_res.get('mask')
+
+            # <2> Perform image and mask augmentations
             aug_res = self.image_mask_augs(image=img.astype(np.uint8), mask=msk.astype(np.uint8))
             img_aug, msk_aug = aug_res.get('image'), aug_res.get('mask')
 
-            msks_aug_res = self.mask_augs(image=img_aug.astype(np.uint8), mask=msk_aug.astype(np.uint8))
+            # <3> Perform mask augmentations
+            msks_aug_res = self.mask_augs(image=img_aug, mask=msk_aug)
             _, msk_dfrmd = msks_aug_res.get('image'), msks_aug_res.get('mask')
 
+            # - Add the data to the corresponding lists
             btch_imgs_aug.append(img_aug)
             btch_msks_aug.append(msk_aug)
             btch_msks_dfrmd.append(msk_dfrmd)
@@ -77,42 +82,28 @@ class DataLoader(tf.keras.utils.Sequence):
         # - Convert the btch_masks_aug to tensor right away, as it was already converted to numpy in <1>
         btch_msks_dfrmd = tf.convert_to_tensor(btch_msks_dfrmd, dtype=tf.float32)
 
-        return btch_imgs_aug, btch_msks_aug, btch_msks_dfrmd, btch_js
+        return (btch_imgs_aug, btch_msks_dfrmd), btch_js
 
 
-def get_data_loaders(data_tuples: list or np.ndarray, train_batch_size: int, train_augs, val_augs, test_augs, inf_augs, val_prop: float = .2, logger: logging.Logger = None):
+def get_data_loaders(data_tuples: list or np.ndarray, train_batch_size: int, val_prop: float = .2, logger: logging.Logger = None):
     train_dl = val_dl = test_dl = inf_dl = None
-    if train_batch_size > 0 and train_augs is not None and val_augs is not None:
-        train_data, val_data = get_train_val_split(data_list=data_tuples, val_prop=val_prop, logger=logger)
+    train_data, val_data = get_train_val_split(data_list=data_tuples, val_prop=val_prop, logger=logger)
 
-        # - Create the DataLoader object
-        train_dl = DataLoader(
-            data_tuples=train_data,
-            batch_size=train_batch_size,
-            image_mask_augs=train_augs,
-            loader_type='train',
+    # - Create the DataLoader object
+    train_dl = DataLoader(
+        data_tuples=train_data,
+        batch_size=train_batch_size,
+        logger=logger
+    )
+
+    if isinstance(val_data, np.ndarray) and val_data.shape[0] > 0:
+        val_dl = DataLoader(
+            data_tuples=val_data,
+            batch_size=VAL_BATCH_SIZE,
             logger=logger
         )
 
-        if isinstance(val_data, np.ndarray) and val_data.shape[0] > 0:
-            val_dl = DataLoader(
-                data_tuples=val_data,
-                batch_size=VAL_BATCH_SIZE,
-                image_mask_augs=train_augs,
-                loader_type='validation',
-                logger=logger
-            )
-
-    elif test_augs is not None:
-        test_dl = DataLoader(
-            data_tuples=data_tuples,
-            batch_size=TEST_BATCH_SIZE,
-            image_mask_augs=test_augs,
-            loader_type='test',
-            logger=logger
-        )
-
-    return train_dl, val_dl, test_dl
+    return train_dl, val_dl
 
 
 def get_image_from_figure(figure):

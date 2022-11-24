@@ -1,15 +1,15 @@
 import os
-import numpy as np
 from functools import partial
 import logging
 import logging.config
 import threading
 import multiprocessing as mlp
 import pathlib
+
+import numpy as np
 import tensorflow as tf
 from keras import backend as K
 
-from utils import augs
 from global_configs.general_configs import (
     METRICS,
     EARLY_STOPPING,
@@ -28,8 +28,8 @@ from global_configs.general_configs import (
     REDUCE_LR_ON_PLATEAU_MIN_LR,
     REDUCE_LR_ON_PLATEAU_MODE,
     REDUCE_LR_ON_PLATEAU_VERBOSE,
-
-    VAL_PROP, DATA_ROOT_DIR, TEST_INPUT_DATA_DIR, SEG_DIR_POSTFIX, IMAGE_PREFIX, SEG_PREFIX
+    DATA_ROOT_DIR,
+    SEG_DIR_POSTFIX, IMAGE_PREFIX, SEG_PREFIX, TEST_DATA_DIR
 )
 from tensor_flow.configs.general_configs import (
     TENSOR_BOARD,
@@ -48,8 +48,15 @@ from tensor_flow.configs.general_configs import (
     CHECKPOINT_VERBOSE,
     TERMINATE_ON_NAN, LOSS,
 )
-from utils.aux_funcs import check_file, info_log, scatter_plot, err_log, scan_files
-from . tf_data_utils import get_data_loaders
+from utils.aux_funcs import (
+    check_file,
+    info_log,
+    warning_log,
+    err_log,
+    scatter_plot,
+    scan_files
+)
+from .tf_data_utils import get_data_loaders, DataLoader
 from ..custom.tf_models import (
     RibCage
 )
@@ -61,37 +68,59 @@ from ..custom.tf_callbacks import (
 from .tf_data_utils import get_image_from_figure
 
 
-class WeightedMSE(tf.keras.losses.MeanSquaredError):
-    def __init__(self):
-        super().__init__()
+class WeightedMSE:
+    def __init__(self, weighted=False):
+        self.weighted = weighted
+        self.mse = tf.keras.losses.MeanSquaredError()
 
-    def __call__(self, true, pred):
-        btch_js = true.numpy()
-        seg_measure_hist, _ = np.histogram(btch_js, bins=np.arange(0.0, 1.1, 0.1))
-        seg_measure_hist[seg_measure_hist == 0] = 1
-        seg_measure_weights = 1 / seg_measure_hist
+    @staticmethod
+    def calc_loss_weights(x):
+        # - Compute the histogram of the GT seg measures
+        x_hist = tf.histogram_fixed_width(x, value_range=[0.0, 1.0], nbins=10)
 
-        btch_weights = btch_js
-        btch_weights[(btch_weights >= 0.0) & (btch_weights < 0.1)] = seg_measure_weights[0]
-        btch_weights[(btch_weights >= 0.1) & (btch_weights < 0.2)] = seg_measure_weights[1]
-        btch_weights[(btch_weights >= 0.2) & (btch_weights < 0.3)] = seg_measure_weights[2]
-        btch_weights[(btch_weights >= 0.3) & (btch_weights < 0.4)] = seg_measure_weights[3]
-        btch_weights[(btch_weights >= 0.4) & (btch_weights < 0.5)] = seg_measure_weights[4]
-        btch_weights[(btch_weights >= 0.5) & (btch_weights < 0.6)] = seg_measure_weights[5]
-        btch_weights[(btch_weights >= 0.6) & (btch_weights < 0.7)] = seg_measure_weights[6]
-        btch_weights[(btch_weights >= 0.7) & (btch_weights < 0.8)] = seg_measure_weights[7]
-        btch_weights[(btch_weights >= 0.8) & (btch_weights < 0.9)] = seg_measure_weights[8]
-        btch_weights[(btch_weights >= 0.9) & (btch_weights < 1.0)] = seg_measure_weights[9]
-        btch_weights = tf.convert_to_tensor(btch_weights, dtype=tf.float32)
-        return tf.reduce_mean(tf.reduce_sum(btch_weights * tf.square(true-pred)))
+        # - Replace the places with 0 occurrences with 1 to avoid division by 0
+        x_hist = tf.where(tf.equal(x_hist, 0), tf.ones_like(x_hist), x_hist)
+
+        # - Get the weights for each seg measure region based on its occurrence
+        x_weights = tf.divide(1, x_hist)
+
+        # - Convert the weights to float32
+        x_weights = tf.cast(x_weights, dtype=tf.float32)
+
+        # - Construct the specific weights to multiply the loss by in each range
+        loss_weights = tf.ones_like(x, dtype=tf.float32)
+
+        tf.where(tf.greater_equal(x, 0.0) & tf.less(x, 0.1), x_weights[0], loss_weights)
+        tf.where(tf.greater_equal(x, 0.1) & tf.less(x, 0.2), x_weights[1], loss_weights)
+        tf.where(tf.greater_equal(x, 0.2) & tf.less(x, 0.3), x_weights[2], loss_weights)
+        tf.where(tf.greater_equal(x, 0.3) & tf.less(x, 0.4), x_weights[3], loss_weights)
+        tf.where(tf.greater_equal(x, 0.4) & tf.less(x, 0.5), x_weights[4], loss_weights)
+        tf.where(tf.greater_equal(x, 0.5) & tf.less(x, 0.6), x_weights[5], loss_weights)
+        tf.where(tf.greater_equal(x, 0.6) & tf.less(x, 0.7), x_weights[6], loss_weights)
+        tf.where(tf.greater_equal(x, 0.7) & tf.less(x, 0.8), x_weights[7], loss_weights)
+        tf.where(tf.greater_equal(x, 0.8) & tf.less(x, 0.9), x_weights[8], loss_weights)
+        tf.where(tf.greater_equal(x, 0.9) & tf.less(x, 1.0), x_weights[9], loss_weights)
+
+        return loss_weights
+
+    def __call__(self, y_true, y_pred):
+        return self.mse(y_true=y_true, y_pred=y_pred, sample_weight=self.calc_loss_weights(x=y_true) if self.weighted else None)
 
 
 def weighted_mse(true, pred):
+    # - Compute the histogram of the GT seg measures
     true_seg_measure_hist = tf.histogram_fixed_width(true, value_range=[0.0, 1.0], nbins=10)
+
+    # - Replace the places with 0 occurrences with 1 to avoid division by 0
     true_seg_measure_hist = tf.where(tf.equal(true_seg_measure_hist, 0), tf.ones_like(true_seg_measure_hist), true_seg_measure_hist)
+
+    # - Get the weights for each seg measure region based on its occurrence
     seg_measure_weights = tf.divide(1, true_seg_measure_hist)
+
+    # - Convert the weights to float32
     seg_measure_weights = tf.cast(seg_measure_weights, dtype=tf.float32)
 
+    # - Construct the specific weights to multiply the loss by in each range
     btch_weights = tf.ones_like(true, dtype=tf.float32)
 
     tf.where(tf.greater_equal(true, 0.0) & tf.less(true, 0.1), seg_measure_weights[0], btch_weights)
@@ -198,7 +227,7 @@ def get_model(model_configs, compilation_configs, output_dir: pathlib.Path, chec
 
     model = RibCage(model_configs=model_configs, output_dir=output_dir, logger=logger)
 
-    if model_configs.get('load_model') and checkpoint_dir.is_dir():
+    if model_configs.get('load_checkpoint') and checkpoint_dir.is_dir():
         try:
             latest_cpt = tf.train.latest_checkpoint(checkpoint_dir)
             if latest_cpt is not None:
@@ -206,20 +235,19 @@ def get_model(model_configs, compilation_configs, output_dir: pathlib.Path, chec
                 weights_loaded = True
         except Exception as err:
             if isinstance(logger, logging.Logger):
-                logger.exception(f'Can\'t load weighs from \'{checkpoint_dir}\' due to error: {err}')
+                err_log(logger=logger, message=f'Can\'t load weighs from \'{checkpoint_dir}\' due to error: {err}')
         else:
             if isinstance(logger, logging.Logger):
                 if latest_cpt is not None:
-                    logger.info(f'Weights from \'{checkpoint_dir}\' were loaded successfully to the \'RibCage\' model!')
+                    info_log(logger=logger, message=f'Weights from \'{checkpoint_dir}\' were loaded successfully to the \'RibCage\' model!')
                 else:
-                    logger.info(f'No weights were found to load in \'{checkpoint_dir}\'!')
+                    warning_log(logger=logger, message=f'No weights were found to load in \'{checkpoint_dir}\'!')
     if isinstance(logger, logging.Logger):
-        logger.info(model.summary())
+        info_log(logger=logger, message=model.summary())
 
     # -2- Compile the model
     model.compile(
-        loss=weighted_mse,
-        # loss=WeightedMSE(),
+        loss=WeightedMSE(weighted=compilation_configs.get('weighted_loss')),
         # loss=LOSS,
         optimizer=get_optimizer(
             algorithm=compilation_configs.get('algorithm'),
@@ -375,13 +403,13 @@ def write_images_to_tensorboard(writer, data: dict, step: int):
             )
 
 
-def train_model(data_tuples: list, args, output_dir: pathlib.Path, logger: logging.Logger = None):
-    if check_file(file_path=args.train_data_file):
+def train_model(data_tuples: np.ndarray, args, output_dir: pathlib.Path, logger: logging.Logger = None):
+    if data_tuples.any():
         # MODEL
         # -1- Build the model and optionally load the weights
         model, weights_loaded = get_model(
             model_configs=dict(
-                load_model=args.load_model,
+                load_checkpoint=args.load_checkpoint,
                 input_image_dims=(args.image_height, args.image_width),
                 drop_block=dict(
                     use=args.drop_block,
@@ -406,6 +434,7 @@ def train_model(data_tuples: list, args, output_dir: pathlib.Path, logger: loggi
             compilation_configs=dict(
                 algorithm=args.optimizer,
                 learning_rate=args.optimizer_lr,
+                weighted_loss=args.weighted_loss,
                 rho=args.optimizer_rho,
                 beta_1=args.optimizer_beta_1,
                 beta_2=args.optimizer_beta_2,
@@ -419,17 +448,11 @@ def train_model(data_tuples: list, args, output_dir: pathlib.Path, logger: loggi
             logger=logger
         )
 
-        # latest_cpt = tf.train.latest_checkpoint(pathlib.Path(args.tf_checkpoint_dir))
-        # model.load_weights(latest_cpt)
         # - Get the train and the validation data loaders
-        train_dl, val_dl, _ = get_data_loaders(
+        train_dl, val_dl = get_data_loaders(
             data_tuples=data_tuples,
             train_batch_size=args.batch_size,
             val_prop=args.val_prop,
-            train_augs=augs.train_augs,
-            val_augs=augs.val_augs,
-            test_augs=None,
-            inf_augs=None,
             logger=logger
         )
 
@@ -445,20 +468,15 @@ def train_model(data_tuples: list, args, output_dir: pathlib.Path, logger: loggi
             tb_prc.start()
 
         # - Train -
-        model.train(
+        model.fit(
+            train_dl,
+            batch_size=args.batch_size,
+            validation_data=val_dl,
+            shuffle=True,
             epochs=args.epochs,
-            train_data_loader=train_dl,
-            val_data_loader=val_dl
+            callbacks=callbacks
         )
-        # model.fit(
-        #     train_dl,
-        #     batch_size=args.batch_size,
-        #     validation_data=val_dl,
-        #     shuffle=True,
-        #     epochs=args.epochs,
-        #     callbacks=callbacks
-        # )
-        #
+
         # -> If the setting is to launch the tensorboard process automatically
         if tb_prc is not None and args.lunch_tb:
             tb_prc.join()
@@ -470,21 +488,16 @@ def test_model(model, data_file, args, output_dir: pathlib.Path, logger: logging
     if check_file(file_path=args.test_data_file):
         # -  Load the test data
         fl_tupls = scan_files(
-            root_dir=DATA_ROOT_DIR / f'test/{TEST_INPUT_DATA_DIR}',
+            root_dir=DATA_ROOT_DIR / f'test/{TEST_DATA_DIR}',
             seg_dir_postfix=SEG_DIR_POSTFIX,
             image_prefix=IMAGE_PREFIX,
             seg_prefix=SEG_PREFIX
         )
 
         # - Get the GT data loader
-        _, _, test_dl = get_data_loaders(
+        test_dl = DataLoader(
             data_tuples=fl_tupls,
-            train_batch_size=0,
-            val_prop=VAL_PROP,
-            train_augs=None,
-            val_augs=None,
-            test_augs=augs.test_augs,
-            inf_augs=None,
+            batch_size=1,
             logger=logger
         )
 

@@ -1,3 +1,4 @@
+import datetime
 import os
 import pathlib
 import argparse
@@ -14,12 +15,12 @@ import yaml
 
 import logging
 
+import matplotlib as mpl
 import matplotlib.pyplot as plt
 import seaborn as sns
 from tqdm import tqdm
 
 from global_configs.general_configs import (
-    TRAIN_DATA_FILE,
     OUTPUT_DIR,
     IMAGE_WIDTH,
     IMAGE_HEIGHT,
@@ -37,19 +38,68 @@ from global_configs.general_configs import (
     OPTIMIZER_MOMENTUM,
     OPTIMIZER_DAMPENING,
     OPTIMIZER_MOMENTUM_DECAY,
-    OPTIMIZER, DEBUG_LEVEL, DROP_BLOCK_KEEP_PROB, DROP_BLOCK_BLOCK_SIZE, KERNEL_REGULARIZER_TYPE, KERNEL_REGULARIZER_L1, KERNEL_REGULARIZER_L2, KERNEL_REGULARIZER_FACTOR, KERNEL_REGULARIZER_MODE, ACTIVATION, ACTIVATION_RELU_MAX_VALUE, ACTIVATION_RELU_NEGATIVE_SLOPE, ACTIVATION_RELU_THRESHOLD, ACTIVATION_LEAKY_RELU_ALPHA, INFERENCE_DATA_DIR, TEST_DATA_FILE, MIN_CELL_PIXELS
+    OPTIMIZER,
+    DROP_BLOCK_KEEP_PROB,
+    DROP_BLOCK_BLOCK_SIZE,
+    KERNEL_REGULARIZER_TYPE,
+    KERNEL_REGULARIZER_L1,
+    KERNEL_REGULARIZER_L2,
+    KERNEL_REGULARIZER_FACTOR,
+    KERNEL_REGULARIZER_MODE,
+    ACTIVATION,
+    ACTIVATION_RELU_MAX_VALUE,
+    ACTIVATION_RELU_NEGATIVE_SLOPE,
+    ACTIVATION_RELU_THRESHOLD,
+    ACTIVATION_LEAKY_RELU_ALPHA,
+    INFERENCE_DATA_DIR,
+    MIN_CELL_PIXELS,
+    TRAIN_DATA_DIR,
+    TEST_DATA_DIR
 )
 
 from pytorch.configs import general_configs as tr_configs
 from tensor_flow.configs import general_configs as tf_configs
 
-plt.style.use('seaborn')
+mpl.use('Agg')  # <= avoiding the "Tcl_AsyncDelete: async handler deleted by the wrong thread" exception
+plt.style.use('seaborn')  # <= using the seaborn plot style
 
-sns.set(font_scale=1.5)
+sns.set()
+RC = {
+    'font.size': 32,
+    'axes.labelsize': 50,
+    'legend.fontsize': 30.0,
+    'axes.titlesize': 32,
+    'xtick.labelsize': 40,
+    'ytick.labelsize': 40
+}
+sns.set_context(rc=RC)
+
+
+def get_range(value, ranges: np.ndarray):
+    for idx, (rng_min, rng_max) in enumerate(ranges):
+        if rng_min < value < rng_max:
+            break
+    return rng_min, rng_max, idx
+
+
+def str_2_float(str_val: str):
+    return float(str_val.replace('_', '.'))
+
+
+def float_2_str(float_val: float):
+    return f'{float_val:.3f}'.replace('.', '_')
+
+
+def get_file_name(path: str):
+    file_name = path[::-1][path[::-1].index('.')+1:path[::-1].index('/')][::-1]
+    return file_name
+
+
+def get_ts():
+    return datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
 
 
 def get_contours(image: np.ndarray):
-
     # - Find the contours
     contours, hierarchies = cv2.findContours(image, cv2.RETR_LIST, cv2.CHAIN_APPROX_SIMPLE)
 
@@ -65,22 +115,19 @@ def get_contours(image: np.ndarray):
 
 
 def get_crop(image: np.ndarray, x: int, y: int, crop_shape: tuple):
-    return image[x:x+crop_shape[0], y:y+crop_shape[1]]
+    return image[x:x + crop_shape[0], y:y + crop_shape[1]]
 
 
 def add_channels_dim(image: np.ndarray):
-    img = image
     # - If the image is 2D - add the channel dimension
-    if len(img.shape) == 2:
-        img = np.expand_dims(image, 2)
-    return img
+    if len(image.shape) < 3:
+        image = np.expand_dims(image, axis=-1)
+    return image
 
 
-def load_image(image_file):
-    if DEBUG_LEVEL > 2:
-        print(f'Loading \'{image_file}\'')
-    img = cv2.imread(image_file, cv2.IMREAD_UNCHANGED).astype(np.uint8)
-    if len(img.shape) < 3:
+def load_image(image_file, add_channels: bool = False):
+    img = cv2.imread(image_file, cv2.IMREAD_UNCHANGED)
+    if add_channels and len(img.shape) < 3:
         img = add_channels_dim(image=img)
     return img
 
@@ -112,24 +159,25 @@ def line_plot(x: list or np.ndarray, ys: list or np.ndarray, suptitle: str, labe
 
 
 def hit_rate_plot(true: np.ndarray, pred: np.ndarray, save_file: pathlib.Path or str = None, logger: logging.Logger = None):
-    sns.set(font_scale=1)
+    # sns.set(font_scale=1)
     abs_err = np.abs(true - pred)
     abs_err_hist, abs_err = np.histogram(abs_err, bins=100, range=(0., 1.))
     abs_err_prob = abs_err_hist / np.sum(abs_err_hist)
 
     fig, ax = plt.subplots()
     ax.plot(abs_err[:-1], np.cumsum(abs_err_prob), linewidth=2)
-    ax.set(xlabel='Absolute Error Tolerance', xlim=(0, 1), ylabel='Hit Rate', ylim=(0, 1))
-    fig.suptitle('Hit Rate vs Absolute Error Tolerance Plot')
+    ax.set(xlabel='Absolute Error Tolerance', xlim=(0, 1), xticks=np.arange(0.0, 1.0, 0.2), ylabel='Hit Rate', ylim=(0, 1), yticks=np.arange(0.0, 1.0, 0.2))
     save_dir = pathlib.Path(save_file).parent
     if not save_dir.is_dir():
         os.makedirs(save_dir)
     plt.savefig(str(save_file))
     plt.close()
 
+    return abs_err_hist, abs_err
+
 
 def absolute_error_plot(true: np.ndarray, pred: np.ndarray, save_file: pathlib.Path or str = None, logger: logging.Logger = None):
-    sns.set(font_scale=1.5)
+    # sns.set(font_scale=1.5)
     abs_err = np.abs(true - pred)
     err_hist, abs_err_bins = np.histogram(abs_err, bins=100, range=(0, 1))
 
@@ -143,14 +191,28 @@ def absolute_error_plot(true: np.ndarray, pred: np.ndarray, save_file: pathlib.P
         save_figure(figure=g.figure, save_file=save_file, logger=logger)
     except Exception as err:
         err_log(logger=logger, message=f'{err}')
+    return err_hist, abs_err_bins
 
 
 def scatter_plot(x: np.ndarray, y: np.ndarray, save_file: pathlib.Path or str = None, logger: logging.Logger = None):
-    sns.set(font_scale=1.5)
-    D = pd.DataFrame({'True Seg Measure': x, 'Predicted Seg Measure': y})
-    g = sns.jointplot(x='True Seg Measure', y='Predicted Seg Measure', data=D, height=15, space=0.02, kind='reg')
-    g.ax_joint.plot(np.linspace(0, 1), np.linspace(0, 1), ':g', label='Perfect estimation')
-    g.figure.legend()
+    # sns.set(font_scale=1.5)
+
+    D = pd.DataFrame({'GT Quality Value': x, 'Estimated Quality Value': y})
+    g = sns.jointplot(
+        x='GT Quality Value',
+        y='Estimated Quality Value',
+        marker='o',
+        joint_kws={
+            'scatter_kws': {
+                'alpha': 0.3,
+                's': 150
+            }
+        },
+        data=D,
+        height=15,
+        space=0.02,
+        kind='reg'
+    )
 
     try:
         save_dir = pathlib.Path(save_file).parent
@@ -306,6 +368,13 @@ def info_log(logger: logging.Logger, message: str):
         print(message)
 
 
+def warning_log(logger: logging.Logger, message: str):
+    if isinstance(logger, logging.Logger):
+        logger.warning(message)
+    else:
+        print(message)
+
+
 def err_log(logger: logging.Logger, message: str):
     if isinstance(logger, logging.Logger):
         logger.exception(message)
@@ -345,7 +414,7 @@ def build_metadata(data_dir: str or pathlib.Path, shape: tuple, min_val: int or 
         files = sorted(sorted(files, key=lambda x: x[-7:]), key=lambda x: x[:2])
 
         # - Group the files as tuples of the format (image, segmentation)
-        files = [[files[i], files[i+1]] for i in range(0, len(files)-1, 2)]
+        files = [[files[i], files[i + 1]] for i in range(0, len(files) - 1, 2)]
 
         # - Ensure that the image file will be placed before the corresponding mask file
         files = [sorted(fl_tpl, key=lambda x: len(x)) for fl_tpl in files]
@@ -369,7 +438,6 @@ def get_files_from_metadata(root_dir: str or pathlib.Path, metadata_files_regex,
 
 
 def get_data_files(data_dir: str, metadata_configs: dict, val_prop: float = .2, logger: logging.Logger = None):
-
     build_metadata(data_dir=data_dir, shape=metadata_configs.get('shape'), min_val=metadata_configs.get('min_val'), max_val=metadata_configs.get('max_val'))
 
     train_fls, val_fls = get_train_val_split(
@@ -476,6 +544,7 @@ def clean_items_with_empty_masks(data_tuples: list, save_file: pathlib.Path = No
 
     clean_data_tuples = np.array(list(zip(clean_imgs, clean_msks)), dtype=object)
     if isinstance(save_file, pathlib.Path):
+        os.makedirs(save_file.parent, exist_ok=True)
         np.save(str(save_file), clean_data_tuples)
 
     print(f'''
@@ -531,6 +600,8 @@ def calc_seg_measure(gt_masks: np.ndarray, pred_masks: np.ndarray):
         gt_one_hot_masks.append(class_mask)
 
     gt_one_hot_masks = np.array(gt_one_hot_masks, dtype=np.float32)
+    if len(gt_one_hot_masks.shape) < 4:
+        gt_one_hot_masks = np.expand_dims(gt_one_hot_masks, axis=0)
 
     # - Calculate the ground truth object area
     A = gt_one_hot_masks.sum(axis=(-3, -2, -1))
@@ -545,6 +616,8 @@ def calc_seg_measure(gt_masks: np.ndarray, pred_masks: np.ndarray):
         pred_one_hot_masks.append(class_mask)
 
     pred_one_hot_masks = np.array(pred_one_hot_masks, dtype=np.float32)
+    if len(pred_one_hot_masks.shape) < 4:
+        pred_one_hot_masks = np.expand_dims(pred_one_hot_masks, axis=0)
 
     # - Calculate the intersection
     I = np.logical_and(gt_one_hot_masks, pred_one_hot_masks).sum(axis=(-3, -2, -1))
@@ -565,40 +638,131 @@ def calc_seg_measure(gt_masks: np.ndarray, pred_masks: np.ndarray):
     IoU = object_coverage_mask * IoU
 
     seg_measure = np.nanmean(IoU, axis=0)
-    seg_measure[np.isnan(seg_measure)] = 0.0
-    # print(f'Batch seg_measure: {seg_measure}')
+    if isinstance(seg_measure, np.ndarray):
+        seg_measure[np.isnan(seg_measure)] = 0.0
+    else:
+        seg_measure = np.array([seg_measure])
 
     return seg_measure
 
 
-def monitor_seg_error(ground_truth: np.ndarray, prediction: np.ndarray, seg_measures: np.ndarray, figsize: tuple = (20, 10), save_dir: str or pathlib.Path = './seg_errors'):
+def plot_seg_error(image: np.ndarray, gt_mask: np.ndarray, pred_mask: np.ndarray, suptitle: str, title: str, figsize: tuple = (20, 20), save_file: pathlib.Path = None):
+    # - Prepare the mask overlap image
+    seg = np.zeros((*gt_mask.shape[:-1], 3))
+    seg[..., 0] = gt_mask[..., 0]
+    seg[..., 2] = pred_mask[..., 0]
+    seg[seg > 0] = 1.
 
+    fig, ax = plt.subplots(figsize=figsize)
+    ax.imshow(image, cmap='gray')
+    ax.imshow(seg, alpha=0.3)
+    ax.set(title=title)
+
+    fig.suptitle(suptitle)
+
+    if isinstance(save_file, pathlib.Path) and save_file.parent.is_dir():
+        plt.savefig(save_file)
+        plt.close()
+
+    return fig, ax
+
+
+def monitor_seg_error(gt_masks: np.ndarray, pred_masks: np.ndarray, seg_measures: np.ndarray, images: np.ndarray = None, n_samples: int = 5, figsize: tuple = (20, 10), save_dir: str or pathlib.Path = './seg_errors'):
     save_dir = pathlib.Path(save_dir)
     os.makedirs(save_dir, exist_ok=True)
+    data = list(zip(gt_masks, pred_masks, seg_measures))
 
-    for idx, (gt, pred, seg_msr) in enumerate(zip(ground_truth, prediction, seg_measures)):
-        fig, ax = plt.subplots(figsize=figsize)
-        img = np.zeros((*gt.shape[:-1], 3))
-        img[..., 0] = gt[..., 0]
-        img[..., 2] = pred[..., 0]
+    for idx, (gt, pred, seg_msr) in zip(np.arange(n_samples), data):
+        seg = np.zeros((*gt.shape[:-1], 3))
+        seg[..., 0] = gt[..., 0]
+        seg[..., 2] = pred[..., 0]
+        seg[seg > 0] = 1.
 
-        ax.imshow(img)
+        if isinstance(images, np.ndarray):
+            fig, ax = plt.subplots(1, 2, figsize=figsize)
+            ax[0].imshow(images[idx], cmap='gray')
+            ax[0].set(title='Original Image')
+            ax[1].imshow(seg)
+            ax[1].set(title=f'Seg Measure = {seg_msr:.4f}')
+        else:
+            fig, ax = plt.subplots(figsize=figsize)
+            ax.imshow(seg)
+            ax.set(title=f'Seg Measure = {seg_msr:.4f}')
 
-        fig.suptitle(f'GT (red) vs Pred (blue) - Seg Measure = {seg_msr:.4f}')
+        fig.suptitle(f'GT (red) vs Pred (blue) ')
 
         plt.savefig(save_dir / f'item_{idx}.png')
         plt.close()
 
 
-def plot_hist(data: np.ndarray or list, hist_range: list or tuple, bins: int, save_name: str, output_dir: pathlib.Path, density: bool = True):
-    # - Plot histogram
-    heights, ranges = np.histogram(data, range=hist_range[:-1], bins=bins, density=density)
-    fig, ax = plt.subplots(figsize=(15, 10))
-    ax.bar(ranges[:-1], heights)
-    ax.set(xticks=np.arange(hist_range[0], hist_range[1]+hist_range[2], hist_range[2]), xlim=[0, 1])
-    plt.savefig(output_dir / f'{save_name}.png')
+def normalize(image: np.ndarray):
+    return (image - image.mean() * np.max(image)) / (image.std() * np.max(image))
 
-    plt.close(fig)
+
+def calc_histogram(data: np.ndarray or list, bins: np.ndarray, normalize: bool = False):
+    # - Plot histogram
+    heights, ranges = np.histogram(data, range=(bins[0], bins[-1]), bins=len(bins), density=False)
+
+    if normalize:
+        heights = heights / len(data)
+
+    return heights, ranges
+
+
+def plot_hist(data: np.ndarray or list, bins: np.ndarray, save_file: pathlib.Path = None):
+    # - Plot histogram
+    ds = pd.DataFrame(dict(heights=data))
+
+    rc = {
+        'font.size': 12,
+        'axes.labelsize': 20,
+        'legend.fontsize': 20.,
+        'axes.titlesize': 20,
+        'xtick.labelsize': 20,
+        'ytick.labelsize': 20
+    }
+    sns.set_context(rc=rc)
+    dist_plot = sns.displot(ds['heights'], bins=bins, rug=True, kde=True)
+
+    if isinstance(save_file, pathlib.Path) and not save_file.is_file():
+        os.makedirs(save_file.parent, exist_ok=True)
+        dist_plot.savefig(save_file)
+    else:
+        print(f'WARNING: could not save plot to \'{save_file}\' as it already exists!')
+
+    plt.close(dist_plot.figure)
+    sns.set_context(rc=RC)
+
+
+def to_numpy(data: np.ndarray, file_path: str or pathlib.Path, overwrite: bool = False, logger:  logging.Logger = None):
+    if isinstance(file_path, str):
+        file_path = pathlib.Path(file_path)
+
+    if isinstance(file_path, pathlib.Path):
+        if overwrite or not file_path.is_file():
+            os.makedirs(file_path.parent, exist_ok=True)
+            np.save(str(file_path), data)
+        else:
+            warning_log(logger=logger, message=f'Could not save the data to the file \'{file_path}\' as it already exists (set overwrite=True to save on existing files in the future)! ')
+    else:
+        warning_log(logger=logger, message=f'Could not save the data to the file \'{file_path}\' - \'file_path\' must be in format str or pathlib.Path but is of type \'{type(file_path)}\'!')
+
+
+def from_numpy(file_path: str or pathlib.Path, logger: logging.Logger = None):
+    data = None
+
+    if isinstance(file_path, str):
+        file_path = pathlib.Path(file_path)
+
+    if isinstance(file_path, pathlib.Path):
+        if file_path.is_file():
+            data = np.load(str(file_path))
+        else:
+            warning_log(logger=logger, message=f'Could not load the data from \'{file_path}\' file - the file does not exists!')
+    else:
+        warning_log(logger=logger, message=f'Could not load the data from \'{file_path}\' file - the file must be of type str or pathlib.Path, but is of type \'{type(file_path)}\'!')
+
+    return data
 
 
 def to_pickle(file, name: str, save_dir: str or pathlib.Path):
@@ -613,10 +777,10 @@ def get_arg_parser():
     # - GENERAL PARAMETERS
     parser.add_argument('--gpu_id', type=int, default=0 if torch.cuda.device_count() > 0 else -1, help='The ID of the GPU (if there is any) to run the network on (e.g., --gpu_id 1 will run the network on GPU #1 etc.)')
 
-    parser.add_argument('--load_model', default=False, action='store_true', help=f'If to continue the training from the checkpoint saved at the checkpoint file')
+    parser.add_argument('--load_checkpoint', default=False, action='store_true', help=f'If to continue the training from the checkpoint saved at the checkpoint file')
     parser.add_argument('--lunch_tb', default=False, action='store_true', help=f'If to lunch tensorboard')
-    parser.add_argument('--train_data_file', type=str, default=TRAIN_DATA_FILE, help='The path to the train data file')
-    parser.add_argument('--test_data_file', type=str, default=TEST_DATA_FILE, help='The path to the custom test file')
+    parser.add_argument('--train_data_dir', type=str, default=TRAIN_DATA_DIR, help='The path to the train data file')
+    parser.add_argument('--test_data_dir', type=str, default=TEST_DATA_DIR, help='The path to the custom test file')
     parser.add_argument('--inference_data_dir', type=str, default=INFERENCE_DATA_DIR, help='The path to the inference data dir')
 
     parser.add_argument('--output_dir', type=str, default=OUTPUT_DIR, help='The path to the directory where the outputs will be placed')
@@ -642,7 +806,8 @@ def get_arg_parser():
 
     # - OPTIMIZERS
     # optimizer
-    parser.add_argument('--optimizer', type=str, choices=['sgd', 'adam', 'adamw', 'sparse_adam', 'nadam', 'adadelta', 'adamax', 'adagrad'], default=OPTIMIZER,  help=f'The optimizer to use')
+    parser.add_argument('--optimizer', type=str, choices=['sgd', 'adam', 'adamw', 'sparse_adam', 'nadam', 'adadelta', 'adamax', 'adagrad'], default=OPTIMIZER, help=f'The optimizer to use')
+    parser.add_argument('--weighted_loss', default=False, action='store_true', help=f'If to use the weighted version of the MSE loss')
 
     parser.add_argument('--optimizer_lr', type=float, default=OPTIMIZER_LR, help=f'The initial learning rate of the optimizer')
     parser.add_argument('--optimizer_lr_decay', type=float, default=OPTIMIZER_LR_DECAY, help=f'The learning rate decay for Adagrad optimizer')
@@ -666,10 +831,10 @@ def get_arg_parser():
     parser.add_argument('--kernel_regularizer_mode', type=str, choices=['rows', 'columns'], default=KERNEL_REGULARIZER_MODE, help=f"The mode ('columns' or 'rows') of the orthogonal regularization")
 
     # - ACTIVATION
-    parser.add_argument('--activation', type=str, choices=['swish', 'relu', 'leaky_relu'], default=ACTIVATION,  help=f'The activation to use')
-    parser.add_argument('--activation_relu_max_value', type=float, default=ACTIVATION_RELU_MAX_VALUE,  help=f'The negative slope in the LeakyReLU activation function for values < 0')
-    parser.add_argument('--activation_relu_negative_slope', type=float, default=ACTIVATION_RELU_NEGATIVE_SLOPE,  help=f'The negative slope in the ReLU activation function for values < 0')
+    parser.add_argument('--activation', type=str, choices=['swish', 'relu', 'leaky_relu'], default=ACTIVATION, help=f'The activation to use')
+    parser.add_argument('--activation_relu_max_value', type=float, default=ACTIVATION_RELU_MAX_VALUE, help=f'The negative slope in the LeakyReLU activation function for values < 0')
+    parser.add_argument('--activation_relu_negative_slope', type=float, default=ACTIVATION_RELU_NEGATIVE_SLOPE, help=f'The negative slope in the ReLU activation function for values < 0')
     parser.add_argument('--activation_relu_threshold', type=float, default=ACTIVATION_RELU_THRESHOLD, help=f'The value that has to be exceeded activate the neuron')
-    parser.add_argument('--activation_leaky_relu_alpha', type=float, default=ACTIVATION_LEAKY_RELU_ALPHA,  help=f'The negative slope in the LeakyReLU activation function for values < 0')
+    parser.add_argument('--activation_leaky_relu_alpha', type=float, default=ACTIVATION_LEAKY_RELU_ALPHA, help=f'The negative slope in the LeakyReLU activation function for values < 0')
 
     return parser

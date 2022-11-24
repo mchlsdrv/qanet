@@ -4,7 +4,7 @@ import tensorflow as tf
 __author__ = 'sidorov@post.bgu.ac.il'
 
 # -*-  TensorFlow
-CHECKPOINT_DIR = pathlib.Path('/home/sidorov/Projects/QANetV2/qanet/output/train/tensor_flow_2022-10-30_07-01-43/checkpoints')
+CHECKPOINT_DIR = pathlib.Path('/home/sidorov/Projects/QANetV2/qanet/output/train/tensor_flow_2022-11-24_13-15-16/checkpoints')
 
 # TRAINING
 # - Loss

@@ -1,7 +1,6 @@
-import argparse
-import datetime
-import os
 import time
+import argparse
+import os
 
 import cv2
 from tqdm import tqdm
@@ -10,7 +9,14 @@ import pathlib
 import logging
 
 from utils import augs
-from utils.aux_funcs import calc_jaccard, get_runtime, scan_files, plot_hist, show_images
+from utils.aux_funcs import (
+    calc_seg_measure,
+    scan_files,
+    plot_hist,
+    get_file_name,
+    plot_seg_error,
+    get_range, load_image, float_2_str, str_2_float, get_runtime
+)
 from global_configs.general_configs import (
     N_SAMPLES,
     MIN_J,
@@ -18,85 +24,120 @@ from global_configs.general_configs import (
     SEG_DIR_POSTFIX,
     SEG_PREFIX,
     IMAGE_PREFIX,
-    TRAIN_INPUT_DATA_DIR,
-    TEST_INPUT_DATA_DIR,
-    TRAIN_OUTPUT_DATA_DIR,
-    TEST_OUTPUT_DATA_DIR, DATA_ROOT_DIR
+    TRAIN_DATA_DIR,
+    SEG_SUB_DIR
 )
-
+GEN_DATA_DIR = pathlib.Path('../data/generated')
 logging.getLogger('PIL').setLevel(logging.WARNING)
 
 __author__ = 'sidorov@post.bgu.ac.il'
 
 
-def build_data_file(files: list, output_dir: pathlib.Path, n_samples, min_j: int, max_j: int, plot_samples: bool = False):
-    t_start = time.time()
+def build_data(files: list, bins: np.ndarray, n_samples_in_range: int, output_dir: pathlib.Path, create_log: bool = False):
+    # - Create ranges from bins
+    assert len(bins) >= 2, f'bins must include at least 2 values, but were provided only {len(bins)} value/s!'
+    bins_min, bins_max, bins_diff = np.min(bins), np.max(bins), bins[1] - bins[0]
+    ranges = np.array(list(zip(np.arange(bins_min, bins_max + bins_diff, bins_diff), np.arange(bins_min + bins_diff, bins_max + 2 * bins_diff, bins_diff))))
+
+    n_rngs = len(ranges)
+    total_image_samples = n_rngs * n_samples_in_range
+
     mask_augs = augs.mask_augs()
-    imgs = []
-    masks = []
-    aug_masks = []
-    jaccards = []
 
-    n_passes = n_samples // len(files) if len(files) > 0 else 0
-    for pass_idx in range(n_passes):
-        print(f'\n== Pass: {pass_idx+1}/{n_passes} ==')
-        files_pbar = tqdm(files)
-        for img_fl, seg_fl in files_pbar:
-            img = cv2.imread(str(img_fl), -1)
-            mask = cv2.imread(str(seg_fl), -1)
+    files_pbar = tqdm(files)
+    for img_fl, seg_fl in files_pbar:
+        t_start = time.time()
+        # - Load the gt mask
+        gt_msk = load_image(image_file=str(seg_fl), add_channels=True)
 
-            aug_res = mask_augs(image=img, mask=mask)
-            img_aug, mask_aug = aug_res.get('image'), aug_res.get('mask')
+        # - Create a dedicated dir for the current image augs
+        img_dir = output_dir / f'images/{get_file_name(path=str(img_fl))}'
+        os.makedirs(img_dir, exist_ok=True)
 
-            jaccard = calc_jaccard(mask, mask_aug)
+        # - Create a counter array for the number of images in each range
+        rng_cnt_arr = np.zeros(n_rngs, dtype=np.int16)
 
-            if min_j < jaccard < max_j:
-                imgs.append(img)
-                masks.append(mask)
-                aug_masks.append(mask_aug)
-                jaccards.append(jaccard)
-                files_pbar.set_postfix(jaccard=f'{jaccard:.4f}')
+        # - Create a seg measure history array
+        seg_msrs = np.array([])
 
-    data = np.array(list(zip(imgs, masks, aug_masks, jaccards)), dtype=object)
+        # - While not all the ranges for the current image have n_samples_in_range images
+        rngs_done = sum(rng_cnt_arr == n_samples_in_range)
+        while rngs_done < n_rngs:
+            # - Augment the mask
+            aug_res = mask_augs(image=gt_msk, mask=gt_msk)
+            msk_aug = aug_res.get('mask')
 
-    if len(data):
-        # - Save the data
-        data_dir = output_dir / f'{len(data)}_samples'
+            # - Calculate the seg measure
+            seg_msr = calc_seg_measure(gt_msk, msk_aug)[0]
 
-        # To avoid data overwrite
-        if data_dir.is_dir():
-            ts = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-            print(f'\'{data_dir}\' already exists! Data will be placed in \'{data_dir}/{ts}\'')
-            data_dir = data_dir / ts
+            # - Get the index and the range where the seg measure falls in
+            rng_min, rng_max, rng_idx = get_range(value=seg_msr, ranges=ranges)
 
-        os.makedirs(data_dir, exist_ok=True)
+            # - If the seg measure is in the desired range - save it
+            if MIN_J < seg_msr < MAX_J and rng_cnt_arr[rng_idx] < n_samples_in_range:
+                # - Create a file name
+                f_name = float_2_str(seg_msr) + '.tif'
 
-        print(f'> Saving data to \'{data_dir}/data.npy\'...')
-        np.save(str(data_dir / f'data.npy'), data, allow_pickle=True)
-        print(f'> Data was saved to \'{data_dir}/data.npy\'')
+                # - Save the mask
+                cv2.imwrite(str(img_dir / f_name), msk_aug)
 
-        if plot_samples:
-            print(f'Plotting samples..')
+                # - Increase the images in range counter
+                rng_cnt_arr[rng_idx] += 1
 
-            # - Plot samples
-            samples_dir = data_dir / 'samples'
-            os.makedirs(samples_dir, exist_ok=True)
+                # - Append the current seg measure to the seg measure history
+                seg_msrs = np.append(seg_msrs, seg_msr)
 
-            plot_pbar = tqdm(data)
-            idx = 0
-            for img, msk, msk_aug, j in plot_pbar:
-                show_images(images=[img, msk, msk_aug], labels=['Image', 'Mask', 'Augmented Mask'], suptitle=f'Jaccard: {j:.4f}', figsize=(25, 10), save_file=samples_dir / f'{idx}.png')
-                idx += 1
+            # - Update the number of ranges where there are n_samples_in_range samples
+            rngs_done = sum(rng_cnt_arr == n_samples_in_range)
 
-        # - Plot J histogram
-        print(f'Plotting the histogram of the Js...')
-        plot_hist(data=jaccards, hist_range=(0., 1., 0.1), bins=10, save_name=f'data dist ({len(data)} samples)', output_dir=data_dir, density=True)
+            # - Update the current samples number
+            current_image_samples = sum(rng_cnt_arr)
 
-        print(f'== Data generation took: {get_runtime(seconds=time.time() - t_start)} ==')
-    else:
-        print(f'No data was generated - no files were provided!')
+            # - Update the progress bar
+            files_pbar.set_postfix(done=f'{current_image_samples}/{total_image_samples} ({100 * current_image_samples / total_image_samples:.2f}%)', ranges=f'{rngs_done}/{n_rngs} ({100 * rngs_done / n_rngs:.2f}%)', current_run=f'range: [{rng_min:.2f}:{rng_max:.2f}), seg measure: {seg_msr:.4f}')
 
-    return data
+        if create_log:
+            # - Load the image
+            img = load_image(image_file=str(img_fl), add_channels=True)
+
+            # - Create a dedicated dir for the current image augs
+            img_log_dir = output_dir / f'log/{get_file_name(path=str(img_fl))}'
+            os.makedirs(img_log_dir, exist_ok=True)
+
+            # - Plot the histogram of the seg measures
+            plot_hist(
+                data=seg_msrs,
+                bins=bins,
+                save_file=img_log_dir / 'samples_distribution.png'
+            )
+
+            # - Plot the samples
+            aug_msk_fls = [img_dir / str(fl) for fl in os.listdir(img_dir)]
+
+            for aug_msk_fl in aug_msk_fls:
+                # - Get the name of the mask, which is also the seg measure with its ground truth label
+                seg_msr_str = get_file_name(path=str(aug_msk_fl))
+
+                # - Load the augmented mask
+                aug_msk = load_image(image_file=str(aug_msk_fl), add_channels=True)
+
+                rng_min, rng_max, _ = get_range(value=str_2_float(seg_msr_str), ranges=ranges)
+
+                # - Create a dedicated dir for the current seg measure range
+                rng_img_log_dir = img_log_dir / f'[{float_2_str(rng_min)}-{float_2_str(rng_max)})'
+                os.makedirs(rng_img_log_dir, exist_ok=True)
+
+                # - Plot the image the GT mask and the augmented mask
+                fig, ax = plot_seg_error(
+                    image=img,
+                    gt_mask=gt_msk,
+                    pred_mask=aug_msk,
+                    suptitle='GT (red) vs Pred (blue)',
+                    title=f'Seg Measure = {str_2_float(seg_msr_str)}',
+                    figsize=(20, 20),
+                    save_file=rng_img_log_dir / f'{seg_msr_str}.png'
+                )
+        print(f'\n> Generation of {n_samples_in_range} augmented masks for image \'{img_fl}\' took {get_runtime(seconds=time.time() - t_start)}')
 
 
 def get_arg_parser():
@@ -130,21 +171,21 @@ if __name__ == '__main__':
     # - Scan the files in the data dir
 
     fls = scan_files(
-        root_dir=DATA_ROOT_DIR / f'train/{TRAIN_INPUT_DATA_DIR}' if args.data_type == 'train' else DATA_ROOT_DIR / f'test/{TEST_INPUT_DATA_DIR}',
-        seg_dir_postfix=args.seg_dir_postfix,
-        image_prefix=args.image_prefix,
-        seg_prefix=args.seg_prefix
+        root_dir=TRAIN_DATA_DIR,
+        seg_dir_postfix=SEG_DIR_POSTFIX,
+        image_prefix=IMAGE_PREFIX,
+        seg_prefix=SEG_PREFIX,
+        seg_sub_dir=SEG_SUB_DIR
     )
 
     # - Build the data file
     if fls:
-        build_data_file(
+        build_data(
             files=fls,
-            output_dir=TRAIN_OUTPUT_DATA_DIR if args.data_type == 'train' else TEST_OUTPUT_DATA_DIR,
-            n_samples=args.n_samples,
-            min_j=args.min_j,
-            max_j=args.max_j,
-            plot_samples=args.plot_samples,
+            bins=np.arange(0.0, 1.0, 0.1),
+            n_samples_in_range=10,
+            output_dir=GEN_DATA_DIR,
+            create_log=True
         )
     else:
         print(f'No files to generate data from !')
