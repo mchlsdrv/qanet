@@ -35,14 +35,6 @@ def get_device(gpu_id: int = 0, logger: logging.Logger = None):
     == Running on {device}  ==
     ========================
                 ''')
-            elif gpu_id > n_gpus - 1:
-
-                device = f'cuda'
-                print(f'''
-    =========================
-    == Running on all GPUs ==
-    =========================
-                            ''')
             elif gpu_id < 0:
                 device = 'cpu'
                 print(f'''

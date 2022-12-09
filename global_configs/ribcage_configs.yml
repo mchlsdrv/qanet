@@ -1,7 +1,14 @@
 conv2d_blocks:
-  out_channels: [32, 64, 128, 256]
-  kernel_sizes: [5, 5, 5, 5]
+  out_channels: [64, 128, 256, 256]
+  kernel_sizes: [3, 3, 3, 3]
 
 fc_blocks:
-  out_features: [512, 1024]
-  drop_rate: 0.5
+  out_features: [128, 128]
+  drop_rate: 0.0
+
+#conv2d_blocks:
+#  out_channels: [32, 64, 128, 256]
+#  kernel_sizes: [5, 5, 5, 5]
+#fc_blocks:
+#  out_features: [512, 1024]
+#  drop_rate: 0.2

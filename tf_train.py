@@ -5,7 +5,7 @@ import datetime
 import numpy as np
 from global_configs.general_configs import CONFIGS_DIR, SEG_DIR_POSTFIX, IMAGE_PREFIX, SEG_PREFIX, SEG_SUB_DIR, TEMP_TRAIN_DATA_FILE, TRAIN_DATA_DIR
 from tensor_flow.utils.tf_utils import train_model, choose_gpu
-from utils.aux_funcs import get_arg_parser, get_runtime, get_logger, scan_files, load_images_from_tuple_list, err_log, clean_items_with_empty_masks
+from utils.aux_funcs import get_arg_parser, get_runtime, get_logger, scan_files, load_images_from_tuple_list, err_log, clean_items_with_empty_masks, check_pathable
 
 if __name__ == '__main__':
     t_start = time.time()
@@ -44,16 +44,18 @@ if __name__ == '__main__':
     np.random.shuffle(fl_tupls)
 
     # - Load the data
-    if TEMP_TRAIN_DATA_FILE.is_file():
-        data_tuples = np.load(TEMP_TRAIN_DATA_FILE, allow_pickle=True)
-    else:
-        # - Load images and their masks
-        data_tuples = load_images_from_tuple_list(data_file_tuples=fl_tupls)
+    data_tuples = []
+    if not check_pathable(path=args.masks_dir):
+        if TEMP_TRAIN_DATA_FILE.is_file():
+            data_tuples = np.load(TEMP_TRAIN_DATA_FILE, allow_pickle=True)
+        else:
+            # - Load images and their masks
+            data_tuples = load_images_from_tuple_list(data_file_tuples=fl_tupls)
 
-        # - Clean data items with no objects in them
-        if not TEMP_TRAIN_DATA_FILE.parent.is_dir():
-            os.makedirs(TEMP_TRAIN_DATA_FILE.parent)
-        data_tuples = clean_items_with_empty_masks(data_tuples=data_tuples, save_file=TEMP_TRAIN_DATA_FILE)
+            # - Clean data items with no objects in them
+            if not TEMP_TRAIN_DATA_FILE.parent.is_dir():
+                os.makedirs(TEMP_TRAIN_DATA_FILE.parent)
+            data_tuples = clean_items_with_empty_masks(data_tuples=data_tuples, save_file=TEMP_TRAIN_DATA_FILE)
 
     # - Train the model
 
@@ -67,7 +69,8 @@ if __name__ == '__main__':
     ''')
     try:
         trained_model = train_model(
-            data_tuples=data_tuples,
+            data_tuples=data_tuples if not args.debug else data_tuples[:50],
+            file_tuples=fl_tupls,
             args=args,
             output_dir=current_run_dir,
             logger=logger

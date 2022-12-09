@@ -46,14 +46,13 @@ from tensor_flow.configs.general_configs import (
     CHECKPOINT_MODE,
     CHECKPOINT_SAVE_BEST_ONLY,
     CHECKPOINT_VERBOSE,
-    TERMINATE_ON_NAN, LOSS,
+    TERMINATE_ON_NAN,
 )
 from utils.aux_funcs import (
     check_file,
     info_log,
     warning_log,
     err_log,
-    scatter_plot,
     scan_files
 )
 from .tf_data_utils import get_data_loaders, DataLoader
@@ -64,8 +63,6 @@ from ..custom.tf_models import (
 from ..custom.tf_callbacks import (
     ProgressLogCallback
 )
-
-from .tf_data_utils import get_image_from_figure
 
 
 class WeightedMSE:
@@ -156,6 +153,7 @@ def get_callbacks(callback_type: str, output_dir: pathlib.Path, logger: logging.
             callbacks.append(
                 ProgressLogCallback(
                     log_dir=output_dir,
+                    tensorboard_logs=TENSOR_BOARD,
                     logger=logger
                 )
             )
@@ -344,147 +342,90 @@ def choose_gpu(gpu_id: int = 0, logger: logging.Logger = None):
                 logger.exception(err)
 
 
-def write_scalars_to_tensorboard(writer, data: dict, step: int):
-    with writer.as_default():
-        with tf.device('/cpu:0'):
-            # SCALARS
-            # - Write the loss
-            tf.summary.scalar(
-                'Loss',
-                data.get('Loss'),
-                step=step
-            )
-
-
-def write_images_to_tensorboard(writer, data: dict, step: int):
-    with writer.as_default():
-        with tf.device('/cpu:0'):
-            # - Write the images
-            # -> Normalize the images
-            imgs = data.get('Images')
-            disp_imgs = imgs - tf.reduce_min(imgs, axis=(1, 2, 3), keepdims=True)
-            disp_imgs = disp_imgs / tf.reduce_max(disp_imgs, axis=(1, 2, 3), keepdims=True)
-            tf.summary.image(
-                'Images',
-                disp_imgs,
-                max_outputs=1,
-                step=step
-            )
-
-            # -> Write the ground truth
-            disp_gts = data.get('GroundTruth')
-            tf.summary.image(
-                'GroundTruth',
-                disp_gts,
-                max_outputs=1,
-                step=step
-            )
-
-            # -> Write the segmentations
-            disp_segs = data.get('Segmentations')
-            tf.summary.image(
-                'Segmentations',
-                disp_segs,
-                max_outputs=1,
-                step=step
-            )
-
-            # -> Write the scatter plot
-            tf.summary.image(
-                'Scatter',
-                get_image_from_figure(
-                    figure=scatter_plot(
-                        x=data.get('Scatter')['x'],
-                        y=data.get('Scatter')['y'],
-                        save_file=None
-                    )
-                ),
-                step=step
-            )
-
-
-def train_model(data_tuples: np.ndarray, args, output_dir: pathlib.Path, logger: logging.Logger = None):
-    if data_tuples.any():
-        # MODEL
-        # -1- Build the model and optionally load the weights
-        model, weights_loaded = get_model(
-            model_configs=dict(
-                load_checkpoint=args.load_checkpoint,
-                input_image_dims=(args.image_height, args.image_width),
-                drop_block=dict(
-                    use=args.drop_block,
-                    keep_prob=args.drop_block_keep_prob,
-                    block_size=args.drop_block_block_size
-                ),
-                kernel_regularizer=dict(
-                    type=args.kernel_regularizer_type,
-                    l1=args.kernel_regularizer_l1,
-                    l2=args.kernel_regularizer_l2,
-                    factor=args.kernel_regularizer_factor,
-                    mode=args.kernel_regularizer_mode
-                ),
-                activation=dict(
-                    type=args.activation,
-                    max_value=args.activation_relu_max_value,
-                    negative_slope=args.activation_relu_negative_slope,
-                    threshold=args.activation_relu_threshold,
-                    alpha=args.activation_leaky_relu_alpha
-                )
+def train_model(data_tuples: np.ndarray or list, file_tuples: np.ndarray or list, args, output_dir: pathlib.Path or str, logger: logging.Logger = None):
+    # if data_tuples.any():
+    # MODEL
+    # -1- Build the model and optionally load the weights
+    model, weights_loaded = get_model(
+        model_configs=dict(
+            load_checkpoint=args.load_checkpoint,
+            input_image_dims=(args.image_height, args.image_width),
+            drop_block=dict(
+                use=args.drop_block,
+                keep_prob=args.drop_block_keep_prob,
+                block_size=args.drop_block_block_size
             ),
-            compilation_configs=dict(
-                algorithm=args.optimizer,
-                learning_rate=args.optimizer_lr,
-                weighted_loss=args.weighted_loss,
-                rho=args.optimizer_rho,
-                beta_1=args.optimizer_beta_1,
-                beta_2=args.optimizer_beta_2,
-                amsgrad=args.optimizer_amsgrad,
-                momentum=args.optimizer_momentum,
-                nesterov=args.optimizer_nesterov,
-                centered=args.optimizer_centered,
+            kernel_regularizer=dict(
+                type=args.kernel_regularizer_type,
+                l1=args.kernel_regularizer_l1,
+                l2=args.kernel_regularizer_l2,
+                factor=args.kernel_regularizer_factor,
+                mode=args.kernel_regularizer_mode
             ),
-            checkpoint_dir=pathlib.Path(args.tf_checkpoint_dir),
-            output_dir=output_dir,
-            logger=logger
-        )
+            activation=dict(
+                type=args.activation,
+                max_value=args.activation_relu_max_value,
+                negative_slope=args.activation_relu_negative_slope,
+                threshold=args.activation_relu_threshold,
+                alpha=args.activation_leaky_relu_alpha
+            )
+        ),
+        compilation_configs=dict(
+            algorithm=args.optimizer,
+            learning_rate=args.optimizer_lr,
+            weighted_loss=args.weighted_loss,
+            rho=args.optimizer_rho,
+            beta_1=args.optimizer_beta_1,
+            beta_2=args.optimizer_beta_2,
+            amsgrad=args.optimizer_amsgrad,
+            momentum=args.optimizer_momentum,
+            nesterov=args.optimizer_nesterov,
+            centered=args.optimizer_centered,
+        ),
+        checkpoint_dir=pathlib.Path(args.tf_checkpoint_dir),
+        output_dir=output_dir,
+        logger=logger
+    )
 
-        # - Get the train and the validation data loaders
-        train_dl, val_dl = get_data_loaders(
-            data_tuples=data_tuples,
-            train_batch_size=args.batch_size,
-            val_prop=args.val_prop,
-            logger=logger
-        )
+    # - Get the train and the validation data loaders
+    train_dl, val_dl = get_data_loaders(
+        data_tuples=data_tuples,
+        file_tuples=file_tuples,
+        train_batch_size=args.batch_size,
+        val_prop=args.val_prop,
+        masks_dir=args.masks_dir,
+        logger=logger
+    )
 
-        # - Get the callbacks and optionally the thread which runs the tensorboard
-        callbacks, tb_prc = get_callbacks(
-            callback_type='train',
-            output_dir=output_dir,
-            logger=logger
-        )
+    # - Get the callbacks and optionally the thread which runs the tensorboard
+    callbacks, tb_prc = get_callbacks(
+        callback_type='train',
+        output_dir=output_dir,
+        logger=logger
+    )
 
-        # - If the setting is to launch the tensorboard process automatically
-        if tb_prc is not None and args.lunch_tb:
-            tb_prc.start()
+    # - If the setting is to launch the tensorboard process automatically
+    if tb_prc is not None and args.lunch_tb:
+        tb_prc.start()
 
-        # - Train -
-        model.fit(
-            train_dl,
-            batch_size=args.batch_size,
-            validation_data=val_dl,
-            shuffle=True,
-            epochs=args.epochs,
-            callbacks=callbacks
-        )
+    # - Train -
+    model.fit(
+        train_dl,
+        batch_size=args.batch_size,
+        validation_data=val_dl,
+        shuffle=True,
+        epochs=args.epochs,
+        callbacks=callbacks
+    )
 
-        # -> If the setting is to launch the tensorboard process automatically
-        if tb_prc is not None and args.lunch_tb:
-            tb_prc.join()
-    else:
-        err_log(logger=logger, message=f'No train data was found!')
+    # -> If the setting is to launch the tensorboard process automatically
+    if tb_prc is not None and args.lunch_tb:
+        tb_prc.join()
+    # else:
+    #     err_log(logger=logger, message=f'No train data was found!')
 
 
-def test_model(model, data_file, args, output_dir: pathlib.Path, logger: logging.Logger = None):
+def test_model(model, data_file, file_tuples, args, output_dir: pathlib.Path, logger: logging.Logger = None):
     if check_file(file_path=args.test_data_file):
         # -  Load the test data
         fl_tupls = scan_files(
@@ -497,6 +438,7 @@ def test_model(model, data_file, args, output_dir: pathlib.Path, logger: logging
         # - Get the GT data loader
         test_dl = DataLoader(
             data_tuples=fl_tupls,
+            file_tuples=file_tuples,
             batch_size=1,
             logger=logger
         )

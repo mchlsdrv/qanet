@@ -1,3 +1,4 @@
+from scipy.stats import pearsonr
 import argparse
 import os
 import time
@@ -321,43 +322,60 @@ def objective(trial, files):
 
 
 if __name__ == '__main__':
+    gt_train = '/home/sidorov/Projects/QANetV2/qanet/output/train/tensor_flow_2022-11-25_21-56-39/train/plots/scatter/metadata/gt_seg_measures_epoch_527.npy'
+    pred_train = '/home/sidorov/Projects/QANetV2/qanet/output/train/tensor_flow_2022-11-25_21-56-39/train/plots/scatter/metadata/pred_seg_measures_epoch_527.npy'
+    gt_seg_measure_train = np.load(gt_train)
+    pred_seg_measure_train = np.load(pred_train)
+    r_train, _ = pearsonr(gt_seg_measure_train, pred_seg_measure_train)
+
+    gt_val = '/home/sidorov/Projects/QANetV2/qanet/output/train/tensor_flow_2022-11-25_21-56-39/validation/plots/scatter/metadata/gt_seg_measures_epoch_527.npy'
+    pred_val = '/home/sidorov/Projects/QANetV2/qanet/output/train/tensor_flow_2022-11-25_21-56-39/validation/plots/scatter/metadata/pred_seg_measures_epoch_527.npy'
+    gt_seg_measure_val = np.load(gt_val)
+    pred_seg_measure_val = np.load(pred_val)
+    r_val, _ = pearsonr(gt_seg_measure_val, pred_seg_measure_val)
+
+    mse_train = np.mean(np.square(gt_seg_measure_train - pred_seg_measure_train))
+    mse_val = np.mean(np.square(gt_seg_measure_val - pred_seg_measure_val))
+
+    print(f'Train R - {r_train:.4f}\nTrain MSE - {mse_train:.4f}')
+    print(f'Val R - {r_val:.4f}\nVal MSE - {mse_val:.4f}')
     # - Get the argument parser
-    parser = get_arg_parser()
-    args = parser.parse_args()
-
-    # - Scan the files in the data dir
-
-    fl_tupls = scan_files(
-        root_dir=TRAIN_DATA_DIR,
-        seg_dir_postfix=SEG_DIR_POSTFIX,
-        image_prefix=IMAGE_PREFIX,
-        seg_prefix=SEG_PREFIX,
-        seg_sub_dir=SEG_SUB_DIR
-    )
-    np.random.shuffle(fl_tupls)
-    study = opt.create_study(direction='minimize')
-    study.optimize(partial(objective, files=fl_tupls[:100]), n_trials=10000)
-
-    best_trial = study.best_trial
-    best_trial_params = best_trial.params
-    print(f'''
-    ========================================================================================================
-    ============================================ SUMMARY =================================================== 
-    ========================================================================================================
-        Best trial:
-            - MSE: {best_trial.values[0]}
-            - Params:
-                > Number of erosion sizes: {best_trial_params.get('n_erosion_sizes')}
-                > DILATION SIZES: {best_trial_params.get('n_dilation_sizes')}
-                > ALPHA (factor = {best_trial_params.get('alpha_factor')}): {IMAGE_WIDTH * best_trial_params.get('alpha_factor')}
-                > ALPHA AFFINE (factor = {best_trial_params.get('alpha_affine_factor')}): {IMAGE_WIDTH * best_trial_params.get('alpha_affine_factor')}
-                > SIGMA (factor = {best_trial_params.get('sigma_factor')}): {IMAGE_WIDTH * best_trial_params.get('sigma_factor')}
-                > P EROSION: {best_trial_params.get('p_erosion')}
-                > P DILATION: {best_trial_params.get('p_dilation')}
-                > P OPENING: {best_trial_params.get('p_opening')}
-                > P CLOSING: {best_trial_params.get('p_closing')}
-                > P ELASTIC: {best_trial_params.get('p_elastic')}
-                > P ONE OF: {best_trial_params.get('p_one_of')}
-    ========================================================================================================
-    ========================================================================================================
-    ''')
+    # parser = get_arg_parser()
+    # args = parser.parse_args()
+    #
+    # # - Scan the files in the data dir
+    #
+    # fl_tupls = scan_files(
+    #     root_dir=TRAIN_DATA_DIR,
+    #     seg_dir_postfix=SEG_DIR_POSTFIX,
+    #     image_prefix=IMAGE_PREFIX,
+    #     seg_prefix=SEG_PREFIX,
+    #     seg_sub_dir=SEG_SUB_DIR
+    # )
+    # np.random.shuffle(fl_tupls)
+    # study = opt.create_study(direction='minimize')
+    # study.optimize(partial(objective, files=fl_tupls[:100]), n_trials=10000)
+    #
+    # best_trial = study.best_trial
+    # best_trial_params = best_trial.params
+    # print(f'''
+    # ========================================================================================================
+    # ============================================ SUMMARY ===================================================
+    # ========================================================================================================
+    #     Best trial:
+    #         - MSE: {best_trial.values[0]}
+    #         - Params:
+    #             > Number of erosion sizes: {best_trial_params.get('n_erosion_sizes')}
+    #             > DILATION SIZES: {best_trial_params.get('n_dilation_sizes')}
+    #             > ALPHA (factor = {best_trial_params.get('alpha_factor')}): {IMAGE_WIDTH * best_trial_params.get('alpha_factor')}
+    #             > ALPHA AFFINE (factor = {best_trial_params.get('alpha_affine_factor')}): {IMAGE_WIDTH * best_trial_params.get('alpha_affine_factor')}
+    #             > SIGMA (factor = {best_trial_params.get('sigma_factor')}): {IMAGE_WIDTH * best_trial_params.get('sigma_factor')}
+    #             > P EROSION: {best_trial_params.get('p_erosion')}
+    #             > P DILATION: {best_trial_params.get('p_dilation')}
+    #             > P OPENING: {best_trial_params.get('p_opening')}
+    #             > P CLOSING: {best_trial_params.get('p_closing')}
+    #             > P ELASTIC: {best_trial_params.get('p_elastic')}
+    #             > P ONE OF: {best_trial_params.get('p_one_of')}
+    # ========================================================================================================
+    # ========================================================================================================
+    # ''')

@@ -1,4 +1,5 @@
 import datetime
+import io
 import os
 import pathlib
 import argparse
@@ -14,10 +15,11 @@ import cv2
 import yaml
 
 import logging
-
+import tensorflow as tf
 import matplotlib as mpl
 import matplotlib.pyplot as plt
 import seaborn as sns
+from scipy.stats import pearsonr
 from tqdm import tqdm
 
 from global_configs.general_configs import (
@@ -54,7 +56,7 @@ from global_configs.general_configs import (
     INFERENCE_DATA_DIR,
     MIN_CELL_PIXELS,
     TRAIN_DATA_DIR,
-    TEST_DATA_DIR
+    TEST_DATA_DIR, MASKS_DIR
 )
 
 from pytorch.configs import general_configs as tr_configs
@@ -75,6 +77,31 @@ RC = {
 sns.set_context(rc=RC)
 
 
+def get_image_from_figure(figure):
+    buffer = io.BytesIO()
+
+    plt.savefig(buffer, format='png')
+
+    plt.close(figure)
+    buffer.seek(0)
+
+    image = tf.image.decode_png(buffer.getvalue(), channels=4)
+    image = tf.expand_dims(image, 0)
+
+    return image
+
+
+def write_figure_to_tensorboard(writer, figure, tag: str, step: int):
+    with tf.device('/cpu:0'):
+        with writer.as_default():
+            # -> Write the scatter plot
+            tf.summary.image(
+                tag,
+                get_image_from_figure(figure=figure),
+                step=step
+            )
+
+
 def get_range(value, ranges: np.ndarray):
     for idx, (rng_min, rng_max) in enumerate(ranges):
         if rng_min < value < rng_max:
@@ -87,11 +114,59 @@ def str_2_float(str_val: str):
 
 
 def float_2_str(float_val: float):
-    return f'{float_val:.3f}'.replace('.', '_')
+    return f'{float_val:.6f}'.replace('.', '_')
 
 
-def get_file_name(path: str):
-    file_name = path[::-1][path[::-1].index('.')+1:path[::-1].index('/')][::-1]
+def check_unique_file(file: pathlib.Path or str):
+    assert_pathable(argument=file, argument_name='file')
+    fl = str_2_path(path=file)
+    parent_dir = fl.parent
+
+    idx = 0
+    while fl.is_file():
+        # - Create a file name
+        f_name = get_file_name(path=file) + f'-{idx}.tif'
+
+        # - Create the file to save the image
+        fl = parent_dir / f_name
+
+        idx += 1
+
+    return fl
+
+
+def check_iterable(data):
+    return isinstance(data, np.ndarray) or isinstance(data, list)
+
+
+def assert_iterable(argument, argument_name: str):
+    assert check_iterable(data=argument), f'{argument_name} argument expected to be of type np.ndarray or list, but is of type \'{type({argument_name})}\'!'
+
+
+def check_pathable(path):
+    return isinstance(path, pathlib.Path) or isinstance(path, str)
+
+
+def assert_pathable(argument, argument_name: str):
+    assert check_pathable(path=argument), f'\'{argument_name}\' argument must be of type pathlib.Path or str, but is \'{type({argument})}\'!'
+
+
+def get_parent_dir_name(path: pathlib.Path or str):
+    assert_pathable(argument=path, argument_name='path')  # isinstance(path, pathlib.Path) or isinstance(path, str), f'\'path\' argument must be of type pathlib.Path or str, but is \'{type(path)}\''
+
+    path = str_2_path(path=path)
+    parent_dir = str(path.parent)
+    parent_dir_name = parent_dir[::-1][:parent_dir[::-1].index('/')][::-1]
+    return parent_dir_name
+
+
+def get_file_name(path: pathlib.Path or str):
+    assert_pathable(argument=path, argument_name='path')
+    # assert isinstance(path, pathlib.Path) or isinstance(path, str), f'\'path\' argument must be of type pathlib.Path or str, but is \'{type(path)}\''
+
+    path = str(path)
+    file_name = path[::-1][path[::-1].index('.') + 1:path[::-1].index('/')][::-1]
+
     return file_name
 
 
@@ -126,10 +201,23 @@ def add_channels_dim(image: np.ndarray):
 
 
 def load_image(image_file, add_channels: bool = False):
-    img = cv2.imread(image_file, cv2.IMREAD_UNCHANGED)
+    img = cv2.imread(str(image_file), cv2.IMREAD_UNCHANGED)
     if add_channels and len(img.shape) < 3:
         img = add_channels_dim(image=img)
     return img
+
+
+def get_split_data(data: np.ndarray or list, n_items: int):
+    assert_iterable(argument=data, argument_name='data')
+
+    if not isinstance(data, np.ndarray):
+        data = np.array(data, dtype=object)
+
+    n_max = len(data)
+    split_data = []
+    for idx_min in range(0, n_max, n_items):
+        split_data.append(data[idx_min:idx_min + n_items] if idx_min + n_items < n_max else data[idx_min:n_max])
+    return split_data
 
 
 def show_images(images, labels, suptitle='', figsize=(25, 10), save_file: pathlib.Path or str = None, verbose: bool = False, logger: logging.Logger = None) -> None:
@@ -140,7 +228,7 @@ def show_images(images, labels, suptitle='', figsize=(25, 10), save_file: pathli
 
     fig.suptitle(suptitle)
 
-    save_figure(figure=fig, save_file=pathlib.Path(save_file), verbose=verbose, logger=logger)
+    save_figure(figure=fig, save_file=pathlib.Path(save_file), close_figure=True, verbose=verbose, logger=logger)
 
 
 def line_plot(x: list or np.ndarray, ys: list or np.ndarray, suptitle: str, labels: list, colors: tuple = ('r', 'g', 'b'), save_file: pathlib.Path or str = None, logger: logging.Logger = None):
@@ -153,50 +241,67 @@ def line_plot(x: list or np.ndarray, ys: list or np.ndarray, suptitle: str, labe
     plt.legend()
 
     try:
-        save_figure(figure=fig, save_file=save_file, logger=logger)
+        save_figure(figure=fig, save_file=save_file, close_figure=False, logger=logger)
     except Exception as err:
         err_log(logger=logger, message=f'{err}')
 
 
-def hit_rate_plot(true: np.ndarray, pred: np.ndarray, save_file: pathlib.Path or str = None, logger: logging.Logger = None):
-    # sns.set(font_scale=1)
+def hit_rate_plot(true: np.ndarray, pred: np.ndarray, hit_rate_percent: int = None, figsize: tuple = (15, 15), save_file: pathlib.Path or str = None, tensorboard_params: dict = None, logger: logging.Logger = None):
+    # - Calculate the absolute error of true vs pred
     abs_err = np.abs(true - pred)
-    abs_err_hist, abs_err = np.histogram(abs_err, bins=100, range=(0., 1.))
+
+    # - Create a histogram of the absolute errors
+    abs_err_hist, abs_err_tolerance = np.histogram(abs_err, bins=100, range=(0., 1.))
+
+    # - Normalize the histogram
     abs_err_prob = abs_err_hist / np.sum(abs_err_hist)
 
-    fig, ax = plt.subplots()
-    ax.plot(abs_err[:-1], np.cumsum(abs_err_prob), linewidth=2)
-    ax.set(xlabel='Absolute Error Tolerance', xlim=(0, 1), xticks=np.arange(0.0, 1.0, 0.2), ylabel='Hit Rate', ylim=(0, 1), yticks=np.arange(0.0, 1.0, 0.2))
-    save_dir = pathlib.Path(save_file).parent
-    if not save_dir.is_dir():
-        os.makedirs(save_dir)
-    plt.savefig(str(save_file))
-    plt.close()
+    # - Plot the histogram
+    fig, ax = plt.subplots(figsize=figsize)
+
+    # > Calculate the cumulative probability of the density function of the absolute errors
+    abs_err_cum_sum_prob = np.cumsum(abs_err_prob)
+    ax.plot(abs_err_tolerance[:-1], abs_err_cum_sum_prob, linewidth=2)
+    ax.set(xlabel='Absolute Error Tolerance', xlim=(0, 1), xticks=np.arange(0.0, 1.2, 0.2), ylabel='Hit Rate', ylim=(0, 1), yticks=np.arange(0.2, 1.2, 0.2))
+
+    # - Add a line representing the hit rate percentage with corresponding AET value
+    if isinstance(hit_rate_percent, int):
+        # > Find the index of the hit_rate_percent
+        abs_err_cum_sum_pct_idx = np.argwhere(abs_err_cum_sum_prob >= hit_rate_percent / 100).flatten().min()
+
+        # > Find the real value of the hit_rate_percent
+        cum_sum_err_pct = abs_err_cum_sum_prob[abs_err_cum_sum_pct_idx]
+
+        # > Find the corresponding Absolute Error Tolerance to the hit_rate_percent value
+        abs_err_tolerance_pct = abs_err_tolerance[abs_err_cum_sum_pct_idx]
+
+        # > Plot the horizontal line for the hit rate percentage
+        ax.axhline(cum_sum_err_pct, xmax=abs_err_tolerance_pct)
+
+        # > Plot the vertical line for the corresponding AET value
+        ax.axvline(abs_err_tolerance_pct, ymax=cum_sum_err_pct)
+
+        # > Add the corresponding AET value
+        ax.text(x=abs_err_tolerance_pct, y=cum_sum_err_pct, s=f'AET={abs_err_tolerance_pct:.3f}')
+
+    try:
+        save_figure(figure=fig, save_file=save_file, close_figure=False, logger=logger)
+    except Exception as err:
+        err_log(logger=logger, message=f'{err}')
+
+    if isinstance(tensorboard_params, dict):
+        write_figure_to_tensorboard(
+            writer=tensorboard_params.get('writer'),
+            figure=fig,
+            tag=tensorboard_params.get('tag'),
+            step=tensorboard_params.get('step')
+        )
+    plt.close(fig)
 
     return abs_err_hist, abs_err
 
 
-def absolute_error_plot(true: np.ndarray, pred: np.ndarray, save_file: pathlib.Path or str = None, logger: logging.Logger = None):
-    # sns.set(font_scale=1.5)
-    abs_err = np.abs(true - pred)
-    err_hist, abs_err_bins = np.histogram(abs_err, bins=100, range=(0, 1))
-
-    D = pd.DataFrame({'Absolute Error': abs_err_bins[:-1], 'Frequency': err_hist})
-    g = sns.jointplot(x='Absolute Error', y='Frequency', data=D, height=15, space=0.02)
-
-    try:
-        save_dir = pathlib.Path(save_file).parent
-        if not save_dir.is_dir():
-            os.makedirs(save_dir)
-        save_figure(figure=g.figure, save_file=save_file, logger=logger)
-    except Exception as err:
-        err_log(logger=logger, message=f'{err}')
-    return err_hist, abs_err_bins
-
-
-def scatter_plot(x: np.ndarray, y: np.ndarray, save_file: pathlib.Path or str = None, logger: logging.Logger = None):
-    # sns.set(font_scale=1.5)
-
+def scatter_plot(x: np.ndarray, y: np.ndarray, save_file: pathlib.Path or str = None, tensorboard_params: dict = None, logger: logging.Logger = None):
     D = pd.DataFrame({'GT Quality Value': x, 'Estimated Quality Value': y})
     g = sns.jointplot(
         x='GT Quality Value',
@@ -214,28 +319,71 @@ def scatter_plot(x: np.ndarray, y: np.ndarray, save_file: pathlib.Path or str = 
         kind='reg'
     )
 
+    # - Calculate pearson correlation
+    rho, p = pearsonr(x, y)
+
+    # - Calculate mean squared error
+    print('x: ', x[:10])
+    print('y: ', y[:10])
+    mse = np.mean(np.square(x[:10] - y[:10]))
+    print('mse: ', mse)
+
+    g.ax_joint.annotate(
+        f'$\\rho = {rho:.3f}, MSE = {mse:.3f}$',
+        xy=(0.1, 0.9),
+        xycoords='axes fraction',
+        ha='left',
+        va='center',
+        bbox={'boxstyle': 'round', 'fc': 'powderblue', 'ec': 'navy'}
+    )
     try:
-        save_dir = pathlib.Path(save_file).parent
-        if not save_dir.is_dir():
-            os.makedirs(save_dir)
-        save_figure(figure=g.figure, save_file=save_file, logger=logger)
+        save_figure(figure=g.figure, save_file=save_file, close_figure=False, logger=logger)
     except Exception as err:
         err_log(logger=logger, message=f'{err}')
+
+    if isinstance(tensorboard_params, dict):
+        write_figure_to_tensorboard(
+            writer=tensorboard_params.get('writer'),
+            figure=g.figure,
+            tag=tensorboard_params.get('tag'),
+            step=tensorboard_params.get('step')
+        )
+    plt.close(g.figure)
+
+
+def get_files_under_dir(dir_path: pathlib.Path or str):
+    fls = []
+    for root, dirs, files in os.walk(str(dir_path), topdown=False):
+        for fl in files:
+            fls.append(fl)
+    fls = np.array(fls, dtype=object)
+    return fls
 
 
 def str_2_path(path: str):
     return pathlib.Path(path) if isinstance(path, str) else path
 
 
-def save_figure(figure, save_file: pathlib.Path or str, verbose: bool = False, logger: logging.Logger = None):
+def save_figure(figure, save_file: pathlib.Path or str, overwrite: bool = False, close_figure: bool = False, verbose: bool = False, logger: logging.Logger = None):
+    # - Convert save_file to path
     save_file = str_2_path(path=save_file)
 
     if isinstance(save_file, pathlib.Path):
-        os.makedirs(save_file.parent, exist_ok=True)
-        figure.savefig(str(save_file))
-        plt.close(figure)
-        if verbose:
-            info_log(logger=logger, message=f'Figure was saved to \'{save_file}\'')
+        # - If the file does not exist or can be overwritten
+        if not save_file.is_file() or overwrite:
+
+            # - Create sub-path of the save file
+            os.makedirs(save_file.parent, exist_ok=True)
+
+            figure.savefig(str(save_file))
+            if close_figure:
+                plt.close(figure)
+            if verbose:
+                info_log(logger=logger, message=f'Figure was saved to \'{save_file}\'')
+        elif verbose:
+            info_log(logger=logger, message=f'Can not save figure - file \'{save_file}\' already exists and overwrite = {overwrite}!')
+    elif verbose:
+        info_log(logger=logger, message=f'Can not save figure - save_file argument must be of type pathlib.Path or str, but {type(save_file)} was provided!')
 
 
 def plot_seg_measure_histogram(seg_measures: np.ndarray, bin_width: float = .1, figsize: tuple = (25, 10), density: bool = False, save_file: pathlib.Path = None):
@@ -646,23 +794,28 @@ def calc_seg_measure(gt_masks: np.ndarray, pred_masks: np.ndarray):
     return seg_measure
 
 
-def plot_seg_error(image: np.ndarray, gt_mask: np.ndarray, pred_mask: np.ndarray, suptitle: str, title: str, figsize: tuple = (20, 20), save_file: pathlib.Path = None):
+def plot_image_mask(image: np.ndarray, mask: np.ndarray, pred_mask: np.ndarray = None, suptitle: str = '', title: str = '', figsize: tuple = (20, 20), save_file: pathlib.Path = None, overwrite: bool = False):
     # - Prepare the mask overlap image
-    seg = np.zeros((*gt_mask.shape[:-1], 3))
-    seg[..., 0] = gt_mask[..., 0]
-    seg[..., 2] = pred_mask[..., 0]
-    seg[seg > 0] = 1.
+    msk = np.zeros((*mask.shape[:-1], 3))
+    msk[..., 2] = mask[..., 0]
+
+    # - If there is a predicted segmentation
+    if isinstance(pred_mask, np.ndarray):
+        msk[..., 0] = pred_mask[..., 0]
+
+    # - Convert instance segmentation to binary
+    msk[msk > 0] = 1.
 
     fig, ax = plt.subplots(figsize=figsize)
     ax.imshow(image, cmap='gray')
-    ax.imshow(seg, alpha=0.3)
+    ax.imshow(msk, alpha=0.3)
     ax.set(title=title)
 
     fig.suptitle(suptitle)
 
-    if isinstance(save_file, pathlib.Path) and save_file.parent.is_dir():
+    if isinstance(save_file, pathlib.Path) and (not save_file.is_file() or overwrite):
+        os.makedirs(save_file.parent, exist_ok=True)
         plt.savefig(save_file)
-        plt.close()
 
     return fig, ax
 
@@ -709,7 +862,7 @@ def calc_histogram(data: np.ndarray or list, bins: np.ndarray, normalize: bool =
     return heights, ranges
 
 
-def plot_hist(data: np.ndarray or list, bins: np.ndarray, save_file: pathlib.Path = None):
+def plot_hist(data: np.ndarray or list, bins: np.ndarray, save_file: pathlib.Path = None, overwrite: bool = False):
     # - Plot histogram
     ds = pd.DataFrame(dict(heights=data))
 
@@ -724,7 +877,7 @@ def plot_hist(data: np.ndarray or list, bins: np.ndarray, save_file: pathlib.Pat
     sns.set_context(rc=rc)
     dist_plot = sns.displot(ds['heights'], bins=bins, rug=True, kde=True)
 
-    if isinstance(save_file, pathlib.Path) and not save_file.is_file():
+    if isinstance(save_file, pathlib.Path) and (not save_file.is_file() or overwrite):
         os.makedirs(save_file.parent, exist_ok=True)
         dist_plot.savefig(save_file)
     else:
@@ -734,7 +887,7 @@ def plot_hist(data: np.ndarray or list, bins: np.ndarray, save_file: pathlib.Pat
     sns.set_context(rc=RC)
 
 
-def to_numpy(data: np.ndarray, file_path: str or pathlib.Path, overwrite: bool = False, logger:  logging.Logger = None):
+def to_numpy(data: np.ndarray, file_path: str or pathlib.Path, overwrite: bool = False, logger: logging.Logger = None):
     if isinstance(file_path, str):
         file_path = pathlib.Path(file_path)
 
@@ -775,6 +928,7 @@ def get_arg_parser():
     parser = argparse.ArgumentParser()
 
     # - GENERAL PARAMETERS
+    parser.add_argument('--debug', default=False, action='store_true', help=f'If the run is a debugging run')
     parser.add_argument('--gpu_id', type=int, default=0 if torch.cuda.device_count() > 0 else -1, help='The ID of the GPU (if there is any) to run the network on (e.g., --gpu_id 1 will run the network on GPU #1 etc.)')
 
     parser.add_argument('--load_checkpoint', default=False, action='store_true', help=f'If to continue the training from the checkpoint saved at the checkpoint file')
@@ -783,6 +937,7 @@ def get_arg_parser():
     parser.add_argument('--test_data_dir', type=str, default=TEST_DATA_DIR, help='The path to the custom test file')
     parser.add_argument('--inference_data_dir', type=str, default=INFERENCE_DATA_DIR, help='The path to the inference data dir')
 
+    parser.add_argument('--masks_dir', type=str, default=MASKS_DIR, help='The path to the directory where the preprocessed masks are placed')
     parser.add_argument('--output_dir', type=str, default=OUTPUT_DIR, help='The path to the directory where the outputs will be placed')
 
     parser.add_argument('--image_height', type=int, default=IMAGE_HEIGHT, help='The height of the images that will be used for network training and inference. If not specified, will be set to IMAGE_HEIGHT as in general_configs.py file.')
