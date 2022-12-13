@@ -46,14 +46,14 @@ class RibCage(keras.Model):
         self.train_epch_pred_seg_msrs = np.array([])
         self.train_pearson_rs = np.array([])
         self.train_mses = np.array([])
-        self.train_btch_smpl_fig = None
+        self.train_btch_smpl_dict = dict()
 
         # - Validation epoch history
         self.val_epch_gt_seg_msrs = np.array([])
         self.val_epch_pred_seg_msrs = np.array([])
         self.val_pearson_rs = np.array([])
         self.val_mses = np.array([])
-        self.val_btch_smpl_fig = None
+        self.val_btch_smpl_dict = dict()
 
     @staticmethod
     def _get_activation(configs: dict):
@@ -148,18 +148,15 @@ class RibCage(keras.Model):
                 # - Add the modified seg measures to epoch history
                 self.train_epch_pred_seg_msrs = np.append(self.train_epch_pred_seg_msrs, pred_seg_measures)
 
-                # - Plot segmentation samples
-                if self.train_btch_smpl_fig is not None:
-                    plt.close(self.train_btch_smpl_fig)
-
                 # TODO: Instead of figure save a sample and plot in the callback
-                self.train_btch_smpl_fig = self._save_image_mask_plot(
-                    images=images,
-                    masks=masks,
-                    true_seg_measures=true_seg_measures,
-                    pred_seg_measures=pred_seg_measures,
-                    save_dir=self.output_dir / f'train/batch_samples'
-                )
+                rnd_smpl_idx = np.random.randint(0, len(images) - 1)
+
+                img = images[rnd_smpl_idx]
+                msk = masks[rnd_smpl_idx]
+                true_sm = true_seg_measures[rnd_smpl_idx]
+                pred_sm = pred_seg_measures[rnd_smpl_idx]
+                self.train_btch_smpl_dict = dict(image=img, mask=msk, true_seg_measure=true_sm, pred_seg_measure=pred_sm)
+
             else:
                 # - Add the target seg measures to epoch history
                 self.val_epch_gt_seg_msrs = np.append(self.val_epch_gt_seg_msrs, true_seg_measures)
@@ -167,39 +164,13 @@ class RibCage(keras.Model):
                 # - Add the modified seg measures to epoch history
                 self.val_epch_pred_seg_msrs = np.append(self.val_epch_pred_seg_msrs, pred_seg_measures)
 
-                # - Plot segmentation samples
-                if self.val_btch_smpl_fig is not None:
-                    plt.close(self.val_btch_smpl_fig)
+                rnd_smpl_idx = np.random.randint(0, len(images) - 1)
 
-                # TODO: Instead of figure save a sample and plot in the callback
-                self.val_btch_smpl_fig = self._save_image_mask_plot(
-                    images=images,
-                    masks=masks,
-                    true_seg_measures=true_seg_measures,
-                    pred_seg_measures=pred_seg_measures,
-                    save_dir=self.output_dir / f'validation/batch_samples'
-                )
-
-    @staticmethod
-    def _save_image_mask_plot(images, masks, true_seg_measures, pred_seg_measures, save_dir: pathlib.Path):
-        rnd_smpl_idx = np.random.randint(0, len(images) - 1)
-
-        img = images[rnd_smpl_idx]
-        msk = masks[rnd_smpl_idx]
-        true_sm = true_seg_measures[rnd_smpl_idx]
-        pred_sm = pred_seg_measures[rnd_smpl_idx]
-
-        img_msk_fig, _ = plot_image_mask(
-            image=img,
-            mask=msk,
-            pred_mask=None,
-            suptitle='Image with Corresponding Mask (red)',
-            title=f'Seg measure: true - {true_sm:.4f}, pred - {pred_sm:.4f}',
-            figsize=(20, 20),
-            save_file=save_dir / f'batch_samples/true_{float_2_str(true_sm)}_pred_{float_2_str(pred_sm)}.png',
-        )
-
-        return img_msk_fig
+                img = images[rnd_smpl_idx]
+                msk = masks[rnd_smpl_idx]
+                true_sm = true_seg_measures[rnd_smpl_idx]
+                pred_sm = pred_seg_measures[rnd_smpl_idx]
+                self.val_btch_smpl_dict = dict(image=img, mask=msk, true_seg_measure=true_sm, pred_seg_measure=pred_sm)
 
     def train_step(self, data) -> dict:
         # - Get the data of the current epoch

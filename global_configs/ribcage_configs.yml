@@ -4,7 +4,7 @@ conv2d_blocks:
 
 fc_blocks:
   out_features: [128, 128]
-  drop_rate: 0.0
+  drop_rate: 0.2
 
 #conv2d_blocks:
 #  out_channels: [32, 64, 128, 256]

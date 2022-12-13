@@ -10,9 +10,8 @@ from scipy.ndimage import (
 
 __author__ = 'sidorov@post.bgu.ac.il'
 
-# - Image crop parameters
-IMAGE_WIDTH = 419
-IMAGE_HEIGHT = 419
+from global_configs.general_configs import CROP_HEIGHT, CROP_WIDTH
+
 # ========================================================================================================================================================================================
 # ========================================================================================================================================================================================
 # * Parameters were found with the Optuna library, by minimizing the Mean Squared Error of the seg measure histogram produced by the augmentation and a vector of [0.5, 0.5, ..., 0.5]
@@ -22,18 +21,15 @@ IMAGE_HEIGHT = 419
 # ========================================================================================================================================================================================
 
 # - Erosion / dilation / opening / closing parameters
-EROSION_SIZES = [1, 3, 5, 7]
-DILATION_SIZES = [1, 3, 5, 7, 9, 11, 13, 15, 17]
+EROSION_SIZES = np.arange(2, 8)
+DILATION_SIZES = np.arange(2, 18)
 
 # - Elastic transform parameters
 ALPHA_FACTOR = 1.2531
-ALPHA = ALPHA_FACTOR * IMAGE_WIDTH
 
 SIGMA_FACTOR = 0.8204
-SIGMA = SIGMA_FACTOR * IMAGE_WIDTH
 
 ALPHA_AFFINE_FACTOR = 0.0143
-ALPHA_AFFINE = ALPHA_AFFINE_FACTOR * IMAGE_WIDTH
 
 # - Application probabilities
 P_EROSION = 0.675
@@ -92,26 +88,28 @@ def image_mask_augs():
                     interpolation=cv2.INTER_LANCZOS4,
                     p=0.5
                 ),
-                ], p=0.5
+            ], p=0.5
             ),
         ]
     )
 
 
-def transforms():
+def transforms(crop_height, crop_width):
     return A.Compose(
         [
+            # RandomScale(p=0.5),
             CropNonEmptyMaskIfExists(
-                height=IMAGE_HEIGHT,
-                width=IMAGE_WIDTH,
+                height=crop_height,
+                width=crop_width,
                 p=1.
             ),
-            A.ToFloat(p=1.),
-        ]
+            # A.ToFloat(p=1.),
+        ],
+        additional_targets={'mask0': 'mask'}
     )
 
 
-def mask_augs():
+def mask_augs(image_width, alpha_factor=ALPHA_FACTOR, sigma_factor=SIGMA_FACTOR, alpha_affine_factor=ALPHA_AFFINE_FACTOR):
     return A.Compose(
         [
             A.OneOf(
@@ -136,9 +134,9 @@ def mask_augs():
                 p=P_ONE_OF
             ),
             A.ElasticTransform(
-                alpha=ALPHA,
-                sigma=SIGMA,
-                alpha_affine=ALPHA_AFFINE,
+                alpha=alpha_factor * image_width,
+                sigma=sigma_factor * image_width,
+                alpha_affine=alpha_affine_factor * image_width,
                 interpolation=cv2.INTER_LANCZOS4,
                 approximate=True,
                 same_dxdy=True,
@@ -152,8 +150,8 @@ def test_augs():
     return A.Compose(
         [
             CropNonEmptyMaskIfExists(
-                height=IMAGE_HEIGHT,
-                width=IMAGE_WIDTH,
+                height=CROP_HEIGHT,
+                width=CROP_WIDTH,
                 p=1.
             ),
             A.ToFloat(p=1.),
@@ -165,8 +163,8 @@ def inference_augs():
     return A.Compose(
         [
             A.Resize(
-                height=IMAGE_HEIGHT,
-                width=IMAGE_WIDTH,
+                height=CROP_HEIGHT,
+                width=CROP_WIDTH,
                 p=1.
             ),
             A.ToFloat(p=1.),

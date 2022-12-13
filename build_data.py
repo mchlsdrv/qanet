@@ -1,9 +1,11 @@
 import time
 import argparse
 import os
+from copy import deepcopy
 
 import cv2
 import matplotlib.pyplot as plt
+from scipy.ndimage import grey_erosion
 from tqdm import tqdm
 import numpy as np
 import pathlib
@@ -16,14 +18,14 @@ from utils.aux_funcs import (
     plot_hist,
     get_file_name,
     plot_image_mask,
-    get_range, load_image, float_2_str, str_2_float, get_runtime, get_parent_dir_name, get_ts, get_split_data, check_unique_file
+    get_range, load_image, float_2_str, str_2_float, get_runtime, get_parent_dir_name, get_ts, get_split_data, check_unique_file, assert_pathable
 )
 from global_configs.general_configs import (
     SEG_DIR_POSTFIX,
     SEG_PREFIX,
     IMAGE_PREFIX,
     TRAIN_DATA_DIR,
-    SEG_SUB_DIR
+    SEG_SUB_DIR, CROP_WIDTH
 )
 import multiprocessing as mp
 from multiprocessing import Pool
@@ -61,7 +63,7 @@ def build_data(args):
     n_rngs = len(ranges)
     total_image_samples = n_rngs * n_samples_in_range
 
-    mask_augs = augs.mask_augs()
+    mask_augs = augs.mask_augs(image_width=CROP_WIDTH)
 
     files_pbar = tqdm(files)
     file_run_times = np.array([])
@@ -181,7 +183,6 @@ def build_data(args):
                 fig, ax = plot_image_mask(
                     image=img,
                     mask=gt_msk,
-                    pred_mask=aug_msk,
                     suptitle='GT (red) vs Pred (blue)',
                     title=f'Seg Measure = {str_2_float(seg_msr_str)}',
                     figsize=(20, 20),
@@ -253,7 +254,6 @@ def analyze_data(files: list, masks_root: pathlib.Path, n_samples: int = 5, clea
             fig, ax = plot_image_mask(
                 image=img,
                 mask=msk,
-                pred_mask=None,
                 suptitle='Image vs Mask (blue)',
                 title=f'Seg Measure = {j}',
                 figsize=(20, 20),
@@ -291,6 +291,8 @@ def get_arg_parser():
 
     parser.add_argument('--clean', default=False, action='store_true', help=f'Deletes the files which have no dir in the masks image dir')
 
+    parser.add_argument('--convert', default=False, action='store_true', help=f'Convert instance segmentation to categorical')
+
     return parser
 
 
@@ -301,6 +303,112 @@ def get_files_under_dir(dir_path: pathlib.Path or str):
             fls.append(fl)
     fls = np.array(fls, dtype=object)
     return fls
+
+
+def merge_categorical_masks(masks: np.ndarray):
+    msk = np.zeros(masks.shape[1:])
+    for cat_mks in masks:
+        msk += cat_mks
+
+    # - Fix the boundary if it was added several times from different cells
+    msk[msk > 2] = 2
+
+    return msk
+
+
+def split_instance_mask(instance_mask: np.ndarray):
+    """
+    Splits an instance mask into N binary masks
+    :param: instance_mask - mask where integers represent different objects
+    """
+    # - Ensure the multi-class label is populated with int values
+    inst_msk = instance_mask.astype(np.int16)
+
+    # - Find the classes
+    labels = np.unique(inst_msk)
+
+    # - Discard the background (0)
+    labels = labels[labels > 0]
+
+    # - Convert the ground truth mask to one-hot class masks
+    bin_masks = []
+    for lbl in labels:
+        bin_class_mask = deepcopy(inst_msk)
+        bin_class_mask[bin_class_mask != lbl] = 0
+        bin_class_mask[bin_class_mask > 0] = 1
+        bin_masks.append(bin_class_mask)
+
+    bin_masks = np.array(bin_masks)
+
+    return bin_masks
+
+
+def instance_2_categorical(mask):
+    # Shrinks the labels
+    inner_msk = grey_erosion(mask, size=2)
+
+    # Create the contur of the cells
+    contur_msk = mask - inner_msk
+    contur_msk[contur_msk > 0] = 2
+
+    # - Create the inner part of the cell
+    inner_msk[inner_msk > 0] = 1
+
+    # - Combine the inner and the contur masks to create the categorical mask with three classes, i.e., background 0, inner 1 and contur 2
+    cat_msk = inner_msk + contur_msk
+
+    return cat_msk
+
+
+def save_categorical_mask(mask: np.ndarray, save_file: pathlib.Path, show: bool = False):
+    # - Prepare the mask overlap image
+    msk = np.zeros((*mask.shape[:-1], 3))
+
+    # - Red channel - background
+    bg_msk = deepcopy(mask)
+    bg_msk[bg_msk == 1] = 2
+    bg_msk[bg_msk == 0] = 1
+    bg_msk[bg_msk != 1] = 0
+    msk[..., 0] = bg_msk[..., 0]
+
+    # - Green channel - inner cell
+    inner_msk = deepcopy(mask)
+    inner_msk[inner_msk != 1] = 0
+    msk[..., 1] = inner_msk[..., 0]
+
+    # - Blue channel - contur of the cell
+    contur_msk = deepcopy(mask)
+    contur_msk[contur_msk != 2] = 0
+    msk[..., 2] = contur_msk[..., 0]
+
+    plt.imshow(msk)
+
+    if isinstance(save_file, pathlib.Path):
+        os.makedirs(save_file.parent, exist_ok=True)
+        plt.savefig(save_file)
+
+    if show:
+        plt.show()
+
+    plt.close()
+
+
+def plot_categorical_masks(mask_files: list, output_dir: pathlib.Path):
+    assert_pathable(argument=output_dir, argument_name='output_dir')
+    os.makedirs(output_dir, exist_ok=True)
+
+    for msk_fl in mask_files:
+        inst_msk = load_image(image_file=str(msk_fl), add_channels=True)
+
+        # - Apply the procedure for each cell separately
+        bin_msks = split_instance_mask(instance_mask=inst_msk)
+        cat_bin_msks = []
+        for bin_msk in bin_msks:
+            cat_msk = instance_2_categorical(mask=bin_msk)
+            cat_bin_msks.append(cat_msk)
+        cat_bin_msks = np.array(cat_bin_msks)
+        cat_msk = merge_categorical_masks(masks=cat_bin_msks)
+        save_categorical_mask(mask=cat_msk, save_file=output_dir / f'{get_parent_dir_name(path=msk_fl.parent)}_{get_file_name(path=msk_fl)}.png')
 
 
 if __name__ == '__main__':
@@ -331,6 +439,8 @@ if __name__ == '__main__':
         analyze_data(files=[fl_tpl[0] for fl_tpl in fls], masks_root=output_dir, n_samples=5)
     elif args.clean:
         clean_invalids(files=[fl_tpl[0] for fl_tpl in fls], masks_root=output_dir / 'images')
+    elif args.convert:
+        plot_categorical_masks(mask_files=[fl[1] for fl in fls], output_dir=OUTPUT_DIR / 'categorical_masks_2')
     else:
         n_cpus = np.min([mp.cpu_count(), args.max_cpus])
         n_items = len(fls) // n_cpus

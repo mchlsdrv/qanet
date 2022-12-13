@@ -45,7 +45,7 @@ if __name__ == '__main__':
 
     # - Load the data
     data_tuples = []
-    if not check_pathable(path=args.masks_dir):
+    if not check_pathable(path=args.masks_dir) or args.regular_mode:
         if TEMP_TRAIN_DATA_FILE.is_file():
             data_tuples = np.load(TEMP_TRAIN_DATA_FILE, allow_pickle=True)
         else:

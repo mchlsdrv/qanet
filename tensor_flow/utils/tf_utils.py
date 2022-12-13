@@ -349,7 +349,7 @@ def train_model(data_tuples: np.ndarray or list, file_tuples: np.ndarray or list
     model, weights_loaded = get_model(
         model_configs=dict(
             load_checkpoint=args.load_checkpoint,
-            input_image_dims=(args.image_height, args.image_width),
+            input_image_dims=(args.crop_height, args.crop_width),
             drop_block=dict(
                 use=args.drop_block,
                 keep_prob=args.drop_block_keep_prob,
@@ -389,6 +389,9 @@ def train_model(data_tuples: np.ndarray or list, file_tuples: np.ndarray or list
 
     # - Get the train and the validation data loaders
     train_dl, val_dl = get_data_loaders(
+        mode='regular' if args.regular_mode else 'fast',
+        crop_height=args.crop_height,
+        crop_width=args.crop_width,
         data_tuples=data_tuples,
         file_tuples=file_tuples,
         train_batch_size=args.batch_size,

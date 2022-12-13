@@ -19,13 +19,14 @@ import tensorflow as tf
 import matplotlib as mpl
 import matplotlib.pyplot as plt
 import seaborn as sns
+from scipy.ndimage import grey_erosion
 from scipy.stats import pearsonr
 from tqdm import tqdm
 
 from global_configs.general_configs import (
     OUTPUT_DIR,
-    IMAGE_WIDTH,
-    IMAGE_HEIGHT,
+    CROP_WIDTH,
+    CROP_HEIGHT,
     IN_CHANNELS,
     OUT_CHANNELS,
     EPOCHS,
@@ -56,14 +57,19 @@ from global_configs.general_configs import (
     INFERENCE_DATA_DIR,
     MIN_CELL_PIXELS,
     TRAIN_DATA_DIR,
-    TEST_DATA_DIR, MASKS_DIR
+    TEST_DATA_DIR,
+    MASKS_DIR,
 )
 
 from pytorch.configs import general_configs as tr_configs
 from tensor_flow.configs import general_configs as tf_configs
+import warnings
 
 mpl.use('Agg')  # <= avoiding the "Tcl_AsyncDelete: async handler deleted by the wrong thread" exception
 plt.style.use('seaborn')  # <= using the seaborn plot style
+
+warnings.simplefilter("ignore", UserWarning)
+warnings.simplefilter("ignore", RuntimeWarning)
 
 sns.set()
 RC = {
@@ -200,7 +206,7 @@ def add_channels_dim(image: np.ndarray):
     return image
 
 
-def load_image(image_file, add_channels: bool = False):
+def load_image(image_file, add_channels: bool = False, to_categorical: bool = False):
     img = cv2.imread(str(image_file), cv2.IMREAD_UNCHANGED)
     if add_channels and len(img.shape) < 3:
         img = add_channels_dim(image=img)
@@ -323,10 +329,10 @@ def scatter_plot(x: np.ndarray, y: np.ndarray, save_file: pathlib.Path or str = 
     rho, p = pearsonr(x, y)
 
     # - Calculate mean squared error
-    print('x: ', x[:10])
-    print('y: ', y[:10])
+    # print('x: ', x[:10])
+    # print('y: ', y[:10])
     mse = np.mean(np.square(x[:10] - y[:10]))
-    print('mse: ', mse)
+    # print('mse: ', mse)
 
     g.ax_joint.annotate(
         f'$\\rho = {rho:.3f}, MSE = {mse:.3f}$',
@@ -724,6 +730,46 @@ def get_runtime(seconds: float):
     return hrs_str + ':' + min_str + ':' + sec_str + '[H:M:S]'
 
 
+def merge_categorical_masks(masks: np.ndarray):
+    msk = np.zeros(masks.shape[1:])
+    for cat_mks in masks:
+        msk += cat_mks
+
+    # - Fix the boundary if it was added several times from different cells
+    msk[msk > 2] = 2
+
+    return msk
+
+
+def split_instance_mask(instance_mask: np.ndarray, labels: np.ndarray or list = None):
+    """
+    Splits an instance mask into N binary masks
+    :param: instance_mask - mask where integers represent different objects
+    """
+    # - Ensure the multi-class label is populated with int values
+    inst_msk = instance_mask.astype(np.int16)
+
+    # - Find the classes
+    lbls = labels
+    if not check_iterable(data=labels):
+        lbls = np.unique(inst_msk)
+
+    # - Discard the background (0)
+    lbls = lbls[lbls > 0]
+
+    # - Convert the ground truth mask to one-hot class masks
+    bin_masks = []
+    for lbl in lbls:
+        bin_class_mask = deepcopy(inst_msk)
+        bin_class_mask[bin_class_mask != lbl] = 0
+        bin_class_mask[bin_class_mask > 0] = 1
+        bin_masks.append(bin_class_mask)
+
+    bin_masks = np.array(bin_masks)
+
+    return bin_masks
+
+
 def calc_seg_measure(gt_masks: np.ndarray, pred_masks: np.ndarray):
     """
     Converts a multi-class label into a one-hot labels for each object in the multi-class label
@@ -734,19 +780,13 @@ def calc_seg_measure(gt_masks: np.ndarray, pred_masks: np.ndarray):
     pred_masks = pred_masks.astype(np.int16)
 
     # - Find the classes
-    labels = np.unique(gt_masks)
+    lbls = np.unique(gt_masks)
 
     # - Discard the background (0)
-    labels = labels[labels > 0]
+    lbls = lbls[lbls > 0]
 
     # - Convert the ground truth mask to one-hot class masks
-    gt_one_hot_masks = []
-    for lbl in labels:
-        class_mask = deepcopy(gt_masks)
-        class_mask[class_mask != lbl] = 0
-        class_mask[class_mask > 0] = 1
-        gt_one_hot_masks.append(class_mask)
-
+    gt_one_hot_masks = split_instance_mask(instance_mask=gt_masks, labels=lbls)
     gt_one_hot_masks = np.array(gt_one_hot_masks, dtype=np.float32)
     if len(gt_one_hot_masks.shape) < 4:
         gt_one_hot_masks = np.expand_dims(gt_one_hot_masks, axis=0)
@@ -756,13 +796,7 @@ def calc_seg_measure(gt_masks: np.ndarray, pred_masks: np.ndarray):
     A[A == 0] = np.nan
 
     # - Convert the predicted mask to one-hot class masks
-    pred_one_hot_masks = []
-    for lbl in labels:
-        class_mask = deepcopy(pred_masks)
-        class_mask[class_mask != lbl] = 0
-        class_mask[class_mask > 0] = 1
-        pred_one_hot_masks.append(class_mask)
-
+    pred_one_hot_masks = split_instance_mask(instance_mask=pred_masks, labels=lbls)
     pred_one_hot_masks = np.array(pred_one_hot_masks, dtype=np.float32)
     if len(pred_one_hot_masks.shape) < 4:
         pred_one_hot_masks = np.expand_dims(pred_one_hot_masks, axis=0)
@@ -794,7 +828,83 @@ def calc_seg_measure(gt_masks: np.ndarray, pred_masks: np.ndarray):
     return seg_measure
 
 
-def plot_image_mask(image: np.ndarray, mask: np.ndarray, pred_mask: np.ndarray = None, suptitle: str = '', title: str = '', figsize: tuple = (20, 20), save_file: pathlib.Path = None, overwrite: bool = False):
+def get_categorical_mask(binary_mask: np.ndarray):
+    # Shrinks the labels
+    inner_msk = grey_erosion(binary_mask, size=2)
+
+    # Create the contur of the cells
+    contur_msk = binary_mask - inner_msk
+    contur_msk[contur_msk > 0] = 2
+
+    # - Create the inner part of the cell
+    inner_msk[inner_msk > 0] = 1
+
+    # - Combine the inner and the contur masks to create the categorical mask with three classes, i.e., background 0, inner 1 and contur 2
+    cat_msk = inner_msk + contur_msk
+
+    return cat_msk
+
+
+def instance_2_categorical(masks: np.ndarray or list):
+    """
+    Converts an instance masks (i.e., where each cell is represented by a different color, to a mask with 3 classes, i.e.,
+        - 0 for background,
+        - 1 for the inner part of the cell
+        - 2 for cells' boundary
+    """
+    btch_cat_msks = []
+    for msk in masks:
+        # - Split the mask into binary masks of separate cells
+        bin_msks = split_instance_mask(instance_mask=msk)
+
+        # - For each binary cell - get a categorical mask
+        cat_msks = []
+        for bin_msk in bin_msks:
+            cat_msks.append(get_categorical_mask(binary_mask=bin_msk))
+
+        # - Merge the categorical masks for each cell into a single categorical mask
+        mrgd_cat_msk = merge_categorical_masks(masks=np.array(cat_msks))
+
+        # - Add the categorical mask to the batch masks
+        btch_cat_msks.append(mrgd_cat_msk)
+    return np.array(btch_cat_msks)
+
+
+def plot_image_mask(image: np.ndarray, mask: np.ndarray, suptitle: str = '', title: str = '', figsize: tuple = (20, 20), tensorboard_params: dict = None, save_file: pathlib.Path = None, overwrite: bool = False):
+    # - Prepare the mask overlap image
+    msk = np.zeros((*mask.shape[:-1], 3))
+
+    # - Green channel - inner cell
+    inner_msk = deepcopy(mask)
+    inner_msk[inner_msk != 1] = 0
+    msk[..., 1] = inner_msk[..., 0]
+
+    # - Blue channel - contur of the cell
+    contur_msk = deepcopy(mask)
+    contur_msk[contur_msk != 2] = 0
+    msk[..., 2] = contur_msk[..., 0]
+
+    fig, ax = plt.subplots(figsize=figsize)
+    ax.imshow(image, cmap='gray')
+    ax.imshow(msk, alpha=0.3)
+    ax.set(title=title)
+
+    fig.suptitle(suptitle)
+
+    save_figure(figure=fig, save_file=save_file)
+
+    if isinstance(tensorboard_params, dict):
+        write_figure_to_tensorboard(
+            writer=tensorboard_params.get('writer'),
+            figure=fig,
+            tag=tensorboard_params.get('tag'),
+            step=tensorboard_params.get('step')
+        )
+
+    plt.close(fig)
+
+
+def plot_mask_error(image: np.ndarray, mask: np.ndarray, pred_mask: np.ndarray = None, suptitle: str = '', title: str = '', figsize: tuple = (20, 20), tensorboard_params: dict = None, save_file: pathlib.Path = None, overwrite: bool = False):
     # - Prepare the mask overlap image
     msk = np.zeros((*mask.shape[:-1], 3))
     msk[..., 2] = mask[..., 0]
@@ -813,11 +923,17 @@ def plot_image_mask(image: np.ndarray, mask: np.ndarray, pred_mask: np.ndarray =
 
     fig.suptitle(suptitle)
 
-    if isinstance(save_file, pathlib.Path) and (not save_file.is_file() or overwrite):
-        os.makedirs(save_file.parent, exist_ok=True)
-        plt.savefig(save_file)
+    save_figure(figure=fig, save_file=save_file)
 
-    return fig, ax
+    if isinstance(tensorboard_params, dict):
+        write_figure_to_tensorboard(
+            writer=tensorboard_params.get('writer'),
+            figure=fig,
+            tag=tensorboard_params.get('tag'),
+            step=tensorboard_params.get('step')
+        )
+
+    plt.close(fig)
 
 
 def monitor_seg_error(gt_masks: np.ndarray, pred_masks: np.ndarray, seg_measures: np.ndarray, images: np.ndarray = None, n_samples: int = 5, figsize: tuple = (20, 10), save_dir: str or pathlib.Path = './seg_errors'):
@@ -931,6 +1047,7 @@ def get_arg_parser():
     parser.add_argument('--debug', default=False, action='store_true', help=f'If the run is a debugging run')
     parser.add_argument('--gpu_id', type=int, default=0 if torch.cuda.device_count() > 0 else -1, help='The ID of the GPU (if there is any) to run the network on (e.g., --gpu_id 1 will run the network on GPU #1 etc.)')
 
+    parser.add_argument('--regular_mode', default=False, action='store_true', help=f'Regular mode where the augmentation is performed on-the-fly')
     parser.add_argument('--load_checkpoint', default=False, action='store_true', help=f'If to continue the training from the checkpoint saved at the checkpoint file')
     parser.add_argument('--lunch_tb', default=False, action='store_true', help=f'If to lunch tensorboard')
     parser.add_argument('--train_data_dir', type=str, default=TRAIN_DATA_DIR, help='The path to the train data file')
@@ -940,8 +1057,8 @@ def get_arg_parser():
     parser.add_argument('--masks_dir', type=str, default=MASKS_DIR, help='The path to the directory where the preprocessed masks are placed')
     parser.add_argument('--output_dir', type=str, default=OUTPUT_DIR, help='The path to the directory where the outputs will be placed')
 
-    parser.add_argument('--image_height', type=int, default=IMAGE_HEIGHT, help='The height of the images that will be used for network training and inference. If not specified, will be set to IMAGE_HEIGHT as in general_configs.py file.')
-    parser.add_argument('--image_width', type=int, default=IMAGE_WIDTH, help='The width of the images that will be used for network training and inference. If not specified, will be set to IMAGE_WIDTH as in general_configs.py file.')
+    parser.add_argument('--crop_height', type=int, default=CROP_HEIGHT, help='The height of the images that will be used for network training and inference. If not specified, will be set to IMAGE_HEIGHT as in general_configs.py file.')
+    parser.add_argument('--crop_width', type=int, default=CROP_WIDTH, help='The width of the images that will be used for network training and inference. If not specified, will be set to IMAGE_WIDTH as in general_configs.py file.')
 
     parser.add_argument('--in_channels', type=int, default=IN_CHANNELS, help='The number of channels in an input image (e.g., 3 for RGB, 1 for Grayscale etc)')
     parser.add_argument('--out_channels', type=int, default=OUT_CHANNELS, help='The number of channels in the output image (e.g., 3 for RGB, 1 for Grayscale etc)')
