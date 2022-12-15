@@ -397,8 +397,13 @@ def plot_categorical_masks(mask_files: list, output_dir: pathlib.Path):
     assert_pathable(argument=output_dir, argument_name='output_dir')
     os.makedirs(output_dir, exist_ok=True)
 
+    shp_dict = dict()
     for msk_fl in mask_files:
         inst_msk = load_image(image_file=str(msk_fl), add_channels=True)
+        if inst_msk.shape not in shp_dict.keys():
+            shp_dict[inst_msk.shape] = [msk_fl]
+        else:
+            shp_dict.get(inst_msk.shape).append(msk_fl)
 
         # - Apply the procedure for each cell separately
         bin_msks = split_instance_mask(instance_mask=inst_msk)

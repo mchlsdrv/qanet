@@ -731,12 +731,13 @@ def get_runtime(seconds: float):
 
 
 def merge_categorical_masks(masks: np.ndarray):
-    msk = np.zeros(masks.shape[1:])
+    msk = np.zeros(masks.shape[1:], dtype=np.float32)
     for cat_mks in masks:
         msk += cat_mks
 
     # - Fix the boundary if it was added several times from different cells
-    msk[msk > 2] = 2
+    msk[msk > 2.] = 2.
+    msk = msk.astype(np.float32)
 
     return msk
 
@@ -758,7 +759,7 @@ def split_instance_mask(instance_mask: np.ndarray, labels: np.ndarray or list = 
     lbls = lbls[lbls > 0]
 
     # - Convert the ground truth mask to one-hot class masks
-    bin_masks = []
+    bin_masks = [np.zeros_like(inst_msk)]
     for lbl in lbls:
         bin_class_mask = deepcopy(inst_msk)
         bin_class_mask[bin_class_mask != lbl] = 0
@@ -768,6 +769,53 @@ def split_instance_mask(instance_mask: np.ndarray, labels: np.ndarray or list = 
     bin_masks = np.array(bin_masks)
 
     return bin_masks
+
+
+def get_categorical_mask(binary_mask: np.ndarray):
+    # Shrinks the labels
+    inner_msk = grey_erosion(binary_mask, size=2)
+
+    # Create the contur of the cells
+    contur_msk = binary_mask - inner_msk
+    contur_msk[contur_msk > 0] = 2
+
+    # - Create the inner part of the cell
+    inner_msk[inner_msk > 0] = 1
+
+    # - Combine the inner and the contur masks to create the categorical mask with three classes, i.e., background 0, inner 1 and contur 2
+    cat_msk = inner_msk + contur_msk
+
+    return cat_msk
+
+
+def instance_2_categorical(masks: np.ndarray or list):
+    """
+    Converts an instance masks (i.e., where each cell is represented by a different color, to a mask with 3 classes, i.e.,
+        - 0 for background,
+        - 1 for the inner part of the cell
+        - 2 for cells' boundary
+    """
+    btch_cat_msks = []
+    for msk in masks:
+        # - Split the mask into binary masks of separate cells
+        bin_msks = split_instance_mask(instance_mask=msk)
+
+        # - For each binary cell - get a categorical mask
+        cat_msks = [np.zeros_like(msk)]
+        for bin_msk in bin_msks:
+            cat_msk = get_categorical_mask(binary_mask=bin_msk)
+            cat_msks.append(cat_msk)
+
+        # - Merge the categorical masks for each cell into a single categorical mask
+        mrgd_cat_msk = merge_categorical_masks(masks=np.array(cat_msks))
+
+        # - Add the categorical mask to the batch masks
+        btch_cat_msks.append(mrgd_cat_msk)
+
+    # - Convert to array
+    btch_cat_msks = np.array(btch_cat_msks, dtype=np.float32)
+
+    return btch_cat_msks
 
 
 def calc_seg_measure(gt_masks: np.ndarray, pred_masks: np.ndarray):
@@ -826,48 +874,6 @@ def calc_seg_measure(gt_masks: np.ndarray, pred_masks: np.ndarray):
         seg_measure = np.array([seg_measure])
 
     return seg_measure
-
-
-def get_categorical_mask(binary_mask: np.ndarray):
-    # Shrinks the labels
-    inner_msk = grey_erosion(binary_mask, size=2)
-
-    # Create the contur of the cells
-    contur_msk = binary_mask - inner_msk
-    contur_msk[contur_msk > 0] = 2
-
-    # - Create the inner part of the cell
-    inner_msk[inner_msk > 0] = 1
-
-    # - Combine the inner and the contur masks to create the categorical mask with three classes, i.e., background 0, inner 1 and contur 2
-    cat_msk = inner_msk + contur_msk
-
-    return cat_msk
-
-
-def instance_2_categorical(masks: np.ndarray or list):
-    """
-    Converts an instance masks (i.e., where each cell is represented by a different color, to a mask with 3 classes, i.e.,
-        - 0 for background,
-        - 1 for the inner part of the cell
-        - 2 for cells' boundary
-    """
-    btch_cat_msks = []
-    for msk in masks:
-        # - Split the mask into binary masks of separate cells
-        bin_msks = split_instance_mask(instance_mask=msk)
-
-        # - For each binary cell - get a categorical mask
-        cat_msks = []
-        for bin_msk in bin_msks:
-            cat_msks.append(get_categorical_mask(binary_mask=bin_msk))
-
-        # - Merge the categorical masks for each cell into a single categorical mask
-        mrgd_cat_msk = merge_categorical_masks(masks=np.array(cat_msks))
-
-        # - Add the categorical mask to the batch masks
-        btch_cat_msks.append(mrgd_cat_msk)
-    return np.array(btch_cat_msks)
 
 
 def plot_image_mask(image: np.ndarray, mask: np.ndarray, suptitle: str = '', title: str = '', figsize: tuple = (20, 20), tensorboard_params: dict = None, save_file: pathlib.Path = None, overwrite: bool = False):

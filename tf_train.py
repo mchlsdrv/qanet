@@ -7,6 +7,9 @@ from global_configs.general_configs import CONFIGS_DIR, SEG_DIR_POSTFIX, IMAGE_P
 from tensor_flow.utils.tf_utils import train_model, choose_gpu
 from utils.aux_funcs import get_arg_parser, get_runtime, get_logger, scan_files, load_images_from_tuple_list, err_log, clean_items_with_empty_masks, check_pathable
 
+os.environ['TF_FORCE_GPU_ALLOW_GROWTH'] = 'true'
+
+
 if __name__ == '__main__':
     t_start = time.time()
 
@@ -53,8 +56,7 @@ if __name__ == '__main__':
             data_tuples = load_images_from_tuple_list(data_file_tuples=fl_tupls)
 
             # - Clean data items with no objects in them
-            if not TEMP_TRAIN_DATA_FILE.parent.is_dir():
-                os.makedirs(TEMP_TRAIN_DATA_FILE.parent)
+            os.makedirs(TEMP_TRAIN_DATA_FILE.parent, exist_ok=True)
             data_tuples = clean_items_with_empty_masks(data_tuples=data_tuples, save_file=TEMP_TRAIN_DATA_FILE)
 
     # - Train the model

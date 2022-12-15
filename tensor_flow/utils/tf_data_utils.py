@@ -170,7 +170,17 @@ class DataLoader(tf.keras.utils.Sequence):
 
         # - Masks
         btch_msks_aug = instance_2_categorical(masks=btch_msks_aug)
-        btch_msks_aug = tf.convert_to_tensor(btch_msks_aug, dtype=tf.float32)
+        try:
+            btch_msks_aug = tf.convert_to_tensor(btch_msks_aug, dtype=tf.float32)
+        except Exception as err:
+            print(f'''
+            =======================================================
+            - {err}
+            =======================================================
+            - type(btch_msks_aug): {type(btch_msks_aug)}
+            - btch_msks_aug.shape: {btch_msks_aug.shape}
+            =======================================================
+            ''')
 
         return (btch_imgs_aug, btch_msks_aug), btch_js
 
