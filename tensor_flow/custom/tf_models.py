@@ -1,5 +1,4 @@
 import os
-import yaml
 from tqdm import tqdm
 import logging
 import time
@@ -8,11 +7,6 @@ import numpy as np
 import tensorflow as tf
 from tensorflow import keras
 from tensorflow.keras import layers
-import matplotlib.pyplot as plt
-from global_configs.general_configs import (
-    MODEL_CONFIGS_FILE,
-)
-from utils.aux_funcs import plot_image_mask, float_2_str
 
 from .tf_activations import (
     Swish
@@ -34,9 +28,9 @@ class RibCage(keras.Model):
             os.makedirs(self.output_dir)
 
         # - Open the models' configurations file
-        self.ribcage_configs = None
-        with MODEL_CONFIGS_FILE.open(mode='r') as config_file:
-            self.ribcage_configs = yaml.safe_load(config_file)
+        self.architecture = model_configs.get('architecture')
+        # with MODEL_CONFIGS_FILE.open(mode='r') as config_file:
+        #     self.architecture = yaml.safe_load(config_file)
 
         # - Build the model
         self.model = self.build_model()
@@ -86,7 +80,7 @@ class RibCage(keras.Model):
                 layers.Conv2D(filters=filters, kernel_size=kernel_size, padding='same', kernel_regularizer=self.kernel_regularizer),
                 layers.BatchNormalization(),
                 self.activation_layer,
-                layers.MaxPool2D(padding='same')
+                layers.MaxPool2D(padding='same'),
             ]
         )
 
@@ -101,7 +95,7 @@ class RibCage(keras.Model):
         )
 
     def build_model(self):
-        block_filters, block_kernel_sizes = self.ribcage_configs.get('conv2d_blocks')['out_channels'], self.ribcage_configs.get('conv2d_blocks')['kernel_sizes']
+        block_filters, block_kernel_sizes = self.architecture.get('conv2d_blocks')['out_channels'], self.architecture.get('conv2d_blocks')['kernel_sizes']
 
         input_left_rib = tmp_input_left_rib = keras.Input(self.input_image_dims + (1, ), name='input_left_rib')
         input_right_rib = tmp_input_right_rib = keras.Input(self.input_image_dims + (1, ), name='input_right_rib')
@@ -118,7 +112,7 @@ class RibCage(keras.Model):
                 ]
             )
 
-        layer_units, drop_rate = self.ribcage_configs.get('fc_blocks')['out_features'], self.ribcage_configs.get('fc_blocks')['drop_rate']
+        layer_units, drop_rate = self.architecture.get('fc_blocks')['out_features'], self.architecture.get('fc_blocks')['drop_rate']
         fc_layer = keras.layers.Flatten()(input_spine)
         for units in layer_units:
             fc_layer = self._build_fully_connected_block(units=units, drop_rate=drop_rate)(fc_layer)

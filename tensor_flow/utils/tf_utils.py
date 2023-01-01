@@ -1,4 +1,5 @@
 import os
+import numpy as np
 from functools import partial
 import logging
 import logging.config
@@ -6,30 +7,15 @@ import threading
 import multiprocessing as mlp
 import pathlib
 
-import numpy as np
 import tensorflow as tf
 from keras import backend as K
 
 from global_configs.general_configs import (
-    METRICS,
-    EARLY_STOPPING,
-    EARLY_STOPPING_MONITOR,
-    EARLY_STOPPING_MIN_DELTA,
-    EARLY_STOPPING_PATIENCE,
-    EARLY_STOPPING_MODE,
-    EARLY_STOPPING_RESTORE_BEST_WEIGHTS,
-    EARLY_STOPPING_VERBOSE,
-    REDUCE_LR_ON_PLATEAU,
-    REDUCE_LR_ON_PLATEAU_MONITOR,
-    REDUCE_LR_ON_PLATEAU_FACTOR,
-    REDUCE_LR_ON_PLATEAU_PATIENCE,
-    REDUCE_LR_ON_PLATEAU_MIN_DELTA,
-    REDUCE_LR_ON_PLATEAU_COOLDOWN,
-    REDUCE_LR_ON_PLATEAU_MIN_LR,
-    REDUCE_LR_ON_PLATEAU_MODE,
-    REDUCE_LR_ON_PLATEAU_VERBOSE,
-    DATA_ROOT_DIR,
-    SEG_DIR_POSTFIX, IMAGE_PREFIX, SEG_PREFIX, TEST_DATA_DIR
+    SEG_DIR_POSTFIX,
+    IMAGE_PREFIX,
+    SEG_PREFIX,
+    LAUNCH_TB,
+    METRICS, REDUCE_LR_ON_PLATEAU_VERBOSE,
 )
 from tensor_flow.configs.general_configs import (
     TENSOR_BOARD,
@@ -46,14 +32,12 @@ from tensor_flow.configs.general_configs import (
     CHECKPOINT_MODE,
     CHECKPOINT_SAVE_BEST_ONLY,
     CHECKPOINT_VERBOSE,
-    TERMINATE_ON_NAN,
 )
 from utils.aux_funcs import (
-    check_file,
     info_log,
     warning_log,
     err_log,
-    scan_files
+    scan_files, get_data_dict, clean_items_with_empty_masks
 )
 from .tf_data_utils import get_data_loaders, DataLoader
 from ..custom.tf_models import (
@@ -63,6 +47,17 @@ from ..custom.tf_models import (
 from ..custom.tf_callbacks import (
     ProgressLogCallback
 )
+
+
+class DropBlock(tf.keras.layers.Layer):
+    def __init__(self):
+        super().__init__()
+
+    def build(self, input_shape):
+        pass
+
+    def call(self, inputs):
+        pass
 
 
 class WeightedMSE:
@@ -134,7 +129,7 @@ def weighted_mse(true, pred):
     return K.mean(K.sum(btch_weights * K.square(true-pred)))
 
 
-def get_callbacks(callback_type: str, output_dir: pathlib.Path, logger: logging.Logger = None):
+def get_callbacks(callback_type: str, hyper_parameters: dict, output_dir: pathlib.Path, logger: logging.Logger = None):
     callbacks = []
     # -------------------
     # Built-in  callbacks
@@ -164,33 +159,33 @@ def get_callbacks(callback_type: str, output_dir: pathlib.Path, logger: logging.
                 target=lambda: os.system(f'tensorboard --logdir={output_dir}'),
             )
 
-    if EARLY_STOPPING:
+    if hyper_parameters.get('training')['early_stopping']:
         callbacks.append(
             tf.keras.callbacks.EarlyStopping(
-                monitor=EARLY_STOPPING_MONITOR,
-                min_delta=EARLY_STOPPING_MIN_DELTA,
-                patience=EARLY_STOPPING_PATIENCE,
-                mode=EARLY_STOPPING_MODE,
-                restore_best_weights=EARLY_STOPPING_RESTORE_BEST_WEIGHTS,
-                verbose=EARLY_STOPPING_VERBOSE,
+                monitor=hyper_parameters.get('training')['early_stopping_monitor'],
+                min_delta=hyper_parameters.get('training')['early_stopping_min_delta'],
+                patience=hyper_parameters.get('training')['early_stopping_patience'],
+                mode=hyper_parameters.get('training')['early_stopping_mode'],
+                restore_best_weights=hyper_parameters.get('training')['early_stopping_restore_best_weights'],
+                verbose=hyper_parameters.get('training')['early_stopping_verbose'],
             )
         )
 
-    if TERMINATE_ON_NAN:
+    if hyper_parameters.get('training')['terminate_on_nan']:
         callbacks.append(
             tf.keras.callbacks.TerminateOnNaN()
         )
 
-    if REDUCE_LR_ON_PLATEAU:
+    if hyper_parameters.get('training')['reduce_lr_on_plateau']:
         callbacks.append(
             tf.keras.callbacks.ReduceLROnPlateau(
-                monitor=REDUCE_LR_ON_PLATEAU_MONITOR,
-                factor=REDUCE_LR_ON_PLATEAU_FACTOR,
-                patience=REDUCE_LR_ON_PLATEAU_PATIENCE,
-                min_delta=REDUCE_LR_ON_PLATEAU_MIN_DELTA,
-                cooldown=REDUCE_LR_ON_PLATEAU_COOLDOWN,
-                min_lr=REDUCE_LR_ON_PLATEAU_MIN_LR,
-                mode=REDUCE_LR_ON_PLATEAU_MODE,
+                monitor=hyper_parameters.get('training')['reduce_lr_on_plateau_monitor'],
+                factor=hyper_parameters.get('training')['reduce_lr_on_plateau_factor'],
+                patience=hyper_parameters.get('training')['reduce_lr_on_plateau_patience'],
+                min_delta=hyper_parameters.get('training')['reduce_lr_on_plateau_min_delta'],
+                cooldown=hyper_parameters.get('training')['reduce_lr_on_plateau_cooldown'],
+                min_lr=hyper_parameters.get('training')['reduce_lr_on_plateau_min_lr'],
+                mode=hyper_parameters.get('training')['reduce_lr_on_plateau_mode'],
                 verbose=REDUCE_LR_ON_PLATEAU_VERBOSE,
             )
         )
@@ -342,131 +337,143 @@ def choose_gpu(gpu_id: int = 0, logger: logging.Logger = None):
                 logger.exception(err)
 
 
-def train_model(data_tuples: np.ndarray or list, file_tuples: np.ndarray or list, args, output_dir: pathlib.Path or str, logger: logging.Logger = None):
+def train_model(data_dict: dict, hyper_parameters: dict, output_dir: pathlib.Path or str, logger: logging.Logger = None):
     # if data_tuples.any():
     # MODEL
     # -1- Build the model and optionally load the weights
     model, weights_loaded = get_model(
         model_configs=dict(
-            load_checkpoint=args.load_checkpoint,
-            input_image_dims=(args.crop_height, args.crop_width),
+            load_checkpoint=hyper_parameters.get('training')['load_checkpoint'],
+            input_image_dims=(hyper_parameters.get('augmentations')['crop_height'], hyper_parameters.get('augmentations')['crop_width']),
             drop_block=dict(
-                use=args.drop_block,
-                keep_prob=args.drop_block_keep_prob,
-                block_size=args.drop_block_block_size
+                use=hyper_parameters.get('model')['drop_block'],
+                keep_prob=hyper_parameters.get('model')['drop_block_keep_prob'],
+                block_size=hyper_parameters.get('model')['drop_block_block_size']
             ),
+            architecture=hyper_parameters.get('model')['architecture'],
             kernel_regularizer=dict(
-                type=args.kernel_regularizer_type,
-                l1=args.kernel_regularizer_l1,
-                l2=args.kernel_regularizer_l2,
-                factor=args.kernel_regularizer_factor,
-                mode=args.kernel_regularizer_mode
+                type=hyper_parameters.get('model')['kernel_regularizer_type'],
+                l1=hyper_parameters.get('model')['kernel_regularizer_l1'],
+                l2=hyper_parameters.get('model')['kernel_regularizer_l2'],
+                factor=hyper_parameters.get('model')['kernel_regularizer_factor'],
+                mode=hyper_parameters.get('model')['kernel_regularizer_mode']
             ),
             activation=dict(
-                type=args.activation,
-                max_value=args.activation_relu_max_value,
-                negative_slope=args.activation_relu_negative_slope,
-                threshold=args.activation_relu_threshold,
-                alpha=args.activation_leaky_relu_alpha
+                type=hyper_parameters.get('model')['activation'],
+                max_value=hyper_parameters.get('model')['activation_relu_max_value'],
+                negative_slope=hyper_parameters.get('model')['activation_relu_negative_slope'],
+                threshold=hyper_parameters.get('model')['activation_relu_threshold'],
+                alpha=hyper_parameters.get('model')['activation_leaky_relu_alpha']
             )
         ),
         compilation_configs=dict(
-            algorithm=args.optimizer,
-            learning_rate=args.optimizer_lr,
-            weighted_loss=args.weighted_loss,
-            rho=args.optimizer_rho,
-            beta_1=args.optimizer_beta_1,
-            beta_2=args.optimizer_beta_2,
-            amsgrad=args.optimizer_amsgrad,
-            momentum=args.optimizer_momentum,
-            nesterov=args.optimizer_nesterov,
-            centered=args.optimizer_centered,
+            algorithm=hyper_parameters.get('training')['optimizer'],
+            learning_rate=hyper_parameters.get('training')['optimizer_lr'],
+            weighted_loss=hyper_parameters.get('training')['weighted_loss'],
+            rho=hyper_parameters.get('training')['optimizer_rho'],
+            beta_1=hyper_parameters.get('training')['optimizer_beta_1'],
+            beta_2=hyper_parameters.get('training')['optimizer_beta_2'],
+            amsgrad=hyper_parameters.get('training')['optimizer_amsgrad'],
+            momentum=hyper_parameters.get('training')['optimizer_momentum'],
+            nesterov=hyper_parameters.get('training')['optimizer_nesterov'],
+            centered=hyper_parameters.get('training')['optimizer_centered'],
         ),
-        checkpoint_dir=pathlib.Path(args.tf_checkpoint_dir),
+        checkpoint_dir=pathlib.Path(hyper_parameters.get('training')['tf_checkpoint_dir']),
         output_dir=output_dir,
         logger=logger
     )
 
     # - Get the train and the validation data loaders
     train_dl, val_dl = get_data_loaders(
-        mode='regular' if args.regular_mode else 'fast',
-        crop_height=args.crop_height,
-        crop_width=args.crop_width,
-        data_tuples=data_tuples,
-        file_tuples=file_tuples,
-        train_batch_size=args.batch_size,
-        val_prop=args.val_prop,
-        masks_dir=args.masks_dir,
+        mode='regular' if hyper_parameters.get('training')['in_train_augmentation'] else 'fast',
+        data_dict=data_dict,
+        image_height=hyper_parameters.get('data')['image_height'],
+        image_width=hyper_parameters.get('data')['image_width'],
+        crop_height=hyper_parameters.get('augmentations')['crop_height'],
+        crop_width=hyper_parameters.get('augmentations')['crop_width'],
+        train_batch_size=hyper_parameters.get('training')['batch_size'],
+        val_prop=hyper_parameters.get('training')['val_prop'],
+        masks_dir=hyper_parameters.get('data')['train_mask_dir'],
         logger=logger
     )
 
     # - Get the callbacks and optionally the thread which runs the tensorboard
     callbacks, tb_prc = get_callbacks(
         callback_type='train',
+        hyper_parameters=hyper_parameters,
         output_dir=output_dir,
         logger=logger
     )
 
     # - If the setting is to launch the tensorboard process automatically
-    if tb_prc is not None and args.lunch_tb:
+    if tb_prc is not None and LAUNCH_TB:
         tb_prc.start()
 
     # - Train -
     model.fit(
         train_dl,
-        batch_size=args.batch_size,
+        batch_size=hyper_parameters.get('training')['batch_size'],
         validation_data=val_dl,
         shuffle=True,
-        epochs=args.epochs,
+        epochs=hyper_parameters.get('training')['epochs'],
         callbacks=callbacks
     )
 
     # -> If the setting is to launch the tensorboard process automatically
-    if tb_prc is not None and args.lunch_tb:
+    if tb_prc is not None and LAUNCH_TB:
         tb_prc.join()
-    # else:
-    #     err_log(logger=logger, message=f'No train data was found!')
 
 
-def test_model(model, data_file, file_tuples, args, output_dir: pathlib.Path, logger: logging.Logger = None):
-    if check_file(file_path=args.test_data_file):
-        # -  Load the test data
-        fl_tupls = scan_files(
-            root_dir=DATA_ROOT_DIR / f'test/{TEST_DATA_DIR}',
-            seg_dir_postfix=SEG_DIR_POSTFIX,
-            image_prefix=IMAGE_PREFIX,
-            seg_prefix=SEG_PREFIX
-        )
+def test_model(model, data_file, file_tuples, hyper_parameters: dict, output_dir: pathlib.Path, logger: logging.Logger = None):
+    # -  Load the test data
+    fl_tupls = scan_files(
+        root_dir=pathlib.Path(hyper_parameters.get('training')['test_data_dir']),
+        seg_dir_postfix=SEG_DIR_POSTFIX,
+        image_prefix=IMAGE_PREFIX,
+        seg_prefix=SEG_PREFIX
+    )
 
-        # - Get the GT data loader
-        test_dl = DataLoader(
-            data_tuples=fl_tupls,
-            file_tuples=file_tuples,
-            batch_size=1,
-            logger=logger
-        )
+    np.random.shuffle(fl_tupls)
 
-        # -> Get the callbacks and optionally the thread which runs the tensorboard
-        callbacks, tb_prc = get_callbacks(
-            callback_type='test',
-            output_dir=output_dir,
-            logger=logger
-        )
+    # - Load images and their masks
+    data_dict = get_data_dict(data_file_tuples=fl_tupls)
 
-        # -> If the setting is to launch the tensorboard process automatically
-        if tb_prc is not None and args.lunch_tb:
-            tb_prc.start()
+    # - Clean data items with no objects in them
+    data_dict = clean_items_with_empty_masks(data_dict=data_dict, save_file=data_file)
 
-        # -> Run the test
-        print(f'> Testing ...')
-        model.evaluate(
-            test_dl,
-            verbose=1,
-            callbacks=callbacks
-        )
+    # - Get the GT data loader
+    test_dl = DataLoader(
+        mode='test',
+        data_dict=data_dict,
+        file_keys=data_dict.keys(),
+        crop_height=hyper_parameters.get('training')['crop_height'],
+        crop_width=hyper_parameters.get('training')['crop_width'],
+        batch_size=hyper_parameters.get('training')['train_batch_size'],
+        calculate_seg_measure=hyper_parameters.get('training')['image_height'] > hyper_parameters.get('training')['crop_height'] or hyper_parameters.get('training')['image_width'] > hyper_parameters.get('training')['crop_width'],
+        masks_dir=hyper_parameters.get('training')['test_mask_dir'],
+        logger=logger
+    )
 
-        # -> If the setting is to launch the tensorboard process automatically
-        if tb_prc is not None and args.lunch_tb:
-            tb_prc.join()
-    else:
-        err_log(logger=logger, message=f'No test data was found!')
+    # -> Get the callbacks and optionally the thread which runs the tensorboard
+    callbacks, tb_prc = get_callbacks(
+        callback_type='test',
+        hyper_parameters=hyper_parameters,
+        output_dir=output_dir,
+        logger=logger
+    )
+
+    # -> If the setting is to launch the tensorboard process automatically
+    if tb_prc is not None and LAUNCH_TB:
+        tb_prc.start()
+
+    # -> Run the test
+    print(f'> Testing ...')
+    model.evaluate(
+        test_dl,
+        verbose=1,
+        callbacks=callbacks
+    )
+
+    # -> If the setting is to launch the tensorboard process automatically
+    if tb_prc is not None and LAUNCH_TB:
+        tb_prc.join()

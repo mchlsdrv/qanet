@@ -1,13 +1,46 @@
+import argparse
 import os
 import pathlib
 import time
 import datetime
-import numpy as np
-from global_configs.general_configs import CONFIGS_DIR, SEG_DIR_POSTFIX, IMAGE_PREFIX, SEG_PREFIX, SEG_SUB_DIR, TEMP_TRAIN_DATA_FILE, TRAIN_DATA_DIR
+
+import yaml
+
+from global_configs.general_configs import (
+    CONFIGS_DIR,
+)
 from tensor_flow.utils.tf_utils import train_model, choose_gpu
-from utils.aux_funcs import get_arg_parser, get_runtime, get_logger, scan_files, load_images_from_tuple_list, err_log, clean_items_with_empty_masks, check_pathable
+from utils.aux_funcs import (
+    get_arg_parser,
+    get_runtime,
+    get_logger,
+    err_log,
+    get_data
+)
 
 os.environ['TF_FORCE_GPU_ALLOW_GROWTH'] = 'true'
+
+
+def update_hyper_parameters(hyper_parameters: dict, arguments: argparse.Namespace):
+    # - Get hyper-parameter names
+    hyp_param_categories = list(hyper_parameters.keys())
+
+    # - Get the argument names
+    args = vars(arguments)
+    arg_names = list(args.keys())
+
+    # - For each argument
+    for arg_name in arg_names:
+        for hyp_param_cat in hyp_param_categories:
+            # - Get the hyperparameter names fo the category
+            hyp_param_names = hyper_parameters.get(hyp_param_cat)
+
+            # - If the argument name is in hyperparameter names for the current category
+            if arg_name in hyp_param_names and args.get(arg_name) is not None:
+                # - Update it with the relevant value
+                hyper_parameters.get(hyp_param_cat)[arg_name] = args.get(arg_name)
+
+    return hyp_params_dict
 
 
 if __name__ == '__main__':
@@ -19,9 +52,25 @@ if __name__ == '__main__':
     parser = get_arg_parser()
     args = parser.parse_args()
 
+    # - Get hyperparameters
+    hyp_params_fl = pathlib.Path(args.hyper_params_file)
+    hyp_params_dict = yaml.safe_load(hyp_params_fl.open(mode='r').read())
+
+    # - Update the hyperparameters with the parsed arguments
+    hyp_params_dict = update_hyper_parameters(hyper_parameters=hyp_params_dict, arguments=args)
+
     # - Create the directory for the current run
-    current_run_dir = pathlib.Path(args.output_dir) / f'train/tensor_flow_{ts}'
-    os.makedirs(current_run_dir, exist_ok=True)
+    if hyp_params_dict.get('training')['load_checkpoint']:
+        current_run_dir = pathlib.Path(hyp_params_dict.get('training')['tf_checkpoint_dir']).parent
+    else:
+        current_run_dir = pathlib.Path(hyp_params_dict.get('general')['output_dir']) / f'train/tensor_flow_{args.name}_{ts}'
+        os.makedirs(current_run_dir)
+
+    # - Save the updated hyperparameters to the current run directory
+    yaml.dump(
+        hyp_params_dict,
+        (current_run_dir / 'hyper_params.yml').open(mode='w')
+    )
 
     # - Configure the logger
     logger = get_logger(
@@ -36,30 +85,12 @@ if __name__ == '__main__':
     ''')
 
     # - Load the data
-    fl_tupls = scan_files(
-        root_dir=TRAIN_DATA_DIR,
-        seg_dir_postfix=SEG_DIR_POSTFIX,
-        image_prefix=IMAGE_PREFIX,
-        seg_prefix=SEG_PREFIX,
-        seg_sub_dir=SEG_SUB_DIR
+    data_dict = get_data(
+        data_file=hyp_params_dict.get('data')['train_temp_data_file'],
+        data_dir=hyp_params_dict.get('data')['train_data_dir'],
+        masks_dir=hyp_params_dict.get('data')['train_mask_dir'],
+        logger=logger
     )
-
-    np.random.shuffle(fl_tupls)
-
-    # - Load the data
-    data_tuples = []
-    if not check_pathable(path=args.masks_dir) or args.regular_mode:
-        if TEMP_TRAIN_DATA_FILE.is_file():
-            data_tuples = np.load(TEMP_TRAIN_DATA_FILE, allow_pickle=True)
-        else:
-            # - Load images and their masks
-            data_tuples = load_images_from_tuple_list(data_file_tuples=fl_tupls)
-
-            # - Clean data items with no objects in them
-            os.makedirs(TEMP_TRAIN_DATA_FILE.parent, exist_ok=True)
-            data_tuples = clean_items_with_empty_masks(data_tuples=data_tuples, save_file=TEMP_TRAIN_DATA_FILE)
-
-    # - Train the model
 
     # - Configure the GPU to run on
     choose_gpu(gpu_id=args.gpu_id, logger=logger)
@@ -67,13 +98,12 @@ if __name__ == '__main__':
     # - Train model
     trained_model = None
     print(f'''
-    > Training on {len(data_tuples)} examples ...
+    > Training on {len(data_dict)} examples ...
     ''')
     try:
         trained_model = train_model(
-            data_tuples=data_tuples if not args.debug else data_tuples[:50],
-            file_tuples=fl_tupls,
-            args=args,
+            data_dict=data_dict,
+            hyper_parameters=hyp_params_dict,
             output_dir=current_run_dir,
             logger=logger
         )

@@ -9,7 +9,7 @@ import tensorflow as tf
 import logging
 
 from global_configs.general_configs import (
-    VAL_BATCH_SIZE, IMAGE_HEIGHT, IMAGE_WIDTH,
+    VAL_BATCH_SIZE
 )
 
 from utils import augs
@@ -77,11 +77,12 @@ class DataLoader(tf.keras.utils.Sequence):
     (*) To use this mode provide the images_root and masks_root arguments are valid pathable objects (i.e., pathlib.Path or str) containing the path to the
     root_dir in the aforementioned format.
     """
-    def __init__(self, mode: str, crop_height: int, crop_width: int, data_tuples: np.ndarray or list, file_tuples: np.ndarray or list, batch_size: int, calculate_seg_measure: bool = True, masks_dir: pathlib.Path or str = None, logger: logging = None):
+    def __init__(self, mode: str, data_dict: dict, file_keys: list, crop_height: int, crop_width: int, batch_size: int, calculate_seg_measure: bool = True, masks_dir: pathlib.Path or str = None, logger: logging = None):
         self.mode = mode
         self.calc_seg_measure = calculate_seg_measure
 
-        self.image_mask_tuples = data_tuples
+        self.data_dict = data_dict
+        self.file_keys = np.array(file_keys, dtype=object)
 
         # - Ensure the batch_size is positive
         self.batch_size = batch_size if batch_size > 0 else 1
@@ -91,12 +92,11 @@ class DataLoader(tf.keras.utils.Sequence):
         self.transforms = augs.transforms(crop_height=crop_height, crop_width=crop_width)
 
         # - In case the masks are made in advance, in which case there is no need for the self.mask_augs
-        self.file_tuples = file_tuples
         # self.image_files = np.array([fl_tpl[0] for fl_tpl in file_tuples], dtype=object)
         self.masks_dir = str_2_path(path=masks_dir)
         self.n_masks = 0 if not check_pathable(path=self.masks_dir) else len(get_files_under_dir(dir_path=self.masks_dir))
 
-        self.n_images = len(self.file_tuples)
+        self.n_images = len(self.file_keys)
 
         self.logger = logger
 
@@ -129,25 +129,18 @@ class DataLoader(tf.keras.utils.Sequence):
         btch_msks_aug = []
         btch_js = []
 
-        for img_fl, msk_fl in self.file_tuples[start_index:end_index]:
-            # <1> Load the image
-            img = load_image(image_file=img_fl, add_channels=True)
+        for img_fl in self.file_keys[start_index:end_index]:
+            img, _, msk_gt = self.data_dict.get(img_fl)
             img = img.astype(np.uint8)
+            msk_gt = msk_gt.astype(np.uint8)
 
             # <2> Get the random augmentation and the corresponding seg measure
             msk, j = get_random_mask(masks_root=self.masks_dir, image_file=img_fl)
             msk = msk.astype(np.uint8)
 
-            # <1.2> Load the gt mask
-            msk_gt = msk
-            if self.calc_seg_measure:
-                msk_gt = load_image(image_file=msk_fl, add_channels=True)
-                msk_gt = msk_gt.astype(np.uint8)
-
             # <3> Perform the image transformations
             aug_res = self.transforms(image=img.astype(np.uint8), mask=msk, mask0=msk_gt)
             img_aug, msk_aug, msk_gt = aug_res.get('image'), aug_res.get('mask'), aug_res.get('mask0')
-            btch_msks_gt.append(msk_gt)
 
             # <4> Perform image and mask augmentations
             aug_res = self.image_mask_augs(image=img_aug.astype(np.uint8), mask=msk_aug.astype(np.uint8))
@@ -155,8 +148,10 @@ class DataLoader(tf.keras.utils.Sequence):
 
             # - Add the data to the corresponding lists
             btch_imgs_aug.append(img_aug)
+            btch_msks_gt.append(msk_gt)
             btch_msks_aug.append(msk_aug)
             btch_js.append(j)
+
         # - Convert to tensors
 
         # - Images
@@ -231,33 +226,32 @@ class DataLoader(tf.keras.utils.Sequence):
         return (btch_imgs_aug, btch_msks_dfrmd), btch_js
 
 
-def get_data_loaders(mode: str, crop_height, crop_width, data_tuples: list or np.ndarray, file_tuples: list or np.ndarray, masks_dir, train_batch_size: int, val_prop: float = .2, logger: logging.Logger = None):
+def get_data_loaders(mode: str, data_dict: dict, image_height: int, image_width: int, crop_height: int, crop_width: int, masks_dir: pathlib.Path or str, train_batch_size: int, val_prop: float = .2, logger: logging.Logger = None):
     train_dl = val_dl = test_dl = inf_dl = None
-    train_data, val_data = get_train_val_split(data_list=data_tuples, val_prop=val_prop, logger=logger)
-    train_files, val_files = get_train_val_split(data_list=file_tuples, val_prop=val_prop, logger=logger)
+    train_files, val_files = get_train_val_split(data_list=list(data_dict.keys()), val_prop=val_prop, logger=logger)
 
     # - Create the DataLoader object
     train_dl = DataLoader(
         mode=mode,
+        data_dict=data_dict,
+        file_keys=train_files,
         crop_height=crop_height,
         crop_width=crop_width,
-        data_tuples=train_data,
-        file_tuples=train_files,
         batch_size=train_batch_size,
-        calculate_seg_measure=IMAGE_HEIGHT > crop_height or IMAGE_WIDTH > crop_width,
+        calculate_seg_measure=image_height > crop_height or image_width > crop_width,
         masks_dir=masks_dir,
         logger=logger
     )
 
-    if len(val_data) > 0 or len(val_files) > 0:
+    if len(val_files) > 0:
         val_dl = DataLoader(
             mode=mode,
+            data_dict=data_dict,
+            file_keys=val_files,
             crop_height=crop_height,
             crop_width=crop_width,
-            data_tuples=val_data,
-            file_tuples=val_files,
             batch_size=VAL_BATCH_SIZE,
-            calculate_seg_measure=IMAGE_HEIGHT > crop_height or IMAGE_WIDTH > crop_width,
+            calculate_seg_measure=image_height > crop_height or image_width > crop_width,
             masks_dir=masks_dir,
             logger=logger
         )

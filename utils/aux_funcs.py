@@ -24,45 +24,46 @@ from scipy.stats import pearsonr
 from tqdm import tqdm
 
 from global_configs.general_configs import (
-    OUTPUT_DIR,
-    CROP_WIDTH,
-    CROP_HEIGHT,
-    IN_CHANNELS,
-    OUT_CHANNELS,
-    EPOCHS,
-    TRAIN_BATCH_SIZE,
-    VAL_PROP,
-    OPTIMIZER_LR,
-    OPTIMIZER_LR_DECAY,
-    OPTIMIZER_BETA_1,
-    OPTIMIZER_BETA_2,
-    OPTIMIZER_RHO,
-    OPTIMIZER_WEIGHT_DECAY,
-    OPTIMIZER_MOMENTUM,
-    OPTIMIZER_DAMPENING,
-    OPTIMIZER_MOMENTUM_DECAY,
-    OPTIMIZER,
-    DROP_BLOCK_KEEP_PROB,
-    DROP_BLOCK_BLOCK_SIZE,
-    KERNEL_REGULARIZER_TYPE,
-    KERNEL_REGULARIZER_L1,
-    KERNEL_REGULARIZER_L2,
-    KERNEL_REGULARIZER_FACTOR,
-    KERNEL_REGULARIZER_MODE,
-    ACTIVATION,
-    ACTIVATION_RELU_MAX_VALUE,
-    ACTIVATION_RELU_NEGATIVE_SLOPE,
-    ACTIVATION_RELU_THRESHOLD,
-    ACTIVATION_LEAKY_RELU_ALPHA,
-    INFERENCE_DATA_DIR,
+    # OUTPUT_DIR,
+    # CROP_WIDTH,
+    # CROP_HEIGHT,
+    # IN_CHANNELS,
+    # OUT_CHANNELS,
+    # EPOCHS,
+    # TRAIN_BATCH_SIZE,
+    # VAL_PROP,
+    # OPTIMIZER_LR,
+    # OPTIMIZER_LR_DECAY,
+    # OPTIMIZER_BETA_1,
+    # OPTIMIZER_BETA_2,
+    # OPTIMIZER_RHO,
+    # OPTIMIZER_WEIGHT_DECAY,
+    # OPTIMIZER_MOMENTUM,
+    # OPTIMIZER_DAMPENING,
+    # OPTIMIZER_MOMENTUM_DECAY,
+    # OPTIMIZER,
+    # DROP_BLOCK_KEEP_PROB,
+    # DROP_BLOCK_BLOCK_SIZE,
+    # KERNEL_REGULARIZER_TYPE,
+    # KERNEL_REGULARIZER_L1,
+    # KERNEL_REGULARIZER_L2,
+    # KERNEL_REGULARIZER_FACTOR,
+    # KERNEL_REGULARIZER_MODE,
+    # ACTIVATION,
+    # ACTIVATION_RELU_MAX_VALUE,
+    # ACTIVATION_RELU_NEGATIVE_SLOPE,
+    # ACTIVATION_RELU_THRESHOLD,
+    # ACTIVATION_LEAKY_RELU_ALPHA,
+    # INFERENCE_DATA_DIR,
     MIN_CELL_PIXELS,
-    TRAIN_DATA_DIR,
-    TEST_DATA_DIR,
-    MASKS_DIR,
+    # TRAIN_DATA_DIR,
+    # TEST_DATA_DIR,
+    # MASKS_DIR,
+    SEG_DIR_POSTFIX, IMAGE_PREFIX, SEG_PREFIX, SEG_SUB_DIR, HYPER_PARAMS_FILE,
 )
 
-from pytorch.configs import general_configs as tr_configs
-from tensor_flow.configs import general_configs as tf_configs
+# from pytorch.configs import general_configs as tr_configs
+# from tensor_flow.configs import general_configs as tf_configs
 import warnings
 
 mpl.use('Agg')  # <= avoiding the "Tcl_AsyncDelete: async handler deleted by the wrong thread" exception
@@ -367,7 +368,16 @@ def get_files_under_dir(dir_path: pathlib.Path or str):
 
 
 def str_2_path(path: str):
-    return pathlib.Path(path) if isinstance(path, str) else path
+    assert_pathable(argument=path, argument_name='path')
+
+    path = pathlib.Path(path) if isinstance(path, str) else path
+
+    if path.is_dir():
+        os.makedirs(path, exist_ok=True)
+    else:
+        os.makedirs(path.parent, exist_ok=True)
+
+    return path
 
 
 def save_figure(figure, save_file: pathlib.Path or str, overwrite: bool = False, close_figure: bool = False, verbose: bool = False, logger: logging.Logger = None):
@@ -638,10 +648,8 @@ def scan_files(root_dir: pathlib.Path or str, seg_dir_postfix: str, image_prefix
     return file_tuples
 
 
-def load_images_from_tuple_list(data_file_tuples: list):
-    imgs = []
-    msks = []
-
+def get_data_dict(data_file_tuples: list):
+    data_dict = dict()
     print('''
     ====================================================
     == Loading images and corresponding segmentations ==
@@ -659,56 +667,77 @@ def load_images_from_tuple_list(data_file_tuples: list):
         if len(msk.shape) < 3:
             msk = np.expand_dims(msk, axis=-1)
 
-        # # - Check if there are enough cells in the segmentation
-        # bin_msk = deepcopy(msk)
-        # bin_msk[bin_msk > 0] = 1
-        #
-        # if bin_msk.sum() > MIN_CELL_PIXELS:
-        imgs.append(img)
-        msks.append(msk)
-
-    data_tuples = np.array(list(zip(imgs, msks)), dtype=object)
+        data_dict[str(img_fl)] = (img, str(msk_fl), msk)
 
     print(f'''
     =========
     = Stats =
     =========
-    - Total data items: {len(data_tuples)}
+    - Total data items: {len(data_dict)}
     ''')
 
-    return data_tuples
+    return data_dict
 
 
-def clean_items_with_empty_masks(data_tuples: list, save_file: pathlib.Path = None):
+def get_relevant_data(data_dict: dict, relevant_files: list, save_file: pathlib.Path = None, logger: logging.Logger = None):
+    print('''
+    ==================================
+    == Cleaning non-existing images ==
+    ==================================
+    ''')
+    data_tuples_pbar = tqdm(data_dict)
+    relevant_data_dict = dict()
+    for img_fl_key in data_tuples_pbar:
+        # - Unpack the data
+        img_fl = pathlib.Path(img_fl_key)
+        img_parent_dir = get_parent_dir_name(path=img_fl)
+        img_name = get_file_name(path=img_fl)
+
+        if f'{img_parent_dir}_{img_name}' in relevant_files:
+            relevant_data_dict[img_fl_key] = data_dict.get(img_fl_key)
+
+    to_pickle(data=relevant_data_dict, save_file=save_file, logger=logger)
+
+    print(f'''
+    =========
+    = Stats =
+    =========
+    - {len(data_dict) - len(relevant_data_dict)} items were filtered
+    - Total clean data items: {len(relevant_data_dict)}
+    ''')
+    return relevant_data_dict
+
+
+def clean_items_with_empty_masks(data_dict: dict, save_file: pathlib.Path = None, logger: logging.Logger = None):
     print('''
     ==========================================
     == Cleaning data items with empty masks ==
     ==========================================
     ''')
-    data_tuples_pbar = tqdm(data_tuples)
-    clean_imgs, clean_msks = list(), list()
-    for img, msk in data_tuples_pbar:
+    data_tuples_pbar = tqdm(data_dict)
+    clean_data_dict = dict()
+    for img_fl_key in data_tuples_pbar:
+        # - Unpack the data
+        img, msk_fl, msk = data_dict.get(img_fl_key)
+
+        # - Construct the binary mask
         bin_msk = deepcopy(msk)
         bin_msk[bin_msk > 0] = 1
 
         # - Check if there are enough cells in the segmentation
         if bin_msk.sum() > MIN_CELL_PIXELS:
-            clean_imgs.append(img)
-            clean_msks.append(msk)
+            clean_data_dict[str(img_fl_key)] = (img, str(msk_fl), msk)
 
-    clean_data_tuples = np.array(list(zip(clean_imgs, clean_msks)), dtype=object)
-    if isinstance(save_file, pathlib.Path):
-        os.makedirs(save_file.parent, exist_ok=True)
-        np.save(str(save_file), clean_data_tuples)
+    to_pickle(data=clean_data_dict, save_file=save_file, logger=logger)
 
     print(f'''
     =========
     = Stats =
     =========
-    - {len(data_tuples) - len(clean_data_tuples)} items were filtered
-    - Total clean data items: {len(clean_data_tuples)}
+    - {len(data_dict) - len(clean_data_dict)} items were filtered
+    - Total clean data items: {len(clean_data_dict)}
     ''')
-    return clean_data_tuples
+    return clean_data_dict
 
 
 def get_runtime(seconds: float):
@@ -1040,79 +1069,198 @@ def from_numpy(file_path: str or pathlib.Path, logger: logging.Logger = None):
     return data
 
 
-def to_pickle(file, name: str, save_dir: str or pathlib.Path):
-    os.makedirs(save_dir, exist_ok=True)
+def from_pickle(data_file: pathlib.Path or str, logger: logging.Logger = None):
+    data = None
+    if check_pathable(path=data_file):
+        data_file = str_2_path(path=data_file)
 
-    pkl.dump(file, (save_dir / (name + '.pkl')).open(mode='wb'))
+        data = pkl.load(data_file.open(mode='rb'))
+    else:
+        warning_log(logger=logger, message=f'Could not load the data from file \'{data_file}\'!')
+
+    return data
+
+
+def to_pickle(data, save_file: str or pathlib.Path, logger: logging.Logger = None):
+    if check_pathable(path=save_file):
+        save_file = str_2_path(path=save_file)
+
+        pkl.dump(data, save_file.open(mode='wb'))
+    else:
+        warning_log(logger=logger, message=f'Could not save the data to file \'{save_file}\'!')
+
+
+def get_data(data_file: pathlib.Path or str, data_dir: pathlib.Path or str, masks_dir: pathlib.Path or str, logger: logging.Logger = None):
+    data_dict = dict()
+
+    dt_fl = str_2_path(path=data_file)
+    if False:#dt_fl.is_file():
+        data_dict = from_pickle(data_file=dt_fl, logger=logger)
+    else:
+        dt_dir = str_2_path(path=data_dir)
+        fl_tupls = scan_files(
+            root_dir=dt_dir,
+            seg_dir_postfix=SEG_DIR_POSTFIX,
+            image_prefix=IMAGE_PREFIX,
+            seg_prefix=SEG_PREFIX,
+            seg_sub_dir=SEG_SUB_DIR
+        )
+
+        np.random.shuffle(fl_tupls)
+
+        # - Load images and their masks
+        data_dict = get_data_dict(data_file_tuples=fl_tupls)
+
+        # - Clean data items with no objects in them
+        data_dict = clean_items_with_empty_masks(data_dict=data_dict, save_file=data_file)
+
+        data_dict = get_relevant_data(data_dict=data_dict, relevant_files=os.listdir(masks_dir), save_file=data_file, logger=logger)
+
+    return data_dict
 
 
 def get_arg_parser():
     parser = argparse.ArgumentParser()
 
     # - GENERAL PARAMETERS
+    parser.add_argument('--name', type=str, help='The name of the experiment')
     parser.add_argument('--debug', default=False, action='store_true', help=f'If the run is a debugging run')
     parser.add_argument('--gpu_id', type=int, default=0 if torch.cuda.device_count() > 0 else -1, help='The ID of the GPU (if there is any) to run the network on (e.g., --gpu_id 1 will run the network on GPU #1 etc.)')
+    parser.add_argument('--hyper_params_file', type=str, default=HYPER_PARAMS_FILE, help='The path to the file with the hyper-parameters')
 
-    parser.add_argument('--regular_mode', default=False, action='store_true', help=f'Regular mode where the augmentation is performed on-the-fly')
+    parser.add_argument('--in_train_augmentation', default=False, action='store_true', help=f'Regular mode where the augmentation is performed on-the-fly')
     parser.add_argument('--load_checkpoint', default=False, action='store_true', help=f'If to continue the training from the checkpoint saved at the checkpoint file')
-    parser.add_argument('--lunch_tb', default=False, action='store_true', help=f'If to lunch tensorboard')
-    parser.add_argument('--train_data_dir', type=str, default=TRAIN_DATA_DIR, help='The path to the train data file')
-    parser.add_argument('--test_data_dir', type=str, default=TEST_DATA_DIR, help='The path to the custom test file')
-    parser.add_argument('--inference_data_dir', type=str, default=INFERENCE_DATA_DIR, help='The path to the inference data dir')
+    parser.add_argument('--train_data_dir', type=str, help='The path to the train data file')
+    parser.add_argument('--train_image_dir', type=str, help='The path to the train images directory')
+    parser.add_argument('--train_mask_dir', type=str, help='The path to the train masks directory')
+    parser.add_argument('--train_temp_data_file', type=str, help='The path to the train data file')
+    parser.add_argument('--test_data_dir', type=str, help='The path to the custom test file')
+    parser.add_argument('--inference_data_dir', type=str, help='The path to the inference data dir')
 
-    parser.add_argument('--masks_dir', type=str, default=MASKS_DIR, help='The path to the directory where the preprocessed masks are placed')
-    parser.add_argument('--output_dir', type=str, default=OUTPUT_DIR, help='The path to the directory where the outputs will be placed')
+    parser.add_argument('--output_dir', type=str, help='The path to the directory where the outputs will be placed')
 
-    parser.add_argument('--crop_height', type=int, default=CROP_HEIGHT, help='The height of the images that will be used for network training and inference. If not specified, will be set to IMAGE_HEIGHT as in general_configs.py file.')
-    parser.add_argument('--crop_width', type=int, default=CROP_WIDTH, help='The width of the images that will be used for network training and inference. If not specified, will be set to IMAGE_WIDTH as in general_configs.py file.')
+    parser.add_argument('--crop_height', type=int, help='The height of the images that will be used for network training and inference. If not specified, will be set to IMAGE_HEIGHT as in general_configs.py file.')
+    parser.add_argument('--crop_width', type=int, help='The width of the images that will be used for network training and inference. If not specified, will be set to IMAGE_WIDTH as in general_configs.py file.')
 
-    parser.add_argument('--in_channels', type=int, default=IN_CHANNELS, help='The number of channels in an input image (e.g., 3 for RGB, 1 for Grayscale etc)')
-    parser.add_argument('--out_channels', type=int, default=OUT_CHANNELS, help='The number of channels in the output image (e.g., 3 for RGB, 1 for Grayscale etc)')
+    parser.add_argument('--in_channels', type=int, help='The number of channels in an input image (e.g., 3 for RGB, 1 for Grayscale etc)')
+    parser.add_argument('--out_channels', type=int, help='The number of channels in the output image (e.g., 3 for RGB, 1 for Grayscale etc)')
 
     # - TRAINING
-    parser.add_argument('--epochs', type=int, default=EPOCHS, help='Number of epochs to train the model')
-    parser.add_argument('--batch_size', type=int, default=TRAIN_BATCH_SIZE, help='The number of samples in each batch')
-    parser.add_argument('--val_prop', type=float, default=VAL_PROP, help=f'The proportion of the data which will be set aside, and be used in the process of validation')
-    parser.add_argument('--tr_checkpoint_file', type=str, default=tr_configs.CHECKPOINT_FILE_BEST_MODEL, help=f'The path to the file which contains the checkpoints of the model')
-    parser.add_argument('--tf_checkpoint_dir', type=str, default=tf_configs.CHECKPOINT_DIR, help=f'The path to the directory which contains the checkpoints of the model')
-    parser.add_argument('--tf_checkpoint_file', type=str, default=tf_configs.CHECKPOINT_FILE_BEST_MODEL, help=f'The path to the file which contains the checkpoints of the model')
+    parser.add_argument('--epochs', type=int, help='Number of epochs to train the model')
+    parser.add_argument('--batch_size', type=int, help='The number of samples in each batch')
+    parser.add_argument('--val_prop', type=float, help=f'The proportion of the data which will be set aside, and be used in the process of validation')
+    parser.add_argument('--tr_checkpoint_file', type=str, help=f'The path to the file which contains the checkpoints of the model')
+    parser.add_argument('--tf_checkpoint_dir', type=str, help=f'The path to the directory which contains the checkpoints of the model')
+    parser.add_argument('--tf_checkpoint_file', type=str, help=f'The path to the file which contains the checkpoints of the model')
 
     # - DROP BLOCK
     parser.add_argument('--drop_block', default=False, action='store_true', help=f'If to use the drop_block in the network')
-    parser.add_argument('--drop_block_keep_prob', type=float, default=DROP_BLOCK_KEEP_PROB, help=f'The probability to keep the block')
-    parser.add_argument('--drop_block_block_size', type=int, default=DROP_BLOCK_BLOCK_SIZE, help=f'The size of the block to drop')
+    parser.add_argument('--drop_block_keep_prob', type=float, help=f'The probability to keep the block')
+    parser.add_argument('--drop_block_block_size', type=int, help=f'The size of the block to drop')
 
     # - OPTIMIZERS
     # optimizer
-    parser.add_argument('--optimizer', type=str, choices=['sgd', 'adam', 'adamw', 'sparse_adam', 'nadam', 'adadelta', 'adamax', 'adagrad'], default=OPTIMIZER, help=f'The optimizer to use')
+    parser.add_argument('--optimizer', type=str, choices=['sgd', 'adam', 'adamw', 'sparse_adam', 'nadam', 'adadelta', 'adamax', 'adagrad'], help=f'The optimizer to use')
     parser.add_argument('--weighted_loss', default=False, action='store_true', help=f'If to use the weighted version of the MSE loss')
 
-    parser.add_argument('--optimizer_lr', type=float, default=OPTIMIZER_LR, help=f'The initial learning rate of the optimizer')
-    parser.add_argument('--optimizer_lr_decay', type=float, default=OPTIMIZER_LR_DECAY, help=f'The learning rate decay for Adagrad optimizer')
-    parser.add_argument('--optimizer_beta_1', type=float, default=OPTIMIZER_BETA_1, help=f'The exponential decay rate for the 1st moment estimates (Adam, Nadam, Adamax)')
-    parser.add_argument('--optimizer_beta_2', type=float, default=OPTIMIZER_BETA_2, help=f'The exponential decay rate for the 2st moment estimates (Adam, Nadam, Adamax)')
-    parser.add_argument('--optimizer_rho', type=float, default=OPTIMIZER_RHO, help=f'The decay rate (Adadelta, RMSprop)')
+    parser.add_argument('--optimizer_lr', type=float, help=f'The initial learning rate of the optimizer')
+    parser.add_argument('--optimizer_lr_decay', type=float, help=f'The learning rate decay for Adagrad optimizer')
+    parser.add_argument('--optimizer_beta_1', type=float, help=f'The exponential decay rate for the 1st moment estimates (Adam, Nadam, Adamax)')
+    parser.add_argument('--optimizer_beta_2', type=float, help=f'The exponential decay rate for the 2st moment estimates (Adam, Nadam, Adamax)')
+    parser.add_argument('--optimizer_rho', type=float, help=f'The decay rate (Adadelta, RMSprop)')
     parser.add_argument('--optimizer_amsgrad', default=False, action='store_true', help=f'If to use the Amsgrad function (Adam, Nadam, Adamax)')
 
-    parser.add_argument('--optimizer_weight_decay', type=float, default=OPTIMIZER_WEIGHT_DECAY, help=f'The weight decay for ADAM, NADAM')
-    parser.add_argument('--optimizer_momentum', type=float, default=OPTIMIZER_MOMENTUM, help=f'The momentum for SGD')
-    parser.add_argument('--optimizer_dampening', type=float, default=OPTIMIZER_DAMPENING, help=f'The dampening for momentum')
-    parser.add_argument('--optimizer_momentum_decay', type=float, default=OPTIMIZER_MOMENTUM_DECAY, help=f'The momentum for NADAM')
+    parser.add_argument('--optimizer_weight_decay', type=float, help=f'The weight decay for ADAM, NADAM')
+    parser.add_argument('--optimizer_momentum', type=float, help=f'The momentum for SGD')
+    parser.add_argument('--optimizer_dampening', type=float, help=f'The dampening for momentum')
+    parser.add_argument('--optimizer_momentum_decay', type=float, help=f'The momentum for NADAM')
     parser.add_argument('--optimizer_nesterov', default=False, action='store_true', help=f'If to use the Nesterov momentum (SGD)')
     parser.add_argument('--optimizer_centered', default=False, action='store_true', help=f'If True, gradients are normalized by the estimated variance of the gradient; if False, by the un-centered second moment. Setting this to True may help with training, but is slightly more expensive in terms of computation and memory. (RMSprop)')
 
     # - KERNEL REGULARIZER
-    parser.add_argument('--kernel_regularizer_type', type=str, choices=['l1', 'l2', 'l1l2'], default=KERNEL_REGULARIZER_TYPE, help=f'The type of the regularization')
-    parser.add_argument('--kernel_regularizer_l1', type=float, default=KERNEL_REGULARIZER_L1, help=f'The strength of the L1 regularization')
-    parser.add_argument('--kernel_regularizer_l2', type=float, default=KERNEL_REGULARIZER_L2, help=f'The strength of the L2 regularization')
-    parser.add_argument('--kernel_regularizer_factor', type=float, default=KERNEL_REGULARIZER_FACTOR, help=f'The strength of the orthogonal regularization')
-    parser.add_argument('--kernel_regularizer_mode', type=str, choices=['rows', 'columns'], default=KERNEL_REGULARIZER_MODE, help=f"The mode ('columns' or 'rows') of the orthogonal regularization")
+    parser.add_argument('--kernel_regularizer_type', type=str, choices=['l1', 'l2', 'l1l2'], help=f'The type of the regularization')
+    parser.add_argument('--kernel_regularizer_l1', type=float, help=f'The strength of the L1 regularization')
+    parser.add_argument('--kernel_regularizer_l2', type=float, help=f'The strength of the L2 regularization')
+    parser.add_argument('--kernel_regularizer_factor', type=float, help=f'The strength of the orthogonal regularization')
+    parser.add_argument('--kernel_regularizer_mode', type=str, choices=['rows', 'columns'], help=f"The mode ('columns' or 'rows') of the orthogonal regularization")
 
     # - ACTIVATION
-    parser.add_argument('--activation', type=str, choices=['swish', 'relu', 'leaky_relu'], default=ACTIVATION, help=f'The activation to use')
-    parser.add_argument('--activation_relu_max_value', type=float, default=ACTIVATION_RELU_MAX_VALUE, help=f'The negative slope in the LeakyReLU activation function for values < 0')
-    parser.add_argument('--activation_relu_negative_slope', type=float, default=ACTIVATION_RELU_NEGATIVE_SLOPE, help=f'The negative slope in the ReLU activation function for values < 0')
-    parser.add_argument('--activation_relu_threshold', type=float, default=ACTIVATION_RELU_THRESHOLD, help=f'The value that has to be exceeded activate the neuron')
-    parser.add_argument('--activation_leaky_relu_alpha', type=float, default=ACTIVATION_LEAKY_RELU_ALPHA, help=f'The negative slope in the LeakyReLU activation function for values < 0')
+    parser.add_argument('--activation', type=str, choices=['swish', 'relu', 'leaky_relu'], help=f'The activation to use')
+    parser.add_argument('--activation_relu_max_value', type=float, help=f'The negative slope in the LeakyReLU activation function for values < 0')
+    parser.add_argument('--activation_relu_negative_slope', type=float, help=f'The negative slope in the ReLU activation function for values < 0')
+    parser.add_argument('--activation_relu_threshold', type=float, help=f'The value that has to be exceeded activate the neuron')
+    parser.add_argument('--activation_leaky_relu_alpha', type=float, help=f'The negative slope in the LeakyReLU activation function for values < 0')
 
     return parser
+
+# def get_arg_parser():
+#     parser = argparse.ArgumentParser()
+#
+#     # - GENERAL PARAMETERS
+#     parser.add_argument('--name', type=str, help='The name of the experiment')
+#     parser.add_argument('--debug', default=False, action='store_true', help=f'If the run is a debugging run')
+#     parser.add_argument('--gpu_id', type=int, default=0 if torch.cuda.device_count() > 0 else -1, help='The ID of the GPU (if there is any) to run the network on (e.g., --gpu_id 1 will run the network on GPU #1 etc.)')
+#
+#     # parser.add_argument('--regular_mode', default=False, action='store_true', help=f'Regular mode where the augmentation is performed on-the-fly')
+#     parser.add_argument('--load_checkpoint', default=False, action='store_true', help=f'If to continue the training from the checkpoint saved at the checkpoint file')
+#     parser.add_argument('--lunch_tb', default=False, action='store_true', help=f'If to lunch tensorboard')
+#     parser.add_argument('--train_data_dir', type=str, default=TRAIN_DATA_DIR, help='The path to the train data file')
+#     parser.add_argument('--test_data_dir', type=str, default=TEST_DATA_DIR, help='The path to the custom test file')
+#     parser.add_argument('--inference_data_dir', type=str, default=INFERENCE_DATA_DIR, help='The path to the inference data dir')
+#
+#     parser.add_argument('--masks_dir', type=str, default=MASKS_DIR, help='The path to the directory where the preprocessed masks are placed')
+#     parser.add_argument('--output_dir', type=str, default=OUTPUT_DIR, help='The path to the directory where the outputs will be placed')
+#
+#     parser.add_argument('--crop_height', type=int, default=CROP_HEIGHT, help='The height of the images that will be used for network training and inference. If not specified, will be set to IMAGE_HEIGHT as in general_configs.py file.')
+#     parser.add_argument('--crop_width', type=int, default=CROP_WIDTH, help='The width of the images that will be used for network training and inference. If not specified, will be set to IMAGE_WIDTH as in general_configs.py file.')
+#
+#     parser.add_argument('--in_channels', type=int, default=IN_CHANNELS, help='The number of channels in an input image (e.g., 3 for RGB, 1 for Grayscale etc)')
+#     parser.add_argument('--out_channels', type=int, default=OUT_CHANNELS, help='The number of channels in the output image (e.g., 3 for RGB, 1 for Grayscale etc)')
+#
+#     # - TRAINING
+#     parser.add_argument('--epochs', type=int, default=EPOCHS, help='Number of epochs to train the model')
+#     parser.add_argument('--batch_size', type=int, default=TRAIN_BATCH_SIZE, help='The number of samples in each batch')
+#     parser.add_argument('--val_prop', type=float, default=VAL_PROP, help=f'The proportion of the data which will be set aside, and be used in the process of validation')
+#     parser.add_argument('--tr_checkpoint_file', type=str, default=tr_configs.CHECKPOINT_FILE_BEST_MODEL, help=f'The path to the file which contains the checkpoints of the model')
+#     parser.add_argument('--tf_checkpoint_dir', type=str, default=tf_configs.CHECKPOINT_DIR, help=f'The path to the directory which contains the checkpoints of the model')
+#     parser.add_argument('--tf_checkpoint_file', type=str, default=tf_configs.CHECKPOINT_FILE_BEST_MODEL, help=f'The path to the file which contains the checkpoints of the model')
+#
+#     # - DROP BLOCK
+#     parser.add_argument('--drop_block', default=False, action='store_true', help=f'If to use the drop_block in the network')
+#     parser.add_argument('--drop_block_keep_prob', type=float, default=DROP_BLOCK_KEEP_PROB, help=f'The probability to keep the block')
+#     parser.add_argument('--drop_block_block_size', type=int, default=DROP_BLOCK_BLOCK_SIZE, help=f'The size of the block to drop')
+#
+#     # - OPTIMIZERS
+#     # optimizer
+#     parser.add_argument('--optimizer', type=str, choices=['sgd', 'adam', 'adamw', 'sparse_adam', 'nadam', 'adadelta', 'adamax', 'adagrad'], default=OPTIMIZER, help=f'The optimizer to use')
+#     parser.add_argument('--weighted_loss', default=False, action='store_true', help=f'If to use the weighted version of the MSE loss')
+#
+#     parser.add_argument('--optimizer_lr', type=float, default=OPTIMIZER_LR, help=f'The initial learning rate of the optimizer')
+#     parser.add_argument('--optimizer_lr_decay', type=float, default=OPTIMIZER_LR_DECAY, help=f'The learning rate decay for Adagrad optimizer')
+#     parser.add_argument('--optimizer_beta_1', type=float, default=OPTIMIZER_BETA_1, help=f'The exponential decay rate for the 1st moment estimates (Adam, Nadam, Adamax)')
+#     parser.add_argument('--optimizer_beta_2', type=float, default=OPTIMIZER_BETA_2, help=f'The exponential decay rate for the 2st moment estimates (Adam, Nadam, Adamax)')
+#     parser.add_argument('--optimizer_rho', type=float, default=OPTIMIZER_RHO, help=f'The decay rate (Adadelta, RMSprop)')
+#     parser.add_argument('--optimizer_amsgrad', default=False, action='store_true', help=f'If to use the Amsgrad function (Adam, Nadam, Adamax)')
+#
+#     parser.add_argument('--optimizer_weight_decay', type=float, default=OPTIMIZER_WEIGHT_DECAY, help=f'The weight decay for ADAM, NADAM')
+#     parser.add_argument('--optimizer_momentum', type=float, default=OPTIMIZER_MOMENTUM, help=f'The momentum for SGD')
+#     parser.add_argument('--optimizer_dampening', type=float, default=OPTIMIZER_DAMPENING, help=f'The dampening for momentum')
+#     parser.add_argument('--optimizer_momentum_decay', type=float, default=OPTIMIZER_MOMENTUM_DECAY, help=f'The momentum for NADAM')
+#     parser.add_argument('--optimizer_nesterov', default=False, action='store_true', help=f'If to use the Nesterov momentum (SGD)')
+#     parser.add_argument('--optimizer_centered', default=False, action='store_true', help=f'If True, gradients are normalized by the estimated variance of the gradient; if False, by the un-centered second moment. Setting this to True may help with training, but is slightly more expensive in terms of computation and memory. (RMSprop)')
+#
+#     # - KERNEL REGULARIZER
+#     parser.add_argument('--kernel_regularizer_type', type=str, choices=['l1', 'l2', 'l1l2'], default=KERNEL_REGULARIZER_TYPE, help=f'The type of the regularization')
+#     parser.add_argument('--kernel_regularizer_l1', type=float, default=KERNEL_REGULARIZER_L1, help=f'The strength of the L1 regularization')
+#     parser.add_argument('--kernel_regularizer_l2', type=float, default=KERNEL_REGULARIZER_L2, help=f'The strength of the L2 regularization')
+#     parser.add_argument('--kernel_regularizer_factor', type=float, default=KERNEL_REGULARIZER_FACTOR, help=f'The strength of the orthogonal regularization')
+#     parser.add_argument('--kernel_regularizer_mode', type=str, choices=['rows', 'columns'], default=KERNEL_REGULARIZER_MODE, help=f"The mode ('columns' or 'rows') of the orthogonal regularization")
+#
+#     # - ACTIVATION
+#     parser.add_argument('--activation', type=str, choices=['swish', 'relu', 'leaky_relu'], default=ACTIVATION, help=f'The activation to use')
+#     parser.add_argument('--activation_relu_max_value', type=float, default=ACTIVATION_RELU_MAX_VALUE, help=f'The negative slope in the LeakyReLU activation function for values < 0')
+#     parser.add_argument('--activation_relu_negative_slope', type=float, default=ACTIVATION_RELU_NEGATIVE_SLOPE, help=f'The negative slope in the ReLU activation function for values < 0')
+#     parser.add_argument('--activation_relu_threshold', type=float, default=ACTIVATION_RELU_THRESHOLD, help=f'The value that has to be exceeded activate the neuron')
+#     parser.add_argument('--activation_leaky_relu_alpha', type=float, default=ACTIVATION_LEAKY_RELU_ALPHA, help=f'The negative slope in the LeakyReLU activation function for values < 0')
+#
+#     return parser

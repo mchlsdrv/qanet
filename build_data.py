@@ -35,13 +35,78 @@ logging.getLogger('PIL').setLevel(logging.WARNING)
 __author__ = 'sidorov@post.bgu.ac.il'
 
 # OUTPUT_DIR = pathlib.Path('../data/generated/2022-11-26_02-15-05')
-OUTPUT_DIR = pathlib.Path('/home/sidorov/Projects/QANetV2/data/generated/2022-11-26_21-29-07')
+OUTPUT_DIR = pathlib.Path('/home/sidorov/Projects/QANetV2/data/generated/2022-11-26_21-29-07/2022-12-26_23-20-04/images')
+# OUTPUT_DIR = pathlib.Path('/home/sidorov/Projects/QANetV2/data/generated')
 N_SAMPLES_IN_RANGE = 10
 FILE_MIN_SAMPLES_PCT = 96
 FILE_MAX_TIME = 3 * 60  # in seconds
 MAX_CPUS = 30
 MIN_J = 0.01
 MAX_J = 0.99
+
+
+def repaint_instance_segmentation(mask: np.ndarray):
+    msk = mask.astype(np.int8)
+
+    # - Get the initial labels excluding the background
+    lbls = np.unique(msk)
+    lbls = lbls[lbls > 0]
+
+    # Apply the Component analysis function
+    (_, msk_cntd, _, centroids) = cv2.connectedComponentsWithStats(mask.astype(np.uint8), cv2.CV_16U)
+
+    # - For preserve the old labels
+    msk_rpntd = np.zeros_like(msk_cntd, dtype=np.float32)
+    # - Saves the labels to know if the labels was present
+    lbl_cntd_roi_history = dict()
+    for idx, lbl in enumerate(lbls):
+        # TURN THE INSTANCE LABEL TO BINARY
+
+        # - Copy the mask
+        msk_bin = deepcopy(mask)
+
+        # - Turn all the non-label pixels to 0
+        msk_bin[msk_bin != lbl] = 0
+
+        # - Turn all the label pixels to 1
+        msk_bin[msk_bin > 0] = 1
+
+        # - FIND THE CORRESPONDING CONNECTED COMPONENT IN THE CONNECTED COMPONENT LABEL
+        msk_cntd_roi = msk_bin * msk_cntd
+        lbls_cntd_roi, n_pxs = np.unique(msk_cntd_roi, return_counts=True)
+
+        # REMOVE THE BACKGROUND LABEL
+
+        # - Find the non-background pixel indices
+
+        non_background_px = np.argwhere(lbls_cntd_roi > 0)
+
+        # - Remove the background pixel label from the labels
+        lbls_cntd_roi = lbls_cntd_roi[non_background_px]
+
+        # - Remove the background pixel count from the pixel count
+        n_pxs = n_pxs[non_background_px]
+
+        # - Find the label with the maximum number of pixels in the ROI
+        max_lbl_idx = np.argmax(n_pxs)
+
+        # - Filter the labels with lower number of pixels in the ROI
+        lbl_cntd_roi = lbls_cntd_roi[max_lbl_idx][0]
+
+        # PAINT THE ROI
+        msk_cntd_roi_bin = msk_cntd_roi / lbl_cntd_roi
+
+        if lbl_cntd_roi not in lbl_cntd_roi_history.keys():
+            # - If the color is new - paint it in this color and add it to the history
+            msk_rpntd += msk_cntd_roi_bin * lbl
+
+            # - Add the ROI label to history
+            lbl_cntd_roi_history[lbl_cntd_roi] = lbl
+        else:
+            # - If the color was previously used - the cells were connected, so paint the ROI in the color previously used
+            msk_rpntd += msk_cntd_roi_bin * lbl_cntd_roi_history.get(lbl_cntd_roi)
+
+    return np.expand_dims(msk_rpntd, -1)
 
 
 def build_data(args):
@@ -73,14 +138,14 @@ def build_data(args):
         gt_msk = load_image(image_file=str(seg_fl), add_channels=True)
 
         # - Create a dedicated dir for the current image augs
-        img_dir = output_dir / f'images/{get_parent_dir_name(path=img_fl)}_{get_file_name(path=img_fl)}'
+        msk_dir = output_dir / f'masks/{get_parent_dir_name(path=img_fl)}_{get_file_name(path=img_fl)}'
 
-        # - If the img_dir for this file exists - skip it
-        if img_dir.is_dir():
+        # - If the msk_dir for this file exists - skip it
+        if msk_dir.is_dir():
             continue
 
-        # - If the img_dir for this file does not exist - create it
-        os.makedirs(img_dir)
+        # - If the msk_dir for this file does not exist - create it
+        os.makedirs(msk_dir)
 
         # - Create a counter array for the number of images in each range
         rng_cnt_arr = np.zeros(n_rngs, dtype=np.int16)
@@ -98,6 +163,8 @@ def build_data(args):
             aug_res = mask_augs(image=gt_msk, mask=gt_msk)
             msk_aug = aug_res.get('mask')
 
+            msk_aug = repaint_instance_segmentation(mask=msk_aug[..., 0])
+
             # - Calculate the seg measure
             seg_msr = calc_seg_measure(gt_msk, msk_aug)[0]
 
@@ -110,7 +177,7 @@ def build_data(args):
                 f_name = float_2_str(seg_msr) + '.tif'
 
                 # - Create the file to save the image, and make sure it is unique
-                img_unique_fl = check_unique_file(file=img_dir / f_name)
+                img_unique_fl = check_unique_file(file=msk_dir / f_name)
 
                 # - Save the mask
                 cv2.imwrite(str(img_unique_fl), msk_aug)
@@ -164,7 +231,7 @@ def build_data(args):
             )
 
             # - Plot the samples
-            aug_msk_fls = [img_dir / str(fl) for fl in os.listdir(img_dir)]
+            aug_msk_fls = [msk_dir / str(fl) for fl in os.listdir(msk_dir)]
 
             for aug_msk_fl in aug_msk_fls:
                 # - Get the name of the mask, which is also the seg measure with its ground truth label
@@ -417,8 +484,8 @@ def plot_categorical_masks(mask_files: list, output_dir: pathlib.Path):
 
 
 if __name__ == '__main__':
-    out = os.listdir(OUTPUT_DIR)
-    get_files_under_dir(dir_path=OUTPUT_DIR)
+    # out = os.listdir(OUTPUT_DIR)
+    # get_files_under_dir(dir_path=OUTPUT_DIR)
 
     # - Get the argument parser
     parser = get_arg_parser()

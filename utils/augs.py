@@ -10,7 +10,7 @@ from scipy.ndimage import (
 
 __author__ = 'sidorov@post.bgu.ac.il'
 
-from global_configs.general_configs import CROP_HEIGHT, CROP_WIDTH
+# from global_configs.general_configs import CROP_HEIGHT, CROP_WIDTH
 
 # ========================================================================================================================================================================================
 # ========================================================================================================================================================================================
@@ -21,23 +21,23 @@ from global_configs.general_configs import CROP_HEIGHT, CROP_WIDTH
 # ========================================================================================================================================================================================
 
 # - Erosion / dilation / opening / closing parameters
-EROSION_SIZES = np.arange(2, 8)
-DILATION_SIZES = np.arange(2, 18)
+EROSION_SIZES = np.arange(4, 8)
+DILATION_SIZES = np.arange(4, 8)
 
 # - Elastic transform parameters
-ALPHA_FACTOR = 1.2531
+ALPHA_FACTOR = 0.1
 
-SIGMA_FACTOR = 0.8204
+SIGMA_FACTOR = 0.1
 
-ALPHA_AFFINE_FACTOR = 0.0143
+ALPHA_AFFINE_FACTOR = 0.1
 
 # - Application probabilities
-P_EROSION = 0.675
-P_DILATION = 0.259
-P_OPENING = 0.383
-P_CLOSING = 0.820
-P_ONE_OF = 0.907
-P_ELASTIC = 0.5
+P_EROSION = 0.5
+P_DILATION = 0.5
+P_OPENING = 0.5
+P_CLOSING = 0.5
+P_ONE_OF = 1.0
+P_ELASTIC = 0.7
 
 # - CLAHE parameters
 CLAHE_CLIP_LIMIT = 2
@@ -68,45 +68,6 @@ def random_closing(mask, **kwargs):
     # Disconnected labels are brought together
     mask = random_erosion(random_dilation(mask))
     return mask
-
-
-def image_mask_augs():
-    return A.Compose(
-        [
-            A.RandomBrightnessContrast(
-                brightness_limit=0.2,
-                contrast_limit=(0.5, 1.5),
-                p=0.5
-            ),
-            A.OneOf([
-                A.Flip(p=0.5),
-                A.HorizontalFlip(p=0.5),
-                A.ShiftScaleRotate(
-                    shift_limit=0.0625,
-                    scale_limit=0.1,
-                    rotate_limit=45,
-                    interpolation=cv2.INTER_LANCZOS4,
-                    p=0.5
-                ),
-            ], p=0.5
-            ),
-        ]
-    )
-
-
-def transforms(crop_height, crop_width):
-    return A.Compose(
-        [
-            # RandomScale(p=0.5),
-            CropNonEmptyMaskIfExists(
-                height=crop_height,
-                width=crop_width,
-                p=1.
-            ),
-            # A.ToFloat(p=1.),
-        ],
-        additional_targets={'mask0': 'mask'}
-    )
 
 
 def mask_augs(image_width, alpha_factor=ALPHA_FACTOR, sigma_factor=SIGMA_FACTOR, alpha_affine_factor=ALPHA_AFFINE_FACTOR):
@@ -146,12 +107,49 @@ def mask_augs(image_width, alpha_factor=ALPHA_FACTOR, sigma_factor=SIGMA_FACTOR,
     )
 
 
-def test_augs():
+def image_mask_augs():
+    return A.Compose(
+        [
+            A.OneOf([
+                A.Flip(p=0.5),
+                A.HorizontalFlip(p=0.5),
+                A.ShiftScaleRotate(
+                    shift_limit=0.0625,
+                    scale_limit=0.1,
+                    rotate_limit=45,
+                    interpolation=cv2.INTER_LANCZOS4,
+                    p=0.5
+                ),
+                # CoarseDropout(
+                #     max_holes=10, max_height=25, max_width=25, p=0.5
+                # )
+            ], p=0.5
+            ),
+        ]
+    )
+
+
+def transforms(crop_height, crop_width):
+    return A.Compose(
+        [
+            # RandomScale(p=0.5),
+            CropNonEmptyMaskIfExists(
+                height=crop_height,
+                width=crop_width,
+                p=1.
+            ),
+            # A.ToFloat(p=1.),
+        ],
+        additional_targets={'mask0': 'mask'}
+    )
+
+
+def test_augs(crop_height: int, crop_width: int):
     return A.Compose(
         [
             CropNonEmptyMaskIfExists(
-                height=CROP_HEIGHT,
-                width=CROP_WIDTH,
+                height=crop_height,
+                width=crop_width,
                 p=1.
             ),
             A.ToFloat(p=1.),
@@ -159,12 +157,12 @@ def test_augs():
     )
 
 
-def inference_augs():
+def inference_augs(crop_height: int, crop_width: int):
     return A.Compose(
         [
             A.Resize(
-                height=CROP_HEIGHT,
-                width=CROP_WIDTH,
+                height=crop_height,
+                width=crop_width,
                 p=1.
             ),
             A.ToFloat(p=1.),
