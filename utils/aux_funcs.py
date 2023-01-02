@@ -1094,7 +1094,7 @@ def get_data(data_file: pathlib.Path or str, data_dir: pathlib.Path or str, mask
     data_dict = dict()
 
     dt_fl = str_2_path(path=data_file)
-    if False:#dt_fl.is_file():
+    if dt_fl.is_file():
         data_dict = from_pickle(data_file=dt_fl, logger=logger)
     else:
         dt_dir = str_2_path(path=data_dir)

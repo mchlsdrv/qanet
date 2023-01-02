@@ -4,6 +4,7 @@ __pycache__/
 *.pyc
 *$py.class
 *.log
+hyper_params.yml
 *.index
 *.ckpt
 *.pth.tar
