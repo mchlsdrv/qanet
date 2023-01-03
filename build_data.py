@@ -24,8 +24,7 @@ from global_configs.general_configs import (
     SEG_DIR_POSTFIX,
     SEG_PREFIX,
     IMAGE_PREFIX,
-    TRAIN_DATA_DIR,
-    SEG_SUB_DIR, CROP_WIDTH
+    SEG_SUB_DIR
 )
 import multiprocessing as mp
 from multiprocessing import Pool
@@ -34,9 +33,9 @@ logging.getLogger('PIL').setLevel(logging.WARNING)
 
 __author__ = 'sidorov@post.bgu.ac.il'
 
-# OUTPUT_DIR = pathlib.Path('../data/generated/2022-11-26_02-15-05')
-OUTPUT_DIR = pathlib.Path('/home/sidorov/Projects/QANetV2/data/generated/2022-11-26_21-29-07/2022-12-26_23-20-04/images')
-# OUTPUT_DIR = pathlib.Path('/home/sidorov/Projects/QANetV2/data/generated')
+DATA_DIR = pathlib.Path('/home/sidorov/Projects/QANetV2/data/train/CytoPack')
+OUTPUT_DIR = pathlib.Path('/home/sidorov/Projects/QANetV2/data/generated/masks')
+CROP_WIDTH = 419
 N_SAMPLES_IN_RANGE = 10
 FILE_MIN_SAMPLES_PCT = 96
 FILE_MAX_TIME = 3 * 60  # in seconds
@@ -138,7 +137,7 @@ def build_data(args):
         gt_msk = load_image(image_file=str(seg_fl), add_channels=True)
 
         # - Create a dedicated dir for the current image augs
-        msk_dir = output_dir / f'masks/{get_parent_dir_name(path=img_fl)}_{get_file_name(path=img_fl)}'
+        msk_dir = output_dir / f'{get_parent_dir_name(path=img_fl)}_{get_file_name(path=img_fl)}'
 
         # - If the msk_dir for this file exists - skip it
         if msk_dir.is_dir():
@@ -494,7 +493,7 @@ if __name__ == '__main__':
     # - Scan the files in the data dir
 
     fls = scan_files(
-        root_dir=TRAIN_DATA_DIR,
+        root_dir=DATA_DIR,
         seg_dir_postfix=SEG_DIR_POSTFIX,
         image_prefix=IMAGE_PREFIX,
         seg_prefix=SEG_PREFIX,
@@ -510,7 +509,7 @@ if __name__ == '__main__':
     if args.analyze:
         analyze_data(files=[fl_tpl[0] for fl_tpl in fls], masks_root=output_dir, n_samples=5)
     elif args.clean:
-        clean_invalids(files=[fl_tpl[0] for fl_tpl in fls], masks_root=output_dir / 'images')
+        clean_invalids(files=[fl_tpl[0] for fl_tpl in fls], masks_root=output_dir / 'masks')
     elif args.convert:
         plot_categorical_masks(mask_files=[fl[1] for fl in fls], output_dir=OUTPUT_DIR / 'categorical_masks_2')
     else:

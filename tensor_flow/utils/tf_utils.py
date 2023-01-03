@@ -15,7 +15,7 @@ from global_configs.general_configs import (
     IMAGE_PREFIX,
     SEG_PREFIX,
     LAUNCH_TB,
-    METRICS, REDUCE_LR_ON_PLATEAU_VERBOSE,
+    METRICS, REDUCE_LR_ON_PLATEAU_VERBOSE, REDUCE_LR_ON_PLATEAU_MIN_LR,
 )
 from tensor_flow.configs.general_configs import (
     TENSOR_BOARD,
@@ -184,7 +184,7 @@ def get_callbacks(callback_type: str, hyper_parameters: dict, output_dir: pathli
                 patience=hyper_parameters.get('training')['reduce_lr_on_plateau_patience'],
                 min_delta=hyper_parameters.get('training')['reduce_lr_on_plateau_min_delta'],
                 cooldown=hyper_parameters.get('training')['reduce_lr_on_plateau_cooldown'],
-                min_lr=hyper_parameters.get('training')['reduce_lr_on_plateau_min_lr'],
+                min_lr=REDUCE_LR_ON_PLATEAU_MIN_LR,
                 mode=hyper_parameters.get('training')['reduce_lr_on_plateau_mode'],
                 verbose=REDUCE_LR_ON_PLATEAU_VERBOSE,
             )
