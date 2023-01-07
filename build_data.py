@@ -17,8 +17,16 @@ from utils.aux_funcs import (
     scan_files,
     plot_hist,
     get_file_name,
-    plot_image_mask,
-    get_range, load_image, float_2_str, str_2_float, get_runtime, get_parent_dir_name, get_ts, get_split_data, check_unique_file, assert_pathable
+    get_range,
+    load_image,
+    float_2_str,
+    str_2_float,
+    get_runtime,
+    get_parent_dir_name,
+    get_ts,
+    get_split_data,
+    check_unique_file,
+    assert_pathable
 )
 from global_configs.general_configs import (
     SEG_DIR_POSTFIX,

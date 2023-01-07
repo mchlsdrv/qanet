@@ -17,6 +17,8 @@ from utils.aux_funcs import (
     err_log,
     get_data
 )
+import wandb
+
 
 os.environ['TF_FORCE_GPU_ALLOW_GROWTH'] = 'true'
 
@@ -94,6 +96,9 @@ if __name__ == '__main__':
 
     # - Configure the GPU to run on
     choose_gpu(gpu_id=args.gpu_id, logger=logger)
+
+    if hyp_params_dict.get('training')['wandb']:
+        wandb.init(project=hyp_params_dict.get('training')['wandb_project_name'])
 
     # - Train model
     trained_model = None

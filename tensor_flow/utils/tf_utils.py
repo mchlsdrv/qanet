@@ -8,6 +8,7 @@ import multiprocessing as mlp
 import pathlib
 
 import tensorflow as tf
+import wandb
 from keras import backend as K
 
 from global_configs.general_configs import (
@@ -18,7 +19,6 @@ from global_configs.general_configs import (
     METRICS, REDUCE_LR_ON_PLATEAU_VERBOSE, REDUCE_LR_ON_PLATEAU_MIN_LR,
 )
 from tensor_flow.configs.general_configs import (
-    TENSOR_BOARD,
     TENSOR_BOARD_WRITE_IMAGES,
     TENSOR_BOARD_WRITE_STEPS_PER_SECOND,
     TENSOR_BOARD_UPDATE_FREQ,
@@ -135,7 +135,7 @@ def get_callbacks(callback_type: str, hyper_parameters: dict, output_dir: pathli
     # Built-in  callbacks
     # -------------------
     tb_prc = None
-    if TENSOR_BOARD:
+    if hyper_parameters.get('training')['tensorboard']:
         callbacks.append(
             tf.keras.callbacks.TensorBoard(
                 log_dir=output_dir,
@@ -148,7 +148,8 @@ def get_callbacks(callback_type: str, hyper_parameters: dict, output_dir: pathli
             callbacks.append(
                 ProgressLogCallback(
                     log_dir=output_dir,
-                    tensorboard_logs=TENSOR_BOARD,
+                    tensorboard_logs=hyper_parameters.get('training')['tensorboard'],
+                    wandb_logs=hyper_parameters.get('training')['wandb'],
                     logger=logger
                 )
             )

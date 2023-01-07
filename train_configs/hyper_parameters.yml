@@ -27,7 +27,7 @@ model:
 
     fc_blocks:
       out_features: [128, 128]
-      drop_rate: 0.4
+      drop_rate: 0.2
 
   activation: 'swish'
   activation_relu_max_value: None
@@ -41,7 +41,7 @@ model:
 
   kernel_regularizer_type: 'l2'
   kernel_regularizer_l1: 0.01
-  kernel_regularizer_l2: 0.1
+  kernel_regularizer_l2: 1.1
   kernel_regularizer_factor: 0.01
   kernel_regularizer_mode: 'rows'
 
@@ -64,7 +64,7 @@ training:
   optimizer_maximize: False
   optimizer_foreach: None
   optimizer: 'adam'
-  optimizer_lr: 0.0001
+  optimizer_lr: 0.003
   optimizer_lr_decay: 0.001
   optimizer_beta_1: 0.9
   optimizer_beta_2: 0.999
@@ -78,10 +78,15 @@ training:
   optimizer_centered: False
 
   # CALLBACKS
+  wandb_project_name: 'QANet_V2'
+  wandb: True
+
+  tensorboard: False
+
   min_improvement_delta: 0.00001
 
   # - Early Stopping
-  early_stopping: True
+  early_stopping: False
   early_stopping_patience: 30
   early_stopping_monitor: 'val_loss'
   early_stopping_min_delta: 0.0001

@@ -89,7 +89,7 @@ def get_image_from_figure(figure):
 
     plt.savefig(buffer, format='png')
 
-    plt.close(figure)
+    # plt.close(figure)
     buffer.seek(0)
 
     image = tf.image.decode_png(buffer.getvalue(), channels=4)
@@ -253,7 +253,7 @@ def line_plot(x: list or np.ndarray, ys: list or np.ndarray, suptitle: str, labe
         err_log(logger=logger, message=f'{err}')
 
 
-def hit_rate_plot(true: np.ndarray, pred: np.ndarray, hit_rate_percent: int = None, figsize: tuple = (15, 15), save_file: pathlib.Path or str = None, tensorboard_params: dict = None, logger: logging.Logger = None):
+def get_hit_rate_plot_figure(true: np.ndarray, pred: np.ndarray, hit_rate_percent: int = None, figsize: tuple = (15, 15), logger: logging.Logger = None):
     # - Calculate the absolute error of true vs pred
     abs_err = np.abs(true - pred)
 
@@ -291,24 +291,10 @@ def hit_rate_plot(true: np.ndarray, pred: np.ndarray, hit_rate_percent: int = No
         # > Add the corresponding AET value
         ax.text(x=abs_err_tolerance_pct, y=cum_sum_err_pct, s=f'AET={abs_err_tolerance_pct:.3f}')
 
-    try:
-        save_figure(figure=fig, save_file=save_file, close_figure=False, logger=logger)
-    except Exception as err:
-        err_log(logger=logger, message=f'{err}')
-
-    if isinstance(tensorboard_params, dict):
-        write_figure_to_tensorboard(
-            writer=tensorboard_params.get('writer'),
-            figure=fig,
-            tag=tensorboard_params.get('tag'),
-            step=tensorboard_params.get('step')
-        )
-    plt.close(fig)
-
-    return abs_err_hist, abs_err
+    return fig, abs_err_hist, abs_err
 
 
-def scatter_plot(x: np.ndarray, y: np.ndarray, save_file: pathlib.Path or str = None, tensorboard_params: dict = None, logger: logging.Logger = None):
+def get_scatter_plot_figure(x: np.ndarray, y: np.ndarray, plot_type: str, logger: logging.Logger = None):
     D = pd.DataFrame({'GT Quality Value': x, 'Estimated Quality Value': y})
     g = sns.jointplot(
         x='GT Quality Value',
@@ -330,10 +316,7 @@ def scatter_plot(x: np.ndarray, y: np.ndarray, save_file: pathlib.Path or str = 
     rho, p = pearsonr(x, y)
 
     # - Calculate mean squared error
-    # print('x: ', x[:10])
-    # print('y: ', y[:10])
     mse = np.mean(np.square(x[:10] - y[:10]))
-    # print('mse: ', mse)
 
     g.ax_joint.annotate(
         f'$\\rho = {rho:.3f}, MSE = {mse:.3f}$',
@@ -343,19 +326,8 @@ def scatter_plot(x: np.ndarray, y: np.ndarray, save_file: pathlib.Path or str = 
         va='center',
         bbox={'boxstyle': 'round', 'fc': 'powderblue', 'ec': 'navy'}
     )
-    try:
-        save_figure(figure=g.figure, save_file=save_file, close_figure=False, logger=logger)
-    except Exception as err:
-        err_log(logger=logger, message=f'{err}')
 
-    if isinstance(tensorboard_params, dict):
-        write_figure_to_tensorboard(
-            writer=tensorboard_params.get('writer'),
-            figure=g.figure,
-            tag=tensorboard_params.get('tag'),
-            step=tensorboard_params.get('step')
-        )
-    plt.close(g.figure)
+    return g.figure, rho, p, mse
 
 
 def get_files_under_dir(dir_path: pathlib.Path or str):
@@ -905,7 +877,7 @@ def calc_seg_measure(gt_masks: np.ndarray, pred_masks: np.ndarray):
     return seg_measure
 
 
-def plot_image_mask(image: np.ndarray, mask: np.ndarray, suptitle: str = '', title: str = '', figsize: tuple = (20, 20), tensorboard_params: dict = None, save_file: pathlib.Path = None, overwrite: bool = False):
+def get_image_mask_figure(image: np.ndarray, mask: np.ndarray, suptitle: str = '', title: str = '', figsize: tuple = (20, 20)):
     # - Prepare the mask overlap image
     msk = np.zeros((*mask.shape[:-1], 3))
 
@@ -926,17 +898,19 @@ def plot_image_mask(image: np.ndarray, mask: np.ndarray, suptitle: str = '', tit
 
     fig.suptitle(suptitle)
 
-    save_figure(figure=fig, save_file=save_file)
+    return fig
 
-    if isinstance(tensorboard_params, dict):
-        write_figure_to_tensorboard(
-            writer=tensorboard_params.get('writer'),
-            figure=fig,
-            tag=tensorboard_params.get('tag'),
-            step=tensorboard_params.get('step')
-        )
-
-    plt.close(fig)
+    # save_figure(figure=fig, save_file=save_file)
+    #
+    # if isinstance(tensorboard_params, dict):
+    #     write_figure_to_tensorboard(
+    #         writer=tensorboard_params.get('writer'),
+    #         figure=fig,
+    #         tag=tensorboard_params.get('tag'),
+    #         step=tensorboard_params.get('step')
+    #     )
+    #
+    # plt.close(fig)
 
 
 def plot_mask_error(image: np.ndarray, mask: np.ndarray, pred_mask: np.ndarray = None, suptitle: str = '', title: str = '', figsize: tuple = (20, 20), tensorboard_params: dict = None, save_file: pathlib.Path = None, overwrite: bool = False):
@@ -1129,6 +1103,8 @@ def get_arg_parser():
     parser.add_argument('--hyper_params_file', type=str, default=HYPER_PARAMS_FILE, help='The path to the file with the hyper-parameters')
 
     parser.add_argument('--in_train_augmentation', default=False, action='store_true', help=f'Regular mode where the augmentation is performed on-the-fly')
+    parser.add_argument('--wandb', default=False, action='store_true', help=f'If to use the wandb callback')
+    parser.add_argument('--tensorboard', default=False, action='store_true', help=f'If to use the tensorboard callback')
     parser.add_argument('--load_checkpoint', default=False, action='store_true', help=f'If to continue the training from the checkpoint saved at the checkpoint file')
     parser.add_argument('--train_data_dir', type=str, help='The path to the train data file')
     parser.add_argument('--train_image_dir', type=str, help='The path to the train images directory')
@@ -1192,75 +1168,3 @@ def get_arg_parser():
     parser.add_argument('--activation_leaky_relu_alpha', type=float, help=f'The negative slope in the LeakyReLU activation function for values < 0')
 
     return parser
-
-# def get_arg_parser():
-#     parser = argparse.ArgumentParser()
-#
-#     # - GENERAL PARAMETERS
-#     parser.add_argument('--name', type=str, help='The name of the experiment')
-#     parser.add_argument('--debug', default=False, action='store_true', help=f'If the run is a debugging run')
-#     parser.add_argument('--gpu_id', type=int, default=0 if torch.cuda.device_count() > 0 else -1, help='The ID of the GPU (if there is any) to run the network on (e.g., --gpu_id 1 will run the network on GPU #1 etc.)')
-#
-#     # parser.add_argument('--regular_mode', default=False, action='store_true', help=f'Regular mode where the augmentation is performed on-the-fly')
-#     parser.add_argument('--load_checkpoint', default=False, action='store_true', help=f'If to continue the training from the checkpoint saved at the checkpoint file')
-#     parser.add_argument('--lunch_tb', default=False, action='store_true', help=f'If to lunch tensorboard')
-#     parser.add_argument('--train_data_dir', type=str, default=TRAIN_DATA_DIR, help='The path to the train data file')
-#     parser.add_argument('--test_data_dir', type=str, default=TEST_DATA_DIR, help='The path to the custom test file')
-#     parser.add_argument('--inference_data_dir', type=str, default=INFERENCE_DATA_DIR, help='The path to the inference data dir')
-#
-#     parser.add_argument('--masks_dir', type=str, default=MASKS_DIR, help='The path to the directory where the preprocessed masks are placed')
-#     parser.add_argument('--output_dir', type=str, default=OUTPUT_DIR, help='The path to the directory where the outputs will be placed')
-#
-#     parser.add_argument('--crop_height', type=int, default=CROP_HEIGHT, help='The height of the images that will be used for network training and inference. If not specified, will be set to IMAGE_HEIGHT as in general_configs.py file.')
-#     parser.add_argument('--crop_width', type=int, default=CROP_WIDTH, help='The width of the images that will be used for network training and inference. If not specified, will be set to IMAGE_WIDTH as in general_configs.py file.')
-#
-#     parser.add_argument('--in_channels', type=int, default=IN_CHANNELS, help='The number of channels in an input image (e.g., 3 for RGB, 1 for Grayscale etc)')
-#     parser.add_argument('--out_channels', type=int, default=OUT_CHANNELS, help='The number of channels in the output image (e.g., 3 for RGB, 1 for Grayscale etc)')
-#
-#     # - TRAINING
-#     parser.add_argument('--epochs', type=int, default=EPOCHS, help='Number of epochs to train the model')
-#     parser.add_argument('--batch_size', type=int, default=TRAIN_BATCH_SIZE, help='The number of samples in each batch')
-#     parser.add_argument('--val_prop', type=float, default=VAL_PROP, help=f'The proportion of the data which will be set aside, and be used in the process of validation')
-#     parser.add_argument('--tr_checkpoint_file', type=str, default=tr_configs.CHECKPOINT_FILE_BEST_MODEL, help=f'The path to the file which contains the checkpoints of the model')
-#     parser.add_argument('--tf_checkpoint_dir', type=str, default=tf_configs.CHECKPOINT_DIR, help=f'The path to the directory which contains the checkpoints of the model')
-#     parser.add_argument('--tf_checkpoint_file', type=str, default=tf_configs.CHECKPOINT_FILE_BEST_MODEL, help=f'The path to the file which contains the checkpoints of the model')
-#
-#     # - DROP BLOCK
-#     parser.add_argument('--drop_block', default=False, action='store_true', help=f'If to use the drop_block in the network')
-#     parser.add_argument('--drop_block_keep_prob', type=float, default=DROP_BLOCK_KEEP_PROB, help=f'The probability to keep the block')
-#     parser.add_argument('--drop_block_block_size', type=int, default=DROP_BLOCK_BLOCK_SIZE, help=f'The size of the block to drop')
-#
-#     # - OPTIMIZERS
-#     # optimizer
-#     parser.add_argument('--optimizer', type=str, choices=['sgd', 'adam', 'adamw', 'sparse_adam', 'nadam', 'adadelta', 'adamax', 'adagrad'], default=OPTIMIZER, help=f'The optimizer to use')
-#     parser.add_argument('--weighted_loss', default=False, action='store_true', help=f'If to use the weighted version of the MSE loss')
-#
-#     parser.add_argument('--optimizer_lr', type=float, default=OPTIMIZER_LR, help=f'The initial learning rate of the optimizer')
-#     parser.add_argument('--optimizer_lr_decay', type=float, default=OPTIMIZER_LR_DECAY, help=f'The learning rate decay for Adagrad optimizer')
-#     parser.add_argument('--optimizer_beta_1', type=float, default=OPTIMIZER_BETA_1, help=f'The exponential decay rate for the 1st moment estimates (Adam, Nadam, Adamax)')
-#     parser.add_argument('--optimizer_beta_2', type=float, default=OPTIMIZER_BETA_2, help=f'The exponential decay rate for the 2st moment estimates (Adam, Nadam, Adamax)')
-#     parser.add_argument('--optimizer_rho', type=float, default=OPTIMIZER_RHO, help=f'The decay rate (Adadelta, RMSprop)')
-#     parser.add_argument('--optimizer_amsgrad', default=False, action='store_true', help=f'If to use the Amsgrad function (Adam, Nadam, Adamax)')
-#
-#     parser.add_argument('--optimizer_weight_decay', type=float, default=OPTIMIZER_WEIGHT_DECAY, help=f'The weight decay for ADAM, NADAM')
-#     parser.add_argument('--optimizer_momentum', type=float, default=OPTIMIZER_MOMENTUM, help=f'The momentum for SGD')
-#     parser.add_argument('--optimizer_dampening', type=float, default=OPTIMIZER_DAMPENING, help=f'The dampening for momentum')
-#     parser.add_argument('--optimizer_momentum_decay', type=float, default=OPTIMIZER_MOMENTUM_DECAY, help=f'The momentum for NADAM')
-#     parser.add_argument('--optimizer_nesterov', default=False, action='store_true', help=f'If to use the Nesterov momentum (SGD)')
-#     parser.add_argument('--optimizer_centered', default=False, action='store_true', help=f'If True, gradients are normalized by the estimated variance of the gradient; if False, by the un-centered second moment. Setting this to True may help with training, but is slightly more expensive in terms of computation and memory. (RMSprop)')
-#
-#     # - KERNEL REGULARIZER
-#     parser.add_argument('--kernel_regularizer_type', type=str, choices=['l1', 'l2', 'l1l2'], default=KERNEL_REGULARIZER_TYPE, help=f'The type of the regularization')
-#     parser.add_argument('--kernel_regularizer_l1', type=float, default=KERNEL_REGULARIZER_L1, help=f'The strength of the L1 regularization')
-#     parser.add_argument('--kernel_regularizer_l2', type=float, default=KERNEL_REGULARIZER_L2, help=f'The strength of the L2 regularization')
-#     parser.add_argument('--kernel_regularizer_factor', type=float, default=KERNEL_REGULARIZER_FACTOR, help=f'The strength of the orthogonal regularization')
-#     parser.add_argument('--kernel_regularizer_mode', type=str, choices=['rows', 'columns'], default=KERNEL_REGULARIZER_MODE, help=f"The mode ('columns' or 'rows') of the orthogonal regularization")
-#
-#     # - ACTIVATION
-#     parser.add_argument('--activation', type=str, choices=['swish', 'relu', 'leaky_relu'], default=ACTIVATION, help=f'The activation to use')
-#     parser.add_argument('--activation_relu_max_value', type=float, default=ACTIVATION_RELU_MAX_VALUE, help=f'The negative slope in the LeakyReLU activation function for values < 0')
-#     parser.add_argument('--activation_relu_negative_slope', type=float, default=ACTIVATION_RELU_NEGATIVE_SLOPE, help=f'The negative slope in the ReLU activation function for values < 0')
-#     parser.add_argument('--activation_relu_threshold', type=float, default=ACTIVATION_RELU_THRESHOLD, help=f'The value that has to be exceeded activate the neuron')
-#     parser.add_argument('--activation_leaky_relu_alpha', type=float, default=ACTIVATION_LEAKY_RELU_ALPHA, help=f'The negative slope in the LeakyReLU activation function for values < 0')
-#
-#     return parser
