@@ -3,12 +3,13 @@ general:
   output_dir: './output'
 
 data:
+  reload_data: False
   image_height: 419
   image_width: 419
 
 augmentations:
-  crop_height: 419
-  crop_width: 419
+  crop_height: 256
+  crop_width: 256
 
 model:
   in_channels: 1
@@ -53,12 +54,12 @@ training:
   temp_data_file: '../data/train/temp/CytoPack/clean_data.pkl'
 
   tr_checkpoint_file: '/home/sidorov/Projects/QANetV2/qanet/output/train/pytorch_2022-08-08_17-28-30/checkpoints/best_val_loss_chkpt.pth.tar'
-  tf_checkpoint_dir: '/home/sidorov/Projects/QANetV2/qanet/output/train/tensor_flow_2022-11-24_13-15-16/checkpoints'
+  checkpoint_dir: '/home/sidorov/Projects/QANetV2/qanet/output/train/tensor_flow_2022-11-24_13-15-16/checkpoints'
   tf_checkpoint_file: 'checkpoints/best_model.ckpt'
 
-  epochs: 300
+  epochs: 500
   batch_size: 16
-  val_prop: 0.2
+  val_prop: 0.05
   num_train_workers: 4
   num_val_workers: 4
   pin_memory: True
@@ -67,7 +68,7 @@ training:
   optimizer_maximize: False
   optimizer_foreach: None
   optimizer: 'adam'
-  optimizer_lr: 0.003
+  optimizer_lr: 0.0001
   optimizer_lr_decay: 0.001
   optimizer_beta_1: 0.9
   optimizer_beta_2: 0.999
@@ -89,7 +90,7 @@ training:
   min_improvement_delta: 0.00001
 
   # - Early Stopping
-  early_stopping: False
+  early_stopping: True
   early_stopping_patience: 30
   early_stopping_monitor: 'val_loss'
   early_stopping_min_delta: 0.0001
@@ -107,9 +108,9 @@ training:
   terminate_on_nan: True
 
   # - LR Reduce on Plateau
-  reduce_lr_on_plateau: True
-  reduce_lr_on_plateau_patience: 10
-  reduce_lr_on_plateau_factor: 0.9
+  reduce_lr_on_plateau: False
+  reduce_lr_on_plateau_patience: 5
+  reduce_lr_on_plateau_factor: 0.7
   reduce_lr_on_plateau_monitor: 'val_loss'
   reduce_lr_on_plateau_min_delta: 0.0001
   reduce_lr_on_plateau_cooldown: 0
@@ -117,13 +118,11 @@ training:
   reduce_lr_on_plateau_verbose: 1
 
 inference:
-  seg_dir_postfix: 'GT'
-  image_prefix: 't'
-  seg_prefix: 'man_seg'
-  seg_sub_dir: 'SEG'
+  seg_dir_postfix: 'MASKS'
+  image_prefix: 'image'
+  seg_prefix: 'mask'
+  seg_sub_dir: ''
 
-  data_dir: '../data/train/CytoPack'
-  mask_dir: '/home/sidorov/Projects/QANetV2/data/generated/masks'
-  temp_data_file: '../data/train/temp/CytoPack/clean_data.pkl'
-
-  inference_data_dir: '..data/inference/UNSW-AU-Fluo-N2DH-GOWT1'
+  data_dir: '../data/inference/UNSW-AU-Fluo-N2DH-SIM+'
+  temp_data_file: '../data/inference/temp/UNSW-AU-Fluo-N2DH-SIM+/clean_data.pkl'
+  checkpoint_dir: '/home/sidorov/Projects/QANetV2/qanet/output/train/tensor_flow_large_data_2023-01-14_10-31-10/checkpoints'

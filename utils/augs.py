@@ -132,12 +132,17 @@ def image_mask_augs():
 def transforms(crop_height, crop_width):
     return A.Compose(
         [
-            # RandomScale(p=0.5),
-            CropNonEmptyMaskIfExists(
+            A.Resize(
                 height=crop_height,
                 width=crop_width,
                 p=1.
             ),
+            # RandomScale(p=0.5),
+            # CropNonEmptyMaskIfExists(
+            #     height=crop_height,
+            #     width=crop_width,
+            #     p=1.
+            # ),
             # A.ToFloat(p=1.),
         ],
         additional_targets={'mask0': 'mask'}
@@ -160,11 +165,16 @@ def test_augs(crop_height: int, crop_width: int):
 def inference_augs(crop_height: int, crop_width: int):
     return A.Compose(
         [
-            A.Resize(
+            CropNonEmptyMaskIfExists(
                 height=crop_height,
                 width=crop_width,
                 p=1.
             ),
-            A.ToFloat(p=1.),
+            # A.Resize(
+            #     height=crop_height,
+            #     width=crop_width,
+            #     p=1.
+            # ),
+            # A.ToFloat(p=1.),
         ]
     )

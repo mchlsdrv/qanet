@@ -621,10 +621,8 @@ def scan_files(root_dir: pathlib.Path or str, seg_dir_postfix: str, image_prefix
                         # - If there was provided a sub-dir - add it
                         if seg_sub_dir is not None:
                             seg_fl = pathlib.Path(f'{seg_dir}/{seg_sub_dir}/{seg_name}')
-                            # seg_fl = pathlib.Path(f'{seg_dir}/{seg_sub_dir}/{file.replace(image_prefix, seg_prefix)}')
                         else:
                             seg_fl = pathlib.Path(f'{seg_dir}/{seg_name}')
-                            # seg_fl = pathlib.Path(f'{seg_dir}/{file.replace(image_prefix, seg_prefix)}')
 
                         # - If there is a segmentation file with that path - add it
                         if img_fl.is_file() and seg_fl.is_file():
@@ -889,6 +887,26 @@ def calc_seg_measure(gt_masks: np.ndarray, pred_masks: np.ndarray):
     return seg_measure
 
 
+def update_hyper_parameters(hyper_parameters: dict, arguments: argparse.Namespace):
+    # - Get hyper-parameter names
+    hyp_param_categories = list(hyper_parameters.keys())
+
+    # - Get the argument names
+    args = vars(arguments)
+    arg_names = list(args.keys())
+
+    # - For each argument
+    for arg_name in arg_names:
+        for hyp_param_cat in hyp_param_categories:
+            # - Get the hyperparameter names fo the category
+            hyp_param_names = hyper_parameters.get(hyp_param_cat)
+
+            # - If the argument name is in hyperparameter names for the current category
+            if arg_name in hyp_param_names and args.get(arg_name) is not None:
+                # - Update it with the relevant value
+                hyper_parameters.get(hyp_param_cat)[arg_name] = args.get(arg_name)
+
+
 def get_image_mask_figure(image: np.ndarray, mask: np.ndarray, suptitle: str = '', title: str = '', figsize: tuple = (20, 20)):
     # - Prepare the mask overlap image
     msk = np.zeros((*mask.shape[:-1], 3))
@@ -1076,20 +1094,34 @@ def to_pickle(data, save_file: str or pathlib.Path, logger: logging.Logger = Non
         warning_log(logger=logger, message=f'Could not save the data to file \'{save_file}\'!')
 
 
-def get_data(data_file: pathlib.Path or str, data_dir: pathlib.Path or str, masks_dir: pathlib.Path or str, file_configs: dict, logger: logging.Logger = None):
+def print_pretty_message(message: str, delimiter_symbol: str = '='):
+    delimiter_len = len(message) + 6
+
+    for i in range(delimiter_len):
+        print(delimiter_symbol, end='')
+
+    print(f'\n{delimiter_symbol}{delimiter_symbol} {message} {delimiter_symbol}{delimiter_symbol}')
+
+    for i in range(delimiter_len):
+        print(delimiter_symbol, end='')
+
+    print('')
+
+
+def get_data(mode: str, hyper_parameters: dict, logger: logging.Logger = None):
     data_dict = dict()
 
-    dt_fl = str_2_path(path=data_file)
-    if dt_fl.is_file():
+    dt_fl = str_2_path(path=hyper_parameters.get(mode)['temp_data_file'])
+    if not hyper_parameters.get('data')['reload_data'] and dt_fl.is_file():
         data_dict = from_pickle(data_file=dt_fl, logger=logger)
     else:
-        dt_dir = str_2_path(path=data_dir)
+        dt_dir = str_2_path(path=hyper_parameters.get(mode)['data_dir'])
         fl_tupls = scan_files(
             root_dir=dt_dir,
-            seg_dir_postfix=file_configs.get('seg_dir_postfix'),
-            image_prefix=file_configs.get('image_prefix'),
-            seg_prefix=file_configs.get('seg_prefix'),
-            seg_sub_dir=file_configs.get('seg_sub_dir')
+            seg_dir_postfix=hyper_parameters.get(mode)['seg_dir_postfix'],
+            image_prefix=hyper_parameters.get(mode)['image_prefix'],
+            seg_prefix=hyper_parameters.get(mode)['seg_prefix'],
+            seg_sub_dir=hyper_parameters.get(mode)['seg_sub_dir']
         )
 
         np.random.shuffle(fl_tupls)
@@ -1097,10 +1129,11 @@ def get_data(data_file: pathlib.Path or str, data_dir: pathlib.Path or str, mask
         # - Load images and their masks
         data_dict = get_data_dict(data_file_tuples=fl_tupls)
 
-        # - Clean data items with no objects in them
-        data_dict = clean_items_with_empty_masks(data_dict=data_dict, save_file=data_file)
+        if mode == 'training':
+            # - Clean data items with no objects in them
+            data_dict = clean_items_with_empty_masks(data_dict=data_dict, save_file=hyper_parameters.get(mode)['temp_data_file'])
 
-        data_dict = get_relevant_data(data_dict=data_dict, relevant_files=os.listdir(masks_dir), save_file=data_file, logger=logger)
+            data_dict = get_relevant_data(data_dict=data_dict, relevant_files=os.listdir(hyper_parameters.get(mode)['mask_dir']), save_file=hyper_parameters.get(mode)['temp_data_file'], logger=logger)
 
     return data_dict
 
@@ -1113,6 +1146,7 @@ def get_arg_parser():
     parser.add_argument('--debug', default=False, action='store_true', help=f'If the run is a debugging run')
     parser.add_argument('--gpu_id', type=int, default=0 if torch.cuda.device_count() > 0 else -1, help='The ID of the GPU (if there is any) to run the network on (e.g., --gpu_id 1 will run the network on GPU #1 etc.)')
     parser.add_argument('--hyper_params_file', type=str, default=HYPER_PARAMS_FILE, help='The path to the file with the hyper-parameters')
+    parser.add_argument('--reload_data', default=False, action='store_true', help=f'If to reload the data')
 
     parser.add_argument('--in_train_augmentation', default=False, action='store_true', help=f'Regular mode where the augmentation is performed on-the-fly')
     parser.add_argument('--wandb', default=False, action='store_true', help=f'If to use the wandb callback')

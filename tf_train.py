@@ -1,4 +1,3 @@
-import argparse
 import os
 import pathlib
 import time
@@ -15,34 +14,12 @@ from utils.aux_funcs import (
     get_runtime,
     get_logger,
     err_log,
-    get_data
+    update_hyper_parameters
 )
 import wandb
 
 
 os.environ['TF_FORCE_GPU_ALLOW_GROWTH'] = 'true'
-
-
-def update_hyper_parameters(hyper_parameters: dict, arguments: argparse.Namespace):
-    # - Get hyper-parameter names
-    hyp_param_categories = list(hyper_parameters.keys())
-
-    # - Get the argument names
-    args = vars(arguments)
-    arg_names = list(args.keys())
-
-    # - For each argument
-    for arg_name in arg_names:
-        for hyp_param_cat in hyp_param_categories:
-            # - Get the hyperparameter names fo the category
-            hyp_param_names = hyper_parameters.get(hyp_param_cat)
-
-            # - If the argument name is in hyperparameter names for the current category
-            if arg_name in hyp_param_names and args.get(arg_name) is not None:
-                # - Update it with the relevant value
-                hyper_parameters.get(hyp_param_cat)[arg_name] = args.get(arg_name)
-
-    return hyp_params_dict
 
 
 if __name__ == '__main__':
@@ -59,7 +36,7 @@ if __name__ == '__main__':
     hyp_params_dict = yaml.safe_load(hyp_params_fl.open(mode='r').read())
 
     # - Update the hyperparameters with the parsed arguments
-    hyp_params_dict = update_hyper_parameters(hyper_parameters=hyp_params_dict, arguments=args)
+    update_hyper_parameters(hyper_parameters=hyp_params_dict, arguments=args)
 
     # - Create the directory for the current run
     if hyp_params_dict.get('training')['load_checkpoint']:
@@ -86,20 +63,6 @@ if __name__ == '__main__':
     =========================================
     ''')
 
-    # - Load the data
-    data_dict = get_data(
-        data_file=hyp_params_dict.get('training')['temp_data_file'],
-        data_dir=hyp_params_dict.get('training')['data_dir'],
-        masks_dir=hyp_params_dict.get('training')['mask_dir'],
-        file_configs=dict(
-            seg_dir_postfix=hyp_params_dict.get('training')['seg_dir_postfix'],
-            image_prefix=hyp_params_dict.get('training')['image_prefix'],
-            seg_prefix=hyp_params_dict.get('training')['seg_prefix'],
-            seg_sub_dir=hyp_params_dict.get('training')['seg_sub_dir']
-        ),
-        logger=logger
-    )
-
     # - Configure the GPU to run on
     choose_gpu(gpu_id=args.gpu_id, logger=logger)
 
@@ -108,12 +71,9 @@ if __name__ == '__main__':
 
     # - Train model
     trained_model = None
-    print(f'''
-    > Training on {len(data_dict)} examples ...
-    ''')
+
     try:
         trained_model = train_model(
-            data_dict=data_dict,
             hyper_parameters=hyp_params_dict,
             output_dir=current_run_dir,
             logger=logger

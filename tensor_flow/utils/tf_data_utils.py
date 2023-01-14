@@ -90,6 +90,7 @@ class DataLoader(tf.keras.utils.Sequence):
         self.image_mask_augs = augs.image_mask_augs()
         self.mask_augs = augs.mask_augs(image_width=crop_width)
         self.transforms = augs.transforms(crop_height=crop_height, crop_width=crop_width)
+        self.inf_augs = augs.inference_augs(crop_height=crop_height, crop_width=crop_width)
 
         # - In case the masks are made in advance, in which case there is no need for the self.mask_augs
         # self.image_files = np.array([fl_tpl[0] for fl_tpl in file_tuples], dtype=object)
@@ -112,10 +113,10 @@ class DataLoader(tf.keras.utils.Sequence):
         start_idx = index * self.batch_size
         end_idx = start_idx + self.batch_size if start_idx + self.batch_size < self.n_images else self.n_images - 1
 
-        if self.mode == 'fast' and isinstance(self.masks_dir, pathlib.Path) and self.masks_dir.is_dir():
+        if self.mode == 'training':
             item = self.get_batch_fast_mode(start_index=start_idx, end_index=end_idx)
-        elif self.mode == 'regular':
-            item = self.get_batch_regular_mode(start_index=start_idx, end_index=end_idx)
+        elif self.mode == 'inference':
+            item = self.get_batch_inference_mode(index=start_idx)
         else:
             err_log(logger=self.logger, message=f'\'{self.mode}\' mode requires the masks_dir argument to point to a valid location ({self.masks_dir}) and be of type \'pathlib.Path\', but is of type \'{type(self.masks_dir)}\' ')
 
@@ -225,21 +226,38 @@ class DataLoader(tf.keras.utils.Sequence):
 
         return (btch_imgs_aug, btch_msks_dfrmd), btch_js
 
+    def get_batch_inference_mode(self, index):
+        # - Get the key of the image
+        img_key = self.file_keys[index]
 
-def get_data_loaders(mode: str, data_dict: dict, image_height: int, image_width: int, crop_height: int, crop_width: int, masks_dir: pathlib.Path or str, train_batch_size: int, val_prop: float = .2, logger: logging.Logger = None):
-    train_dl = val_dl = test_dl = inf_dl = None
-    train_files, val_files = get_train_val_split(data_list=list(data_dict.keys()), val_prop=val_prop, logger=logger)
+        # - Get the image and the mask
+        img, _, msk = self.data_dict.get(img_key)
+
+        # - Augment the image and the mask
+        aug_res = self.inf_augs(image=img.astype(np.uint8), mask=msk.astype(np.uint8))
+        img, msk = aug_res.get('image'), aug_res.get('mask')
+
+        img, msk = img.astype(np.uint8), instance_2_categorical(masks=msk.astype(np.uint8))
+        # - Convert the image and the mask to  tensor
+        img, msk = tf.convert_to_tensor([img], dtype=tf.float32), tf.convert_to_tensor([msk], dtype=tf.float32)
+
+        return img, msk
+
+
+def get_data_loaders(mode: str, data_dict: dict, hyper_parameters: dict, logger: logging.Logger = None):
+
+    train_files, val_files = get_train_val_split(data_list=list(data_dict.keys()), val_prop=hyper_parameters.get('training')['val_prop'], logger=logger)
 
     # - Create the DataLoader object
     train_dl = DataLoader(
         mode=mode,
         data_dict=data_dict,
         file_keys=train_files,
-        crop_height=crop_height,
-        crop_width=crop_width,
-        batch_size=train_batch_size,
-        calculate_seg_measure=image_height > crop_height or image_width > crop_width,
-        masks_dir=masks_dir,
+        crop_height=hyper_parameters.get('augmentations')['crop_height'],
+        crop_width=hyper_parameters.get('augmentations')['crop_width'],
+        batch_size=hyper_parameters.get('training')['batch_size'],
+        calculate_seg_measure=hyper_parameters.get('data')['image_height'] > hyper_parameters.get('augmentations')['crop_height'] or hyper_parameters.get('data')['image_width'] > hyper_parameters.get('augmentations')['crop_width'],
+        masks_dir=hyper_parameters.get('training')['mask_dir'],
         logger=logger
     )
 
@@ -248,11 +266,11 @@ def get_data_loaders(mode: str, data_dict: dict, image_height: int, image_width:
             mode=mode,
             data_dict=data_dict,
             file_keys=val_files,
-            crop_height=crop_height,
-            crop_width=crop_width,
+            crop_height=hyper_parameters.get('augmentations')['crop_height'],
+            crop_width=hyper_parameters.get('augmentations')['crop_width'],
             batch_size=VAL_BATCH_SIZE,
-            calculate_seg_measure=image_height > crop_height or image_width > crop_width,
-            masks_dir=masks_dir,
+            calculate_seg_measure=hyper_parameters.get('data')['image_height'] > hyper_parameters.get('augmentations')['crop_height'] or hyper_parameters.get('data')['image_width'] > hyper_parameters.get('augmentations')['crop_width'],
+            masks_dir=hyper_parameters.get('training')['mask_dir'],
             logger=logger
         )
 
