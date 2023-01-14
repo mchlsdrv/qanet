@@ -5,12 +5,6 @@ general:
 data:
   image_height: 419
   image_width: 419
-  train_data_dir: '../data/train/CytoPack'
-  train_mask_dir: '/home/sidorov/Projects/QANetV2/data/generated/masks'
-  train_temp_data_file: '../data/train/temp/CytoPack/clean_data.pkl'
-  test_data_dir: '../data/test/Fluo-N2DH-GOWT1-ST'
-  test_mask_dir: '../data/test/Fluo-N2DH-GOWT1-ST'
-  inference_data_dir: '..data/inference/UNSW-AU-Fluo-N2DH-GOWT1'
 
 augmentations:
   crop_height: 419
@@ -48,6 +42,15 @@ model:
 training:
   load_checkpoint: False
   in_train_augmentation: False
+
+  seg_dir_postfix: 'GT'
+  image_prefix: 't'
+  seg_prefix: 'man_seg'
+  seg_sub_dir: 'SEG'
+
+  data_dir: '../data/train/CytoPack'
+  mask_dir: '/home/sidorov/Projects/QANetV2/data/generated/masks'
+  temp_data_file: '../data/train/temp/CytoPack/clean_data.pkl'
 
   tr_checkpoint_file: '/home/sidorov/Projects/QANetV2/qanet/output/train/pytorch_2022-08-08_17-28-30/checkpoints/best_val_loss_chkpt.pth.tar'
   tf_checkpoint_dir: '/home/sidorov/Projects/QANetV2/qanet/output/train/tensor_flow_2022-11-24_13-15-16/checkpoints'
@@ -112,3 +115,15 @@ training:
   reduce_lr_on_plateau_cooldown: 0
   reduce_lr_on_plateau_mode: 'auto'
   reduce_lr_on_plateau_verbose: 1
+
+inference:
+  seg_dir_postfix: 'GT'
+  image_prefix: 't'
+  seg_prefix: 'man_seg'
+  seg_sub_dir: 'SEG'
+
+  data_dir: '../data/train/CytoPack'
+  mask_dir: '/home/sidorov/Projects/QANetV2/data/generated/masks'
+  temp_data_file: '../data/train/temp/CytoPack/clean_data.pkl'
+
+  inference_data_dir: '..data/inference/UNSW-AU-Fluo-N2DH-GOWT1'

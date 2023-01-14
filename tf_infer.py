@@ -3,7 +3,7 @@ import pathlib
 import time
 import datetime
 
-from configs.general_configs import CONFIGS_DIR
+from global_configs.general_configs import CONFIGS_DIR
 from utils.aux_funcs import get_arg_parser, get_runtime, get_logger
 from tensor_flow import infer
 

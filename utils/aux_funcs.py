@@ -59,7 +59,7 @@ from global_configs.general_configs import (
     # TRAIN_DATA_DIR,
     # TEST_DATA_DIR,
     # MASKS_DIR,
-    SEG_DIR_POSTFIX, IMAGE_PREFIX, SEG_PREFIX, SEG_SUB_DIR, HYPER_PARAMS_FILE,
+    HYPER_PARAMS_FILE,
 )
 
 # from pytorch.configs import general_configs as tr_configs
@@ -611,10 +611,22 @@ def scan_files(root_dir: pathlib.Path or str, seg_dir_postfix: str, image_prefix
                 for sub_root, _, files in os.walk(root / dir):
                     for file in files:
                         img_fl = pathlib.Path(f'{sub_root}/{file}')
-                        if seg_sub_dir is not None:
-                            seg_fl = pathlib.Path(f'{seg_dir}/{seg_sub_dir}/{file.replace(image_prefix, seg_prefix)}')
+
+                        # - Configure the name of the segmentation files
+                        if len(image_prefix) > 1:
+                            seg_name = file.replace(image_prefix, seg_prefix)
                         else:
-                            seg_fl = pathlib.Path(f'{seg_dir}/{file.replace(image_prefix, seg_prefix)}')
+                            seg_name = seg_prefix + file[file.index(image_prefix)+1:]
+
+                        # - If there was provided a sub-dir - add it
+                        if seg_sub_dir is not None:
+                            seg_fl = pathlib.Path(f'{seg_dir}/{seg_sub_dir}/{seg_name}')
+                            # seg_fl = pathlib.Path(f'{seg_dir}/{seg_sub_dir}/{file.replace(image_prefix, seg_prefix)}')
+                        else:
+                            seg_fl = pathlib.Path(f'{seg_dir}/{seg_name}')
+                            # seg_fl = pathlib.Path(f'{seg_dir}/{file.replace(image_prefix, seg_prefix)}')
+
+                        # - If there is a segmentation file with that path - add it
                         if img_fl.is_file() and seg_fl.is_file():
                             file_tuples.append((img_fl, seg_fl))
     return file_tuples
@@ -1064,7 +1076,7 @@ def to_pickle(data, save_file: str or pathlib.Path, logger: logging.Logger = Non
         warning_log(logger=logger, message=f'Could not save the data to file \'{save_file}\'!')
 
 
-def get_data(data_file: pathlib.Path or str, data_dir: pathlib.Path or str, masks_dir: pathlib.Path or str, logger: logging.Logger = None):
+def get_data(data_file: pathlib.Path or str, data_dir: pathlib.Path or str, masks_dir: pathlib.Path or str, file_configs: dict, logger: logging.Logger = None):
     data_dict = dict()
 
     dt_fl = str_2_path(path=data_file)
@@ -1074,10 +1086,10 @@ def get_data(data_file: pathlib.Path or str, data_dir: pathlib.Path or str, mask
         dt_dir = str_2_path(path=data_dir)
         fl_tupls = scan_files(
             root_dir=dt_dir,
-            seg_dir_postfix=SEG_DIR_POSTFIX,
-            image_prefix=IMAGE_PREFIX,
-            seg_prefix=SEG_PREFIX,
-            seg_sub_dir=SEG_SUB_DIR
+            seg_dir_postfix=file_configs.get('seg_dir_postfix'),
+            image_prefix=file_configs.get('image_prefix'),
+            seg_prefix=file_configs.get('seg_prefix'),
+            seg_sub_dir=file_configs.get('seg_sub_dir')
         )
 
         np.random.shuffle(fl_tupls)

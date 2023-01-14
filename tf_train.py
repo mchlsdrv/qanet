@@ -88,9 +88,15 @@ if __name__ == '__main__':
 
     # - Load the data
     data_dict = get_data(
-        data_file=hyp_params_dict.get('data')['train_temp_data_file'],
-        data_dir=hyp_params_dict.get('data')['train_data_dir'],
-        masks_dir=hyp_params_dict.get('data')['train_mask_dir'],
+        data_file=hyp_params_dict.get('training')['temp_data_file'],
+        data_dir=hyp_params_dict.get('training')['data_dir'],
+        masks_dir=hyp_params_dict.get('training')['mask_dir'],
+        file_configs=dict(
+            seg_dir_postfix=hyp_params_dict.get('training')['seg_dir_postfix'],
+            image_prefix=hyp_params_dict.get('training')['image_prefix'],
+            seg_prefix=hyp_params_dict.get('training')['seg_prefix'],
+            seg_sub_dir=hyp_params_dict.get('training')['seg_sub_dir']
+        ),
         logger=logger
     )
 

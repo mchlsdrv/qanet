@@ -1,5 +1,4 @@
 import os
-import numpy as np
 from functools import partial
 import logging
 import logging.config
@@ -8,15 +7,13 @@ import multiprocessing as mlp
 import pathlib
 
 import tensorflow as tf
-import wandb
 from keras import backend as K
 
 from global_configs.general_configs import (
-    SEG_DIR_POSTFIX,
-    IMAGE_PREFIX,
-    SEG_PREFIX,
     LAUNCH_TB,
-    METRICS, REDUCE_LR_ON_PLATEAU_VERBOSE, REDUCE_LR_ON_PLATEAU_MIN_LR,
+    METRICS,
+    REDUCE_LR_ON_PLATEAU_VERBOSE,
+    REDUCE_LR_ON_PLATEAU_MIN_LR,
 )
 from tensor_flow.configs.general_configs import (
     TENSOR_BOARD_WRITE_IMAGES,
@@ -37,7 +34,6 @@ from utils.aux_funcs import (
     info_log,
     warning_log,
     err_log,
-    scan_files, get_data_dict, clean_items_with_empty_masks
 )
 from .tf_data_utils import get_data_loaders, DataLoader
 from ..custom.tf_models import (
@@ -394,7 +390,7 @@ def train_model(data_dict: dict, hyper_parameters: dict, output_dir: pathlib.Pat
         crop_width=hyper_parameters.get('augmentations')['crop_width'],
         train_batch_size=hyper_parameters.get('training')['batch_size'],
         val_prop=hyper_parameters.get('training')['val_prop'],
-        masks_dir=hyper_parameters.get('data')['train_mask_dir'],
+        masks_dir=hyper_parameters.get('training')['mask_dir'],
         logger=logger
     )
 
@@ -425,23 +421,7 @@ def train_model(data_dict: dict, hyper_parameters: dict, output_dir: pathlib.Pat
         tb_prc.join()
 
 
-def test_model(model, data_file, file_tuples, hyper_parameters: dict, output_dir: pathlib.Path, logger: logging.Logger = None):
-    # -  Load the test data
-    fl_tupls = scan_files(
-        root_dir=pathlib.Path(hyper_parameters.get('training')['test_data_dir']),
-        seg_dir_postfix=SEG_DIR_POSTFIX,
-        image_prefix=IMAGE_PREFIX,
-        seg_prefix=SEG_PREFIX
-    )
-
-    np.random.shuffle(fl_tupls)
-
-    # - Load images and their masks
-    data_dict = get_data_dict(data_file_tuples=fl_tupls)
-
-    # - Clean data items with no objects in them
-    data_dict = clean_items_with_empty_masks(data_dict=data_dict, save_file=data_file)
-
+def test_model(model, data_dict, file_tuples, hyper_parameters: dict, output_dir: pathlib.Path, logger: logging.Logger = None):
     # - Get the GT data loader
     test_dl = DataLoader(
         mode='test',

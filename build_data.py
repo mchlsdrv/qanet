@@ -26,13 +26,7 @@ from utils.aux_funcs import (
     get_ts,
     get_split_data,
     check_unique_file,
-    assert_pathable
-)
-from global_configs.general_configs import (
-    SEG_DIR_POSTFIX,
-    SEG_PREFIX,
-    IMAGE_PREFIX,
-    SEG_SUB_DIR
+    assert_pathable, get_image_mask_figure
 )
 import multiprocessing as mp
 from multiprocessing import Pool
@@ -50,6 +44,11 @@ FILE_MAX_TIME = 3 * 60  # in seconds
 MAX_CPUS = 30
 MIN_J = 0.01
 MAX_J = 0.99
+
+SEG_DIR_POSTFIX = 'GT'
+IMAGE_PREFIX = 't'
+SEG_PREFIX = 'man_seg'
+SEG_SUB_DIR = 'SEG'
 
 
 def repaint_instance_segmentation(mask: np.ndarray):
@@ -254,13 +253,12 @@ def build_data(args):
                 os.makedirs(rng_img_log_dir, exist_ok=True)
 
                 # - Plot the image the GT mask and the augmented mask
-                fig, ax = plot_image_mask(
+                fig, ax = get_image_mask_figure(
                     image=img,
                     mask=gt_msk,
                     suptitle='GT (red) vs Pred (blue)',
                     title=f'Seg Measure = {str_2_float(seg_msr_str)}',
                     figsize=(20, 20),
-                    save_file=rng_img_log_dir / f'{seg_msr_str}.png'
                 )
 
         print(f'''
@@ -325,13 +323,12 @@ def analyze_data(files: list, masks_root: pathlib.Path, n_samples: int = 5, clea
             msk = load_image(image_file=str(rnd_msk_fl), add_channels=True)
 
             # - Plot the image the GT mask and the augmented mask
-            fig, ax = plot_image_mask(
+            fig, ax = get_image_mask_figure(
                 image=img,
                 mask=msk,
                 suptitle='Image vs Mask (blue)',
                 title=f'Seg Measure = {j}',
                 figsize=(20, 20),
-                save_file=masks_root / f'analysis/{fl_name}_{j_str}.png'
             )
             plt.close(fig)
 
