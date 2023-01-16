@@ -107,25 +107,33 @@ def mask_augs(image_width, alpha_factor=ALPHA_FACTOR, sigma_factor=SIGMA_FACTOR,
     )
 
 
-def image_mask_augs():
+def train_augs(crop_height: int, crop_width: int):
     return A.Compose(
         [
-            A.OneOf([
-                A.Flip(p=0.5),
-                A.HorizontalFlip(p=0.5),
-                A.ShiftScaleRotate(
-                    shift_limit=0.0625,
-                    scale_limit=0.1,
-                    rotate_limit=45,
-                    interpolation=cv2.INTER_LANCZOS4,
-                    p=0.5
-                ),
-                # CoarseDropout(
-                #     max_holes=10, max_height=25, max_width=25, p=0.5
-                # )
-            ], p=0.5
+            A.Resize(
+                height=crop_height,
+                width=crop_width,
+                p=1.
             ),
-        ]
+            A.OneOf(
+                [
+                    A.Flip(p=0.5),
+                    A.HorizontalFlip(p=0.5),
+                    A.ShiftScaleRotate(
+                        shift_limit=0.0625,
+                        scale_limit=0.1,
+                        rotate_limit=45,
+                        interpolation=cv2.INTER_LANCZOS4,
+                        p=0.5
+                    ),
+
+                ],
+                p=0.5
+            ),
+            A.GaussianBlur(p=1),
+            A.ToFloat(p=1.),
+        ],
+        # additional_targets={'mask0': 'mask'}
     )
 
 
@@ -137,13 +145,13 @@ def transforms(crop_height, crop_width):
                 width=crop_width,
                 p=1.
             ),
-            # RandomScale(p=0.5),
+            A.GaussianBlur(p=1),
             # CropNonEmptyMaskIfExists(
             #     height=crop_height,
             #     width=crop_width,
             #     p=1.
             # ),
-            # A.ToFloat(p=1.),
+            A.ToFloat(p=1.),
         ],
         additional_targets={'mask0': 'mask'}
     )
@@ -165,16 +173,18 @@ def test_augs(crop_height: int, crop_width: int):
 def inference_augs(crop_height: int, crop_width: int):
     return A.Compose(
         [
-            CropNonEmptyMaskIfExists(
-                height=crop_height,
-                width=crop_width,
-                p=1.
-            ),
-            # A.Resize(
+            # CropNonEmptyMaskIfExists(
             #     height=crop_height,
             #     width=crop_width,
             #     p=1.
             # ),
+            A.Resize(
+                height=crop_height,
+                width=crop_width,
+                p=1.
+            ),
+            # A.ToGray(),
+            # A.CLAHE(p=1.),
             # A.ToFloat(p=1.),
         ]
     )

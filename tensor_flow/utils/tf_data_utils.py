@@ -16,7 +16,18 @@ from utils import augs
 
 from utils.aux_funcs import (
     get_train_val_split,
-    calc_seg_measure, get_file_name, get_parent_dir_name, str_2_float, load_image, assert_pathable, str_2_path, check_pathable, get_files_under_dir, instance_2_categorical, err_log,
+    get_file_name,
+    get_parent_dir_name,
+    str_2_float,
+    load_image,
+    assert_pathable,
+    str_2_path,
+    check_pathable,
+    get_files_under_dir,
+    instance_2_categorical,
+    err_log,
+    enhance_contrast,
+    calc_seg_score,
 )
 
 
@@ -77,9 +88,9 @@ class DataLoader(tf.keras.utils.Sequence):
     (*) To use this mode provide the images_root and masks_root arguments are valid pathable objects (i.e., pathlib.Path or str) containing the path to the
     root_dir in the aforementioned format.
     """
-    def __init__(self, mode: str, data_dict: dict, file_keys: list, crop_height: int, crop_width: int, batch_size: int, calculate_seg_measure: bool = True, masks_dir: pathlib.Path or str = None, logger: logging = None):
+    def __init__(self, mode: str, data_dict: dict, file_keys: list, crop_height: int, crop_width: int, batch_size: int, calculate_seg_score: bool = True, masks_dir: pathlib.Path or str = None, logger: logging = None):
         self.mode = mode
-        self.calc_seg_measure = calculate_seg_measure
+        self.calc_seg_score = calculate_seg_score
 
         self.data_dict = data_dict
         self.file_keys = np.array(file_keys, dtype=object)
@@ -87,10 +98,9 @@ class DataLoader(tf.keras.utils.Sequence):
         # - Ensure the batch_size is positive
         self.batch_size = batch_size if batch_size > 0 else 1
 
-        self.image_mask_augs = augs.image_mask_augs()
-        self.mask_augs = augs.mask_augs(image_width=crop_width)
-        self.transforms = augs.transforms(crop_height=crop_height, crop_width=crop_width)
+        self.train_augs = augs.train_augs(crop_height=crop_height, crop_width=crop_width)
         self.inf_augs = augs.inference_augs(crop_height=crop_height, crop_width=crop_width)
+        self.mask_augs = augs.mask_augs(image_width=crop_width)
 
         # - In case the masks are made in advance, in which case there is no need for the self.mask_augs
         # self.image_files = np.array([fl_tpl[0] for fl_tpl in file_tuples], dtype=object)
@@ -128,30 +138,28 @@ class DataLoader(tf.keras.utils.Sequence):
         btch_imgs_aug = []
         btch_msks_gt = []
         btch_msks_aug = []
-        btch_js = []
+        btch_seg_scrs = []
 
         for img_fl in self.file_keys[start_index:end_index]:
             img, _, msk_gt = self.data_dict.get(img_fl)
-            img = img.astype(np.uint8)
-            msk_gt = msk_gt.astype(np.uint8)
+            # msk_gt = msk_gt.astype(np.uint8)
 
             # <2> Get the random augmentation and the corresponding seg measure
-            msk, j = get_random_mask(masks_root=self.masks_dir, image_file=img_fl)
-            msk = msk.astype(np.uint8)
+            msk, seg_scr = get_random_mask(masks_root=self.masks_dir, image_file=img_fl)
+            # msk = msk.astype(np.uint8)
 
             # <3> Perform the image transformations
-            aug_res = self.transforms(image=img.astype(np.uint8), mask=msk, mask0=msk_gt)
-            img_aug, msk_aug, msk_gt = aug_res.get('image'), aug_res.get('mask'), aug_res.get('mask0')
+            aug_res = self.train_augs(image=img, mask=msk)
+            img, msk = aug_res.get('image'), aug_res.get('mask')
 
-            # <4> Perform image and mask augmentations
-            aug_res = self.image_mask_augs(image=img_aug.astype(np.uint8), mask=msk_aug.astype(np.uint8))
-            img_aug, msk_aug = aug_res.get('image'), aug_res.get('mask')
+            # aug_res = self.train_augs(image=img, mask=msk, mask0=msk_gt)
+            # img, msk, msk_gt = aug_res.get('image'), aug_res.get('mask'), aug_res.get('mask0')
 
             # - Add the data to the corresponding lists
-            btch_imgs_aug.append(img_aug)
+            btch_imgs_aug.append(img)
             btch_msks_gt.append(msk_gt)
-            btch_msks_aug.append(msk_aug)
-            btch_js.append(j)
+            btch_msks_aug.append(msk)
+            btch_seg_scrs.append(seg_scr)
 
         # - Convert to tensors
 
@@ -159,10 +167,10 @@ class DataLoader(tf.keras.utils.Sequence):
         btch_imgs_aug = tf.convert_to_tensor(np.array(btch_imgs_aug), dtype=tf.float32)
 
         # - Seg measures
-        btch_js = tf.convert_to_tensor(btch_js, dtype=tf.float32)
+        btch_seg_scrs = tf.convert_to_tensor(btch_seg_scrs, dtype=tf.float32)
         btch_msks_aug = np.array(btch_msks_aug)
-        if self.calc_seg_measure:
-            btch_js = calc_seg_measure(gt_masks=np.array(btch_msks_gt), pred_masks=btch_msks_aug)
+        if self.calc_seg_score:
+            btch_seg_scrs = calc_seg_score(gt_masks=np.array(btch_msks_gt), pred_masks=btch_msks_aug)
 
         # - Masks
         btch_msks_aug = instance_2_categorical(masks=btch_msks_aug)
@@ -178,7 +186,7 @@ class DataLoader(tf.keras.utils.Sequence):
             =======================================================
             ''')
 
-        return (btch_imgs_aug, btch_msks_aug), btch_js
+        return (btch_imgs_aug, btch_msks_aug), btch_seg_scrs
 
     def get_batch_regular_mode(self, start_index, end_index):
         t_strt = time.time()
@@ -213,7 +221,7 @@ class DataLoader(tf.keras.utils.Sequence):
         # <2> Convert the btch_msks_dfrmd to numpy to calculate the seg measure
         btch_msks_dfrmd = np.array(btch_msks_dfrmd)
         # <3> Calculate the seg measure of the aug masks with the GT masks, and convert it to tensor
-        btch_js = calc_seg_measure(gt_masks=btch_msks_aug, pred_masks=btch_msks_dfrmd)
+        btch_js = calc_seg_score(gt_masks=btch_msks_aug, pred_masks=btch_msks_dfrmd)
         # <4> Convert btch_js to tensor
         btch_js = tf.convert_to_tensor(btch_js, dtype=tf.float32)
 
@@ -232,12 +240,13 @@ class DataLoader(tf.keras.utils.Sequence):
 
         # - Get the image and the mask
         img, _, msk = self.data_dict.get(img_key)
+        img, msk = img.astype(np.uint8), msk.astype(np.uint8)
+        img = enhance_contrast(image=img)
 
         # - Augment the image and the mask
-        aug_res = self.inf_augs(image=img.astype(np.uint8), mask=msk.astype(np.uint8))
+        aug_res = self.inf_augs(image=img, mask=msk)
         img, msk = aug_res.get('image'), aug_res.get('mask')
-
-        img, msk = img.astype(np.uint8), instance_2_categorical(masks=msk.astype(np.uint8))
+        msk = instance_2_categorical(masks=msk.astype(np.uint8))
         # - Convert the image and the mask to  tensor
         img, msk = tf.convert_to_tensor([img], dtype=tf.float32), tf.convert_to_tensor([msk], dtype=tf.float32)
 
@@ -256,7 +265,7 @@ def get_data_loaders(mode: str, data_dict: dict, hyper_parameters: dict, logger:
         crop_height=hyper_parameters.get('augmentations')['crop_height'],
         crop_width=hyper_parameters.get('augmentations')['crop_width'],
         batch_size=hyper_parameters.get('training')['batch_size'],
-        calculate_seg_measure=hyper_parameters.get('data')['image_height'] > hyper_parameters.get('augmentations')['crop_height'] or hyper_parameters.get('data')['image_width'] > hyper_parameters.get('augmentations')['crop_width'],
+        calculate_seg_score=hyper_parameters.get('data')['image_height'] > hyper_parameters.get('augmentations')['crop_height'] or hyper_parameters.get('data')['image_width'] > hyper_parameters.get('augmentations')['crop_width'],
         masks_dir=hyper_parameters.get('training')['mask_dir'],
         logger=logger
     )
@@ -269,7 +278,7 @@ def get_data_loaders(mode: str, data_dict: dict, hyper_parameters: dict, logger:
             crop_height=hyper_parameters.get('augmentations')['crop_height'],
             crop_width=hyper_parameters.get('augmentations')['crop_width'],
             batch_size=VAL_BATCH_SIZE,
-            calculate_seg_measure=hyper_parameters.get('data')['image_height'] > hyper_parameters.get('augmentations')['crop_height'] or hyper_parameters.get('data')['image_width'] > hyper_parameters.get('augmentations')['crop_width'],
+            calculate_seg_score=hyper_parameters.get('data')['image_height'] > hyper_parameters.get('augmentations')['crop_height'] or hyper_parameters.get('data')['image_width'] > hyper_parameters.get('augmentations')['crop_width'],
             masks_dir=hyper_parameters.get('training')['mask_dir'],
             logger=logger
         )

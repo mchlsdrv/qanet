@@ -1,4 +1,5 @@
 import os
+import matplotlib.pyplot as plt
 from tqdm import tqdm
 import logging
 import time
@@ -8,9 +9,11 @@ import tensorflow as tf
 from tensorflow import keras
 from tensorflow.keras import layers
 
+from utils.aux_funcs import categorical_2_rgb, instance_2_categorical
 from .tf_activations import (
     Swish
 )
+DEBUG = False
 
 
 class RibCage(keras.Model):
@@ -226,12 +229,28 @@ class RibCage(keras.Model):
         results = np.array([])
 
         # - Get the data of the current epoch
-        for imgs, segs in tqdm(data_loader):
+        pbar = tqdm(data_loader)
+        for idx, (imgs, msks) in enumerate(pbar):
             # - Get the predictions
-            pred_seg_msrs = self.model([imgs, segs], training=False)
-            pred_seg_msrs = pred_seg_msrs.numpy()#[:, 0]
+            pred_seg_msrs = self.model([imgs, msks], training=False)
+            pred_seg_msrs = pred_seg_msrs.numpy().flatten()[0]
+
+            if DEBUG:
+                save_dir = pathlib.Path('inference_examples')
+                os.makedirs(save_dir, exist_ok=True)
+                fig, ax = plt.subplots(1, 2, figsize=(20, 40))
+                ax[0].imshow(imgs.numpy()[0], cmap='gray')
+                msk = msks.numpy()[0, ..., 0]
+                print(f'mask classes before RGB: {np.unique(msk)}')
+                msk = categorical_2_rgb(mask=msk)
+                print(f'mask classes after RGB: {np.unique(msk)}')
+                ax[1].imshow(msk)
+                ax[1].set(title=f'{pred_seg_msrs:.3f}')
+                fig.savefig(save_dir / f'{idx}.png')
+                plt.close(fig)
 
             # - Append the predicted seg measures to the results
             results = np.append(results, pred_seg_msrs)
+            pbar.set_postfix(seg=f'{pred_seg_msrs:.3f}')
 
         return results

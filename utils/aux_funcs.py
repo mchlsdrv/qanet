@@ -639,7 +639,7 @@ def get_data_dict(data_file_tuples: list):
     ''')
     files_pbar = tqdm(data_file_tuples)
     for img_fl, msk_fl in files_pbar:
-        img = cv2.imread(str(img_fl), -1).astype(np.uint8)
+        img = cv2.imread(str(img_fl), -1)#.astype(np.uint8)
         # - Add the channel dim
         if len(img.shape) < 3:
             img = np.expand_dims(img, axis=-1)
@@ -799,6 +799,13 @@ def get_categorical_mask(binary_mask: np.ndarray):
     return cat_msk
 
 
+def enhance_contrast(image: np.ndarray):
+    clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
+    img = clahe.apply(image)
+
+    return img
+
+
 def instance_2_categorical(masks: np.ndarray or list):
     """
     Converts an instance masks (i.e., where each cell is represented by a different color, to a mask with 3 classes, i.e.,
@@ -829,7 +836,7 @@ def instance_2_categorical(masks: np.ndarray or list):
     return btch_cat_msks
 
 
-def calc_seg_measure(gt_masks: np.ndarray, pred_masks: np.ndarray):
+def calc_seg_score(gt_masks: np.ndarray, pred_masks: np.ndarray):
     """
     Converts a multi-class label into a one-hot labels for each object in the multi-class label
     :param: multi_class_mask - mask where integers represent different objects
@@ -1136,6 +1143,28 @@ def get_data(mode: str, hyper_parameters: dict, logger: logging.Logger = None):
             data_dict = get_relevant_data(data_dict=data_dict, relevant_files=os.listdir(hyper_parameters.get(mode)['mask_dir']), save_file=hyper_parameters.get(mode)['temp_data_file'], logger=logger)
 
     return data_dict
+
+
+def categorical_2_rgb(mask: np.ndarray):
+    rgb_msk = np.zeros((*mask.shape[:2], 3))
+
+    # - Background - red channel
+    msk_bg = deepcopy(mask)
+    msk_bg += 1
+    msk_bg[msk_bg > 1] = 0
+    rgb_msk[..., 0] = msk_bg
+
+    # - Inner part of the cell - blue channel
+    msk_in = deepcopy(mask)
+    msk_in[msk_in != 1] = 0
+    rgb_msk[..., 1] = msk_in
+
+    # - Outer part of the cell - blue channel
+    msk_out = deepcopy(mask)
+    msk_out[msk_out != 2] = 0
+    rgb_msk[..., 2] = msk_out
+
+    return rgb_msk
 
 
 def get_arg_parser():

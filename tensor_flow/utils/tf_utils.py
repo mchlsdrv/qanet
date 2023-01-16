@@ -418,7 +418,7 @@ def infer_data(hyper_parameters: dict, output_dir: pathlib.Path or str, logger: 
     # -1- Build the model and optionally load the weights
     trained_model, weights_loaded = get_model(mode='inference', hyper_parameters=hyper_parameters, output_dir=output_dir, logger=logger)
 
-    assert weights_loaded, f'Could not load weights from {pathlib.Path(hyper_parameters.get("inference")["tf_checkpoint_dir"])}!'
+    assert weights_loaded, f'Could not load weights from {pathlib.Path(hyper_parameters.get("inference")["checkpoint_dir"])}!'
 
     # - Infer
     preds = trained_model.infer(data_loader=inf_dl)

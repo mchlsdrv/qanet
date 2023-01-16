@@ -8,8 +8,8 @@ data:
   image_width: 419
 
 augmentations:
-  crop_height: 256
-  crop_width: 256
+  crop_height: 419
+  crop_width: 419
 
 model:
   in_channels: 1
