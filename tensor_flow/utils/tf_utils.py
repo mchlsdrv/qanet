@@ -40,10 +40,11 @@ from .tf_data_utils import get_data_loaders, DataLoader
 from ..custom.tf_models import (
     RibCage
 )
-
 from ..custom.tf_callbacks import (
     ProgressLogCallback
 )
+
+tf.config.run_functions_eagerly(False)
 
 
 class DropBlock(tf.keras.layers.Layer):
@@ -405,7 +406,6 @@ def infer_data(hyper_parameters: dict, output_dir: pathlib.Path or str, logger: 
         crop_width=hyper_parameters.get('augmentations')['crop_width'],
         masks_dir='',
         batch_size=1,
-        calculate_seg_measure=False,
         logger=logger
     )
 
@@ -442,7 +442,7 @@ def test_model(model, data_dict, file_tuples, hyper_parameters: dict, output_dir
         crop_height=hyper_parameters.get('training')['crop_height'],
         crop_width=hyper_parameters.get('training')['crop_width'],
         batch_size=hyper_parameters.get('training')['train_batch_size'],
-        calculate_seg_measure=hyper_parameters.get('training')['image_height'] > hyper_parameters.get('training')['crop_height'] or hyper_parameters.get('training')['image_width'] > hyper_parameters.get('training')['crop_width'],
+        calculate_seg_score=hyper_parameters.get('training')['image_height'] > hyper_parameters.get('training')['crop_height'] or hyper_parameters.get('training')['image_width'] > hyper_parameters.get('training')['crop_width'],
         masks_dir=hyper_parameters.get('training')['test_mask_dir'],
         logger=logger
     )

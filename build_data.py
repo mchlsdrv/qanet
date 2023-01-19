@@ -5,7 +5,7 @@ from copy import deepcopy
 
 import cv2
 import matplotlib.pyplot as plt
-from scipy.ndimage import grey_erosion
+# from scipy.ndimage import grey_erosion
 from tqdm import tqdm
 import numpy as np
 import pathlib
@@ -13,7 +13,7 @@ import logging
 
 from utils import augs
 from utils.aux_funcs import (
-    calc_seg_measure,
+    calc_seg_score,
     scan_files,
     plot_hist,
     get_file_name,
@@ -26,7 +26,7 @@ from utils.aux_funcs import (
     get_ts,
     get_split_data,
     check_unique_file,
-    assert_pathable, get_image_mask_figure
+    assert_pathable, get_image_mask_figure, split_instance_mask, instance_2_categorical, merge_categorical_masks
 )
 import multiprocessing as mp
 from multiprocessing import Pool
@@ -36,7 +36,8 @@ logging.getLogger('PIL').setLevel(logging.WARNING)
 __author__ = 'sidorov@post.bgu.ac.il'
 
 DATA_DIR = pathlib.Path('/home/sidorov/Projects/QANetV2/data/train/CytoPack')
-OUTPUT_DIR = pathlib.Path('/home/sidorov/Projects/QANetV2/data/generated/masks')
+OUTPUT_DIR = pathlib.Path('/media/oldrrtammyfs/Users/sidorov/qanet/generated/masks')
+# OUTPUT_DIR = pathlib.Path('/home/sidorov/Projects/QANetV2/data/generated/masks')
 CROP_WIDTH = 419
 N_SAMPLES_IN_RANGE = 10
 FILE_MIN_SAMPLES_PCT = 96
@@ -172,7 +173,7 @@ def build_data(args):
             msk_aug = repaint_instance_segmentation(mask=msk_aug[..., 0])
 
             # - Calculate the seg measure
-            seg_msr = calc_seg_measure(gt_msk, msk_aug)[0]
+            seg_msr = calc_seg_score(gt_msk, msk_aug)[0]
 
             # - Get the index and the range where the seg measure falls in
             rng_min, rng_max, rng_idx = get_range(value=seg_msr, ranges=ranges)
@@ -367,69 +368,69 @@ def get_arg_parser():
     return parser
 
 
-def get_files_under_dir(dir_path: pathlib.Path or str):
-    fls = []
-    for root, dirs, files in os.walk(dir_path, topdown=False):
-        for fl in files:
-            fls.append(fl)
-    fls = np.array(fls, dtype=object)
-    return fls
+# def get_files_under_dir(dir_path: pathlib.Path or str):
+#     fls = []
+#     for root, dirs, files in os.walk(dir_path, topdown=False):
+#         for fl in files:
+#             fls.append(fl)
+#     fls = np.array(fls, dtype=object)
+#     return fls
+#
+
+# def merge_categorical_masks(masks: np.ndarray):
+#     msk = np.zeros(masks.shape[1:])
+#     for cat_mks in masks:
+#         msk += cat_mks
+#
+#     # - Fix the boundary if it was added several times from different cells
+#     msk[msk > 2] = 2
+#
+#     return msk
+#
+#
+# def split_instance_mask(instance_mask: np.ndarray):
+#     """
+#     Splits an instance mask into N binary masks
+#     :param: instance_mask - mask where integers represent different objects
+#     """
+#     # - Ensure the multi-class label is populated with int values
+#     inst_msk = instance_mask.astype(np.int16)
+#
+#     # - Find the classes
+#     labels = np.unique(inst_msk)
+#
+#     # - Discard the background (0)
+#     labels = labels[labels > 0]
+#
+#     # - Convert the ground truth mask to one-hot class masks
+#     bin_masks = []
+#     for lbl in labels:
+#         bin_class_mask = deepcopy(inst_msk)
+#         bin_class_mask[bin_class_mask != lbl] = 0
+#         bin_class_mask[bin_class_mask > 0] = 1
+#         bin_masks.append(bin_class_mask)
+#
+#     bin_masks = np.array(bin_masks)
+#
+#     return bin_masks
 
 
-def merge_categorical_masks(masks: np.ndarray):
-    msk = np.zeros(masks.shape[1:])
-    for cat_mks in masks:
-        msk += cat_mks
-
-    # - Fix the boundary if it was added several times from different cells
-    msk[msk > 2] = 2
-
-    return msk
-
-
-def split_instance_mask(instance_mask: np.ndarray):
-    """
-    Splits an instance mask into N binary masks
-    :param: instance_mask - mask where integers represent different objects
-    """
-    # - Ensure the multi-class label is populated with int values
-    inst_msk = instance_mask.astype(np.int16)
-
-    # - Find the classes
-    labels = np.unique(inst_msk)
-
-    # - Discard the background (0)
-    labels = labels[labels > 0]
-
-    # - Convert the ground truth mask to one-hot class masks
-    bin_masks = []
-    for lbl in labels:
-        bin_class_mask = deepcopy(inst_msk)
-        bin_class_mask[bin_class_mask != lbl] = 0
-        bin_class_mask[bin_class_mask > 0] = 1
-        bin_masks.append(bin_class_mask)
-
-    bin_masks = np.array(bin_masks)
-
-    return bin_masks
-
-
-def instance_2_categorical(mask):
-    # Shrinks the labels
-    inner_msk = grey_erosion(mask, size=2)
-
-    # Create the contur of the cells
-    contur_msk = mask - inner_msk
-    contur_msk[contur_msk > 0] = 2
-
-    # - Create the inner part of the cell
-    inner_msk[inner_msk > 0] = 1
-
-    # - Combine the inner and the contur masks to create the categorical mask with three classes, i.e., background 0, inner 1 and contur 2
-    cat_msk = inner_msk + contur_msk
-
-    return cat_msk
-
+# def instance_2_categorical(mask):
+#     # Shrinks the labels
+#     inner_msk = grey_erosion(mask, size=2)
+#
+#     # Create the contur of the cells
+#     contur_msk = mask - inner_msk
+#     contur_msk[contur_msk > 0] = 2
+#
+#     # - Create the inner part of the cell
+#     inner_msk[inner_msk > 0] = 1
+#
+#     # - Combine the inner and the contur masks to create the categorical mask with three classes, i.e., background 0, inner 1 and contur 2
+#     cat_msk = inner_msk + contur_msk
+#
+#     return cat_msk
+#
 
 def save_categorical_mask(mask: np.ndarray, save_file: pathlib.Path, show: bool = False):
     # - Prepare the mask overlap image
@@ -480,7 +481,7 @@ def plot_categorical_masks(mask_files: list, output_dir: pathlib.Path):
         bin_msks = split_instance_mask(instance_mask=inst_msk)
         cat_bin_msks = []
         for bin_msk in bin_msks:
-            cat_msk = instance_2_categorical(mask=bin_msk)
+            cat_msk = instance_2_categorical(masks=[bin_msk])[0]
             cat_bin_msks.append(cat_msk)
         cat_bin_msks = np.array(cat_bin_msks)
         cat_msk = merge_categorical_masks(masks=cat_bin_msks)
@@ -488,8 +489,6 @@ def plot_categorical_masks(mask_files: list, output_dir: pathlib.Path):
 
 
 if __name__ == '__main__':
-    # out = os.listdir(OUTPUT_DIR)
-    # get_files_under_dir(dir_path=OUTPUT_DIR)
 
     # - Get the argument parser
     parser = get_arg_parser()
@@ -516,7 +515,7 @@ if __name__ == '__main__':
     elif args.clean:
         clean_invalids(files=[fl_tpl[0] for fl_tpl in fls], masks_root=output_dir / 'masks')
     elif args.convert:
-        plot_categorical_masks(mask_files=[fl[1] for fl in fls], output_dir=OUTPUT_DIR / 'categorical_masks_2')
+        plot_categorical_masks(mask_files=[fl[1] for fl in fls], output_dir=output_dir / 'categorical_masks_2')
     else:
         n_cpus = np.min([mp.cpu_count(), args.max_cpus])
         n_items = len(fls) // n_cpus

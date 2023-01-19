@@ -9,7 +9,7 @@ import tensorflow as tf
 from tensorflow import keras
 from tensorflow.keras import layers
 
-from utils.aux_funcs import categorical_2_rgb, instance_2_categorical
+from utils.aux_funcs import categorical_2_rgb
 from .tf_activations import (
     Swish
 )
@@ -174,6 +174,7 @@ class RibCage(keras.Model):
                 pred_sm = pred_seg_measures[rnd_smpl_idx]
                 self.val_btch_smpl_dict = dict(image=img, mask=msk, true_seg_measure=true_sm, pred_seg_measure=pred_sm)
 
+    @tf.function
     def train_step(self, data) -> dict:
         # - Get the data of the current epoch
         (btch_imgs_aug, btch_msks_aug), btch_true_seg_msrs = data
@@ -204,6 +205,7 @@ class RibCage(keras.Model):
         # - Return the mapping metric names to current value
         return {metric.name: metric.result() for metric in self.metrics}
 
+    @tf.function
     def test_step(self, data) -> dict:
         # - Get the data of the current epoch
         (btch_imgs_aug, btch_msks_aug), btch_true_seg_msrs = data

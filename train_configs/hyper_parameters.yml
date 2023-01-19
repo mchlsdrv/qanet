@@ -125,4 +125,4 @@ inference:
 
   data_dir: '../data/inference/UNSW-AU-Fluo-N2DH-SIM+'
   temp_data_file: '../data/inference/temp/UNSW-AU-Fluo-N2DH-SIM+/clean_data.pkl'
-  checkpoint_dir: '/home/sidorov/Projects/QANetV2/qanet/output/train/tensor_flow_large_data_2023-01-14_10-31-10/checkpoints'
+  checkpoint_dir: '/home/sidorov/Projects/QANetV2/qanet/output/train/tensor_flow_gauss_blur_2023-01-17_01-10-32/checkpoints'

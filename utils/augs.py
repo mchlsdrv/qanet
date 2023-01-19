@@ -2,7 +2,6 @@ import albumentations as A
 import albumentations.augmentations.transforms as tr
 import cv2
 import numpy as np
-from albumentations.augmentations.crops.transforms import CropNonEmptyMaskIfExists
 from scipy.ndimage import (
     grey_dilation,
     grey_erosion
@@ -137,34 +136,20 @@ def train_augs(crop_height: int, crop_width: int):
     )
 
 
-def transforms(crop_height, crop_width):
+def test_augs(crop_height: int, crop_width: int):
     return A.Compose(
         [
+            # CropNonEmptyMaskIfExists(
+            #     height=crop_height,
+            #     width=crop_width,
+            #     p=1.
+            # ),
             A.Resize(
                 height=crop_height,
                 width=crop_width,
                 p=1.
             ),
             A.GaussianBlur(p=1),
-            # CropNonEmptyMaskIfExists(
-            #     height=crop_height,
-            #     width=crop_width,
-            #     p=1.
-            # ),
-            A.ToFloat(p=1.),
-        ],
-        additional_targets={'mask0': 'mask'}
-    )
-
-
-def test_augs(crop_height: int, crop_width: int):
-    return A.Compose(
-        [
-            CropNonEmptyMaskIfExists(
-                height=crop_height,
-                width=crop_width,
-                p=1.
-            ),
             A.ToFloat(p=1.),
         ]
     )
@@ -183,8 +168,7 @@ def inference_augs(crop_height: int, crop_width: int):
                 width=crop_width,
                 p=1.
             ),
-            # A.ToGray(),
-            # A.CLAHE(p=1.),
-            # A.ToFloat(p=1.),
+            A.GaussianBlur(p=1),
+            A.ToFloat(p=1.),
         ]
     )

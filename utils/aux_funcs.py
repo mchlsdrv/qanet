@@ -207,8 +207,13 @@ def add_channels_dim(image: np.ndarray):
     return image
 
 
-def load_image(image_file, add_channels: bool = False, to_categorical: bool = False):
+def normalize_image(image: np.ndarray):
+    return (image - image.mean()) / (image.std())
+
+
+def load_image(image_file, add_channels: bool = False):
     img = cv2.imread(str(image_file), cv2.IMREAD_UNCHANGED)
+
     if add_channels and len(img.shape) < 3:
         img = add_channels_dim(image=img)
     return img
@@ -631,23 +636,17 @@ def scan_files(root_dir: pathlib.Path or str, seg_dir_postfix: str, image_prefix
 
 
 def get_data_dict(data_file_tuples: list):
-    data_dict = dict()
     print('''
     ====================================================
     == Loading images and corresponding segmentations ==
     ====================================================
     ''')
+    data_dict = dict()
     files_pbar = tqdm(data_file_tuples)
     for img_fl, msk_fl in files_pbar:
-        img = cv2.imread(str(img_fl), -1)#.astype(np.uint8)
-        # - Add the channel dim
-        if len(img.shape) < 3:
-            img = np.expand_dims(img, axis=-1)
+        img = load_image(image_file=img_fl, add_channels=True)
 
-        msk = cv2.imread(str(msk_fl), -1).astype(np.uint8)
-        # - Add the channel dim
-        if len(msk.shape) < 3:
-            msk = np.expand_dims(msk, axis=-1)
+        msk = load_image(image_file=msk_fl, add_channels=True)
 
         data_dict[str(img_fl)] = (img, str(msk_fl), msk)
 
@@ -859,7 +858,6 @@ def calc_seg_score(gt_masks: np.ndarray, pred_masks: np.ndarray):
 
     # - Calculate the ground truth object area
     A = gt_one_hot_masks.sum(axis=(-3, -2, -1))
-    A[A == 0] = np.nan
 
     # - Convert the predicted mask to one-hot class masks
     pred_one_hot_masks = split_instance_mask(instance_mask=pred_masks, labels=lbls)
@@ -867,31 +865,35 @@ def calc_seg_score(gt_masks: np.ndarray, pred_masks: np.ndarray):
     if len(pred_one_hot_masks.shape) < 4:
         pred_one_hot_masks = np.expand_dims(pred_one_hot_masks, axis=0)
 
-    # - Calculate the intersection
-    I = np.logical_and(gt_one_hot_masks, pred_one_hot_masks).sum(axis=(-3, -2, -1))
+    # - Calculate a intersection for each object with each other object
+    Is = (gt_one_hot_masks[:, np.newaxis, ...] * pred_one_hot_masks[np.newaxis, ...]).sum(axis=(-1, -2, -3))
 
-    # - Calculate the union
-    U = np.logical_or(gt_one_hot_masks, pred_one_hot_masks).sum(axis=(-3, -2, -1))
+    # - Calculate a union for each object with each other object
+    Us = np.logical_or(gt_one_hot_masks[:, np.newaxis, ...], pred_one_hot_masks[np.newaxis, ...]).sum(axis=(-1, -2, -3))
+    Us[Us == 0] = 1  # to avoid division by 0
 
     # - Calculate the IoU
-    U[U == 0] = 1  # to avoid division by 0
-    IoU = I / U
+    IoU = (Is / Us).max(axis=1)
 
-    # - Fund invalid elements
-    object_coverage_mask = I / A
-    object_coverage_mask[object_coverage_mask <= 0.5] = 0
-    object_coverage_mask[object_coverage_mask > 0.5] = 1
+    # - Find objects which more than a half of them is covered by a mask
+    object_coverage_mask = Is.max(axis=1) / A
+    valid_idxs = np.argwhere(object_coverage_mask > 0.5).flatten()
 
-    # - Zero the invalid IoU
-    IoU = object_coverage_mask * IoU
+    # - Choose only the valid IoU
+    IoU = IoU[valid_idxs]
 
-    seg_measure = np.nanmean(IoU, axis=0)
-    if isinstance(seg_measure, np.ndarray):
-        seg_measure[np.isnan(seg_measure)] = 0.0
+    # - Among the valid IoUs - zero the once which are lower than a 0.5
+    IoU[IoU <= 0.5] = 0
+
+    # - Calculate the mean seg score
+    seg_scr = np.nanmean(IoU, axis=0)
+    if isinstance(seg_scr, np.ndarray):
+        # - Replace np.nan with 0.
+        seg_scr[np.isnan(seg_scr)] = 0.0
     else:
-        seg_measure = np.array([seg_measure])
+        seg_scr = np.array([seg_scr])
 
-    return seg_measure
+    return seg_scr
 
 
 def update_hyper_parameters(hyper_parameters: dict, arguments: argparse.Namespace):

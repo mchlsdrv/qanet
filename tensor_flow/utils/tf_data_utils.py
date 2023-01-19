@@ -27,7 +27,7 @@ from utils.aux_funcs import (
     instance_2_categorical,
     err_log,
     enhance_contrast,
-    calc_seg_score,
+    calc_seg_score, normalize_image,
 )
 
 
@@ -58,16 +58,16 @@ def get_random_mask(masks_root: pathlib.Path or str, image_file: pathlib.Path or
     rnd_msk_fl = fl_msk_dir / rnd_msk_name
 
     # - Get the seg measure of the chosen mask, which should be the name of the file with '_' instead of '.'
-    j_str = get_file_name(path=rnd_msk_fl)
+    seg_scr_str = get_file_name(path=rnd_msk_fl)
 
     # - Strip the '-' character in case it was added due to overlap in generated J values
-    j = str_2_float(str_val=j_str if '-' not in j_str else j_str[:j_str.index('-')])
+    seg_scr = str_2_float(str_val=seg_scr_str if '-' not in seg_scr_str else seg_scr_str[:seg_scr_str.index('-')])
 
     # - Load the mask
-    msk = load_image(image_file=str(rnd_msk_fl), add_channels=True, to_categorical=True)
+    msk = load_image(image_file=str(rnd_msk_fl), add_channels=True)
 
     # - Return the random mask and the corresponding seg measure
-    return msk, j
+    return msk, seg_scr
 
 
 class DataLoader(tf.keras.utils.Sequence):
@@ -141,19 +141,18 @@ class DataLoader(tf.keras.utils.Sequence):
         btch_seg_scrs = []
 
         for img_fl in self.file_keys[start_index:end_index]:
+            # <1> Get the image and the mask
             img, _, msk_gt = self.data_dict.get(img_fl)
-            # msk_gt = msk_gt.astype(np.uint8)
 
             # <2> Get the random augmentation and the corresponding seg measure
             msk, seg_scr = get_random_mask(masks_root=self.masks_dir, image_file=img_fl)
-            # msk = msk.astype(np.uint8)
 
             # <3> Perform the image transformations
             aug_res = self.train_augs(image=img, mask=msk)
             img, msk = aug_res.get('image'), aug_res.get('mask')
 
-            # aug_res = self.train_augs(image=img, mask=msk, mask0=msk_gt)
-            # img, msk, msk_gt = aug_res.get('image'), aug_res.get('mask'), aug_res.get('mask0')
+            # <4> Normalize the image by (I - E[I]) / STD(I)
+            img = normalize_image(image=img)
 
             # - Add the data to the corresponding lists
             btch_imgs_aug.append(img)
