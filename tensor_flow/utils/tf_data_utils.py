@@ -8,10 +8,6 @@ import numpy as np
 import tensorflow as tf
 import logging
 
-from global_configs.general_configs import (
-    VAL_BATCH_SIZE
-)
-
 from utils import augs
 
 from utils.aux_funcs import (
@@ -27,7 +23,7 @@ from utils.aux_funcs import (
     instance_2_categorical,
     err_log,
     enhance_contrast,
-    calc_seg_score, normalize_image,
+    calc_seg_score, normalize_image, image_2_float,
 )
 
 
@@ -151,7 +147,10 @@ class DataLoader(tf.keras.utils.Sequence):
             aug_res = self.train_augs(image=img, mask=msk)
             img, msk = aug_res.get('image'), aug_res.get('mask')
 
-            # <4> Normalize the image by (I - E[I]) / STD(I)
+            # <4> Convert the image to float by clipping all the values by 255, and then dividing by it
+            img = image_2_float(image=img, max_val=255)
+
+            # <5> Normalize the image by (I - E[I]) / STD(I)
             img = normalize_image(image=img)
 
             # - Add the data to the corresponding lists
@@ -242,6 +241,12 @@ class DataLoader(tf.keras.utils.Sequence):
         img, msk = img.astype(np.uint8), msk.astype(np.uint8)
         img = enhance_contrast(image=img)
 
+        # <4> Convert the image to float by clipping all the values by 255, and then dividing by it
+        img = image_2_float(image=img, max_val=255)
+
+        # <5> Normalize the image by (I - E[I]) / STD(I)
+        img = normalize_image(image=img)
+
         # - Augment the image and the mask
         aug_res = self.inf_augs(image=img, mask=msk)
         img, msk = aug_res.get('image'), aug_res.get('mask')
@@ -254,7 +259,10 @@ class DataLoader(tf.keras.utils.Sequence):
 
 def get_data_loaders(mode: str, data_dict: dict, hyper_parameters: dict, logger: logging.Logger = None):
 
-    train_files, val_files = get_train_val_split(data_list=list(data_dict.keys()), val_prop=hyper_parameters.get('training')['val_prop'], logger=logger)
+    train_files, val_files = get_train_val_split(
+        data_list=list(data_dict.keys()),
+        val_prop=hyper_parameters.get('training')['val_prop'], logger=logger
+    )
 
     # - Create the DataLoader object
     train_dl = DataLoader(
@@ -276,7 +284,7 @@ def get_data_loaders(mode: str, data_dict: dict, hyper_parameters: dict, logger:
             file_keys=val_files,
             crop_height=hyper_parameters.get('augmentations')['crop_height'],
             crop_width=hyper_parameters.get('augmentations')['crop_width'],
-            batch_size=VAL_BATCH_SIZE,
+            batch_size=hyper_parameters.get('training')['val_batch_size'],
             calculate_seg_score=hyper_parameters.get('data')['image_height'] > hyper_parameters.get('augmentations')['crop_height'] or hyper_parameters.get('data')['image_width'] > hyper_parameters.get('augmentations')['crop_width'],
             masks_dir=hyper_parameters.get('training')['mask_dir'],
             logger=logger

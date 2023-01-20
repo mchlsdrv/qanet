@@ -1,5 +1,7 @@
 general:
   name: 'new run'
+  debug: False
+  configs_dir: './global_configs'
   output_dir: './output'
 
 data:
@@ -30,6 +32,7 @@ model:
   activation_relu_threshold: 0.0
   activation_leaky_relu_alpha: 0.1
 
+regularization:
   drop_block: False
   drop_block_keep_prob: 0.1
   drop_block_block_size: 10
@@ -39,6 +42,65 @@ model:
   kernel_regularizer_l2: 1.1
   kernel_regularizer_factor: 0.01
   kernel_regularizer_mode: 'rows'
+
+callbacks:
+  wandb_project_name: 'QANet_V2'
+  wandb: True
+
+  # - Tensor Board
+  tensorboard: True
+  tensorboard_launch: False
+  tensorboard_write_images: True
+  tensorboard_write_steps_per_second: True
+  tensorboard_update_freq: 'epoch'
+  tensorboard_scalars_log_interval: 1
+  tensorboard_images_log_interval: 1
+
+  progress_log: True
+  progress_log_interval: 1
+  scatter_plot_figsize: (25, 15)
+  scatter_plot_fontsize: 40
+
+  # - Terminate on NaN
+  terminate_on_nan: True
+
+  # - Checkpoint
+  checkpoint: True
+  checkpoint_file_template: 'checkpoints/cp-{epoch:04d}.ckpt'  # <- may be used in case we want to save all teh check points, and not only the best
+  checkpoint_file_best_model_file_name: 'best_model.ckpt'  # <- overwrites the second-best model weights in case MODEL_CHECKPOINT_SAVE_BEST_ONLY = True
+  checkpoint_file_best_model: 'checkpoints/best_model.ckpt'  # <- overwrites the second-best model weights in case MODEL_CHECKPOINT_SAVE_BEST_ONLY = True
+  checkpoint_monitor: 'val_loss'
+  checkpoint_verbose: 1
+  checkpoint_save_best_only: True
+  checkpoint_mode: 'auto'
+  checkpoint_save_weights_only: True
+  checkpoint_save_freq: 'epoch'
+  min_improvement_delta: 0.00001
+
+  # - Early Stopping
+  early_stopping: True
+  early_stopping_patience: 30
+  early_stopping_monitor: 'val_loss'
+  early_stopping_min_delta: 0.0001
+  early_stopping_mode: 'auto'
+  early_stopping_restore_best_weights: True
+  early_stopping_verbose: 1
+
+  # - LR Reduction Scheduler
+  lr_reduction_scheduler: False
+  lr_reduction_scheduler_patience: [150, 300]
+  lr_reduction_scheduler_factor: 0.5
+  lr_reduction_scheduler_min: 1e-9
+
+  # - LR Reduce on Plateau
+  reduce_lr_on_plateau: False
+  reduce_lr_on_plateau_patience: 5
+  reduce_lr_on_plateau_factor: 0.7
+  reduce_lr_on_plateau_monitor: 'val_loss'
+  reduce_lr_on_plateau_min_delta: 0.0001
+  reduce_lr_on_plateau_cooldown: 0
+  reduce_lr_on_plateau_mode: 'auto'
+  reduce_lr_on_plateau_verbose: 1
 
 training:
   load_checkpoint: False
@@ -57,10 +119,13 @@ training:
   checkpoint_dir: '/home/sidorov/Projects/QANetV2/qanet/output/train/tensor_flow_2022-11-24_13-15-16/checkpoints'
   tf_checkpoint_file: 'checkpoints/best_model.ckpt'
 
+  loss: 'mse'
+  metrics: []
   epochs: 500
   batch_size: 16
-  val_prop: 0.05
   num_train_workers: 4
+  val_prop: 0.05
+  val_batch_size: 10
   num_val_workers: 4
   pin_memory: True
   weighted_loss: False
@@ -81,42 +146,6 @@ training:
   optimizer_nesterov: False
   optimizer_centered: False
 
-  # CALLBACKS
-  wandb_project_name: 'QANet_V2'
-  wandb: True
-
-  tensorboard: False
-
-  min_improvement_delta: 0.00001
-
-  # - Early Stopping
-  early_stopping: True
-  early_stopping_patience: 30
-  early_stopping_monitor: 'val_loss'
-  early_stopping_min_delta: 0.0001
-  early_stopping_mode: 'auto'
-  early_stopping_restore_best_weights: True
-  early_stopping_verbose: 1
-
-  # - LR Reduction Scheduler
-  lr_reduction_scheduler: False
-  lr_reduction_scheduler_patience: [150, 300]
-  lr_reduction_scheduler_factor: 0.5
-  lr_reduction_scheduler_min: 1e-9
-
-  # - Terminate the training if the output is None
-  terminate_on_nan: True
-
-  # - LR Reduce on Plateau
-  reduce_lr_on_plateau: False
-  reduce_lr_on_plateau_patience: 5
-  reduce_lr_on_plateau_factor: 0.7
-  reduce_lr_on_plateau_monitor: 'val_loss'
-  reduce_lr_on_plateau_min_delta: 0.0001
-  reduce_lr_on_plateau_cooldown: 0
-  reduce_lr_on_plateau_mode: 'auto'
-  reduce_lr_on_plateau_verbose: 1
-
 inference:
   seg_dir_postfix: 'MASKS'
   image_prefix: 'image'
@@ -126,3 +155,4 @@ inference:
   data_dir: '../data/inference/UNSW-AU-Fluo-N2DH-SIM+'
   temp_data_file: '../data/inference/temp/UNSW-AU-Fluo-N2DH-SIM+/clean_data.pkl'
   checkpoint_dir: '/home/sidorov/Projects/QANetV2/qanet/output/train/tensor_flow_gauss_blur_2023-01-17_01-10-32/checkpoints'
+

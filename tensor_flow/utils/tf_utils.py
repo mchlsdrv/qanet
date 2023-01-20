@@ -5,41 +5,25 @@ import logging.config
 import threading
 import multiprocessing as mlp
 import pathlib
-
 import tensorflow as tf
 from keras import backend as K
 
-from global_configs.general_configs import (
-    LAUNCH_TB,
-    METRICS,
-    REDUCE_LR_ON_PLATEAU_VERBOSE,
-    REDUCE_LR_ON_PLATEAU_MIN_LR,
-)
-from tensor_flow.configs.general_configs import (
-    TENSOR_BOARD_WRITE_IMAGES,
-    TENSOR_BOARD_WRITE_STEPS_PER_SECOND,
-    TENSOR_BOARD_UPDATE_FREQ,
-    PROGRESS_LOG,
-    TENSOR_BOARD_LAUNCH,
-    CHECKPOINT,
-    CHECKPOINT_FILE_BEST_MODEL,
-    CHECKPOINT_MONITOR,
-    CHECKPOINT_SAVE_FREQ,
-    CHECKPOINT_SAVE_WEIGHTS_ONLY,
-    CHECKPOINT_MODE,
-    CHECKPOINT_SAVE_BEST_ONLY,
-    CHECKPOINT_VERBOSE,
-)
 from utils.aux_funcs import (
     info_log,
     warning_log,
     err_log,
     get_data, str_2_path, print_pretty_message
 )
-from .tf_data_utils import get_data_loaders, DataLoader
+
+from .tf_data_utils import (
+    get_data_loaders,
+    DataLoader
+)
+
 from ..custom.tf_models import (
     RibCage
 )
+
 from ..custom.tf_callbacks import (
     ProgressLogCallback
 )
@@ -133,72 +117,72 @@ def get_callbacks(callback_type: str, hyper_parameters: dict, output_dir: pathli
     # Built-in  callbacks
     # -------------------
     tb_prc = None
-    if hyper_parameters.get(callback_type)['tensorboard']:
+    if hyper_parameters.get('callbacks')['tensorboard']:
         callbacks.append(
             tf.keras.callbacks.TensorBoard(
                 log_dir=output_dir,
-                write_images=TENSOR_BOARD_WRITE_IMAGES,
-                write_steps_per_second=TENSOR_BOARD_WRITE_STEPS_PER_SECOND,
-                update_freq=TENSOR_BOARD_UPDATE_FREQ,
+                write_images=hyper_parameters.get('callbacks')['tensor_board_write_images'],
+                write_steps_per_second=hyper_parameters.get('callbacks')['tensor_board_write_steps_per_second'],
+                update_freq=hyper_parameters.get('callbacks')['tensor_board_update_freq'],
             )
         )
-        if PROGRESS_LOG:
+        if hyper_parameters.get('callbacks')['progress_log']:
             callbacks.append(
                 ProgressLogCallback(
                     log_dir=output_dir,
-                    tensorboard_logs=hyper_parameters.get(callback_type)['tensorboard'],
-                    wandb_logs=hyper_parameters.get(callback_type)['wandb'],
+                    tensorboard_logs=hyper_parameters.get('callbacks')['tensorboard'],
+                    wandb_logs=hyper_parameters.get('callbacks')['wandb'],
                     logger=logger
                 )
             )
         # - Launch the tensorboard in a thread
-        if TENSOR_BOARD_LAUNCH:
+        if hyper_parameters.get('callbacks')['tensorboard_launch']:
             info_log(logger=logger, message=f'Launching a Tensor Board thread on logdir: \'{output_dir}\'...')
             tb_prc = mlp.Process(
                 target=lambda: os.system(f'tensorboard --logdir={output_dir}'),
             )
 
-    if hyper_parameters.get(callback_type)['early_stopping']:
+    if hyper_parameters.get('callbacks')['early_stopping']:
         callbacks.append(
             tf.keras.callbacks.EarlyStopping(
-                monitor=hyper_parameters.get(callback_type)['early_stopping_monitor'],
-                min_delta=hyper_parameters.get(callback_type)['early_stopping_min_delta'],
-                patience=hyper_parameters.get(callback_type)['early_stopping_patience'],
-                mode=hyper_parameters.get(callback_type)['early_stopping_mode'],
-                restore_best_weights=hyper_parameters.get(callback_type)['early_stopping_restore_best_weights'],
-                verbose=hyper_parameters.get(callback_type)['early_stopping_verbose'],
+                monitor=hyper_parameters.get('callbacks')['early_stopping_monitor'],
+                min_delta=hyper_parameters.get('callbacks')['early_stopping_min_delta'],
+                patience=hyper_parameters.get('callbacks')['early_stopping_patience'],
+                mode=hyper_parameters.get('callbacks')['early_stopping_mode'],
+                restore_best_weights=hyper_parameters.get('callbacks')['early_stopping_restore_best_weights'],
+                verbose=hyper_parameters.get('callbacks')['early_stopping_verbose'],
             )
         )
 
-    if hyper_parameters.get(callback_type)['terminate_on_nan']:
+    if hyper_parameters.get('callbacks')['terminate_on_nan']:
         callbacks.append(
             tf.keras.callbacks.TerminateOnNaN()
         )
 
-    if hyper_parameters.get(callback_type)['reduce_lr_on_plateau']:
+    if hyper_parameters.get('callbacks')['reduce_lr_on_plateau']:
         callbacks.append(
             tf.keras.callbacks.ReduceLROnPlateau(
-                monitor=hyper_parameters.get(callback_type)['reduce_lr_on_plateau_monitor'],
-                factor=hyper_parameters.get(callback_type)['reduce_lr_on_plateau_factor'],
-                patience=hyper_parameters.get(callback_type)['reduce_lr_on_plateau_patience'],
-                min_delta=hyper_parameters.get(callback_type)['reduce_lr_on_plateau_min_delta'],
-                cooldown=hyper_parameters.get(callback_type)['reduce_lr_on_plateau_cooldown'],
-                min_lr=REDUCE_LR_ON_PLATEAU_MIN_LR,
-                mode=hyper_parameters.get(callback_type)['reduce_lr_on_plateau_mode'],
-                verbose=REDUCE_LR_ON_PLATEAU_VERBOSE,
+                monitor=hyper_parameters.get('callbacks')['reduce_lr_on_plateau_monitor'],
+                factor=hyper_parameters.get('callbacks')['reduce_lr_on_plateau_factor'],
+                patience=hyper_parameters.get('callbacks')['reduce_lr_on_plateau_patience'],
+                min_delta=hyper_parameters.get('callbacks')['reduce_lr_on_plateau_min_delta'],
+                cooldown=hyper_parameters.get('callbacks')['reduce_lr_on_plateau_cooldown'],
+                min_lr=hyper_parameters.get('callbacks')['reduce_lr_on_plateau_min_lr'],
+                mode=hyper_parameters.get('callbacks')['reduce_lr_on_plateau_mode'],
+                verbose=hyper_parameters.get('callbacks')['reduce_lr_on_plateau_verbose'],
             )
         )
 
-    if CHECKPOINT:
+    if hyper_parameters.get('callbacks')['checkpoint']:
         callbacks.append(
             tf.keras.callbacks.ModelCheckpoint(
-                filepath=output_dir / CHECKPOINT_FILE_BEST_MODEL,
-                monitor=CHECKPOINT_MONITOR,
-                verbose=CHECKPOINT_VERBOSE,
-                save_best_only=CHECKPOINT_SAVE_BEST_ONLY,
-                mode=CHECKPOINT_MODE,
-                save_weights_only=CHECKPOINT_SAVE_WEIGHTS_ONLY,
-                save_freq=CHECKPOINT_SAVE_FREQ,
+                filepath=output_dir / hyper_parameters.get('callbacks')['checkpoint_file_best_model'],
+                monitor=hyper_parameters.get('callbacks')['checkpoint_monitor'],
+                verbose=hyper_parameters.get('callbacks')['checkpoint_verbose'],
+                save_best_only=hyper_parameters.get('callbacks')['checkpoint_save_best_only'],
+                mode=hyper_parameters.get('callbacks')['checkpoint_mode'],
+                save_weights_only=hyper_parameters.get('callbacks')['checkpoint_save_weights_only'],
+                save_freq=hyper_parameters.get('callbacks')['checkpoint_save_freq'],
             )
         )
 
@@ -220,17 +204,17 @@ def get_model(mode: str, hyper_parameters: dict, output_dir: pathlib.Path or str
     model_configs = dict(
         input_image_dims=(hyper_parameters.get('augmentations')['crop_height'], hyper_parameters.get('augmentations')['crop_width']),
         drop_block=dict(
-            use=hyper_parameters.get('model')['drop_block'],
-            keep_prob=hyper_parameters.get('model')['drop_block_keep_prob'],
-            block_size=hyper_parameters.get('model')['drop_block_block_size']
+            use=hyper_parameters.get('regularization')['drop_block'],
+            keep_prob=hyper_parameters.get('regularization')['drop_block_keep_prob'],
+            block_size=hyper_parameters.get('regularization')['drop_block_block_size']
         ),
         architecture=hyper_parameters.get('model')['architecture'],
         kernel_regularizer=dict(
-            type=hyper_parameters.get('model')['kernel_regularizer_type'],
-            l1=hyper_parameters.get('model')['kernel_regularizer_l1'],
-            l2=hyper_parameters.get('model')['kernel_regularizer_l2'],
-            factor=hyper_parameters.get('model')['kernel_regularizer_factor'],
-            mode=hyper_parameters.get('model')['kernel_regularizer_mode']
+            type=hyper_parameters.get('regularization')['kernel_regularizer_type'],
+            l1=hyper_parameters.get('regularization')['kernel_regularizer_l1'],
+            l2=hyper_parameters.get('regularization')['kernel_regularizer_l2'],
+            factor=hyper_parameters.get('regularization')['kernel_regularizer_factor'],
+            mode=hyper_parameters.get('regularization')['kernel_regularizer_mode']
         ),
         activation=dict(
             type=hyper_parameters.get('model')['activation'],
@@ -278,7 +262,7 @@ def get_model(mode: str, hyper_parameters: dict, output_dir: pathlib.Path or str
         loss=WeightedMSE(weighted=compilation_configs.get('weighted_loss')),
         optimizer=get_optimizer(args=compilation_configs),
         run_eagerly=True,
-        metrics=METRICS
+        metrics=hyper_parameters.get('training')['metrics']
     )
     return model, weights_loaded
 
@@ -376,7 +360,7 @@ def train_model(hyper_parameters: dict, output_dir: pathlib.Path or str, logger:
     callbacks, tb_prc = get_callbacks(callback_type='training', hyper_parameters=hyper_parameters, output_dir=output_dir, logger=logger)
 
     # - If the setting is to launch the tensorboard process automatically
-    if tb_prc is not None and LAUNCH_TB:
+    if tb_prc is not None and hyper_parameters.get('callbacks')['tensorboard_launch']:
         tb_prc.start()
 
     # - Train -
@@ -390,7 +374,7 @@ def train_model(hyper_parameters: dict, output_dir: pathlib.Path or str, logger:
     )
 
     # -> If the setting is to launch the tensorboard process automatically
-    if tb_prc is not None and LAUNCH_TB:
+    if tb_prc is not None and hyper_parameters.get('callbacks')['tensorboard_launch']:
         tb_prc.join()
 
 
@@ -456,7 +440,7 @@ def test_model(model, data_dict, file_tuples, hyper_parameters: dict, output_dir
     )
 
     # -> If the setting is to launch the tensorboard process automatically
-    if tb_prc is not None and LAUNCH_TB:
+    if tb_prc is not None and hyper_parameters.get('callbacks')['tensorboard_launch']:
         tb_prc.start()
 
     # -> Run the test
@@ -468,5 +452,5 @@ def test_model(model, data_dict, file_tuples, hyper_parameters: dict, output_dir
     )
 
     # -> If the setting is to launch the tensorboard process automatically
-    if tb_prc is not None and LAUNCH_TB:
+    if tb_prc is not None and hyper_parameters.get('callbacks')['tensorboard_launch']:
         tb_prc.join()

@@ -130,7 +130,7 @@ def train_augs(crop_height: int, crop_width: int):
                 p=0.5
             ),
             A.GaussianBlur(p=1),
-            A.ToFloat(p=1.),
+            # A.ToFloat(p=1.),
         ],
         # additional_targets={'mask0': 'mask'}
     )
@@ -150,7 +150,7 @@ def test_augs(crop_height: int, crop_width: int):
                 p=1.
             ),
             A.GaussianBlur(p=1),
-            A.ToFloat(p=1.),
+            # A.ToFloat(p=1.),
         ]
     )
 
@@ -169,6 +169,6 @@ def inference_augs(crop_height: int, crop_width: int):
                 p=1.
             ),
             A.GaussianBlur(p=1),
-            A.ToFloat(p=1.),
+            # A.ToFloat(p=1.),
         ]
     )

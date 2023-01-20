@@ -211,6 +211,15 @@ def normalize_image(image: np.ndarray):
     return (image - image.mean()) / (image.std())
 
 
+def image_clip_values(image: np.ndarray, max_val: int):
+    image[image > max_val] = max_val
+    return image
+
+
+def image_2_float(image: np.ndarray, max_val: int = 255):
+    return image_clip_values(image=image, max_val=max_val) / max_val
+
+
 def load_image(image_file, add_channels: bool = False):
     img = cv2.imread(str(image_file), cv2.IMREAD_UNCHANGED)
 
@@ -865,7 +874,7 @@ def calc_seg_score(gt_masks: np.ndarray, pred_masks: np.ndarray):
     if len(pred_one_hot_masks.shape) < 4:
         pred_one_hot_masks = np.expand_dims(pred_one_hot_masks, axis=0)
 
-    # - Calculate a intersection for each object with each other object
+    # - Calculate an intersection for each object with each other object
     Is = (gt_one_hot_masks[:, np.newaxis, ...] * pred_one_hot_masks[np.newaxis, ...]).sum(axis=(-1, -2, -3))
 
     # - Calculate a union for each object with each other object

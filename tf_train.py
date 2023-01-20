@@ -5,9 +5,6 @@ import datetime
 
 import yaml
 
-from global_configs.general_configs import (
-    CONFIGS_DIR,
-)
 from tensor_flow.utils.tf_utils import train_model, choose_gpu
 from utils.aux_funcs import (
     get_arg_parser,
@@ -53,7 +50,7 @@ if __name__ == '__main__':
 
     # - Configure the logger
     logger = get_logger(
-        configs_file=CONFIGS_DIR / 'logger_configs.yml',
+        configs_file=pathlib.Path(hyp_params_dict.get('general')['configs_dir']) / 'logger_configs.yml',
         save_file=current_run_dir / f'logs.log'
     )
 
@@ -66,8 +63,8 @@ if __name__ == '__main__':
     # - Configure the GPU to run on
     choose_gpu(gpu_id=args.gpu_id, logger=logger)
 
-    if hyp_params_dict.get('training')['wandb']:
-        wandb.init(project=hyp_params_dict.get('training')['wandb_project_name'])
+    if hyp_params_dict.get('callbacks')['wandb']:
+        wandb.init(project=hyp_params_dict.get('callbacks')['wandb_project_name'])
 
     # - Train model
     trained_model = None
