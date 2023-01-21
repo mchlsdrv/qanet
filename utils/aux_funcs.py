@@ -117,7 +117,7 @@ def get_range(value, ranges: np.ndarray):
 
 
 def str_2_float(str_val: str):
-    return float(str_val.replace('_', '.'))
+    return float(str_val.replace('-', '').replace('_', '.'))
 
 
 def float_2_str(float_val: float):
@@ -168,11 +168,22 @@ def get_parent_dir_name(path: pathlib.Path or str):
 
 
 def get_file_name(path: pathlib.Path or str):
+    # - If the file does not represent a path - through an error
     assert_pathable(argument=path, argument_name='path')
-    # assert isinstance(path, pathlib.Path) or isinstance(path, str), f'\'path\' argument must be of type pathlib.Path or str, but is \'{type(path)}\''
 
+    #  - Convert to the str object
     path = str(path)
-    file_name = path[::-1][path[::-1].index('.') + 1:path[::-1].index('/')][::-1]
+
+    # - Assign to the return value
+    file_name = path
+
+    # - Discard the path if present
+    if '/' in path:
+        file_name = path[::-1][:path[::-1].index('/')][::-1]
+
+    # - Discard the file extension if present
+    if '.' in path:
+        file_name = path[::-1][path[::-1].index('.') + 1:][::-1]
 
     return file_name
 
@@ -963,12 +974,16 @@ def get_image_mask_figure(image: np.ndarray, mask: np.ndarray, suptitle: str = '
 
 def plot_mask_error(image: np.ndarray, mask: np.ndarray, pred_mask: np.ndarray = None, suptitle: str = '', title: str = '', figsize: tuple = (20, 20), tensorboard_params: dict = None, save_file: pathlib.Path = None, overwrite: bool = False):
     # - Prepare the mask overlap image
-    msk = np.zeros((*mask.shape[:-1], 3))
-    msk[..., 2] = mask[..., 0]
+    msk_shp = mask.shape
+    msk_dims = len(msk_shp)
+    if msk_dims > 2:
+        msk_shp = msk_shp[:-1]
+    msk = np.zeros((*msk_shp, 3))
+    msk[..., 1] = mask[..., 0] if msk_dims > 2 else mask
 
     # - If there is a predicted segmentation
     if isinstance(pred_mask, np.ndarray):
-        msk[..., 0] = pred_mask[..., 0]
+        msk[..., 0] = pred_mask[..., 0] if len(pred_mask.shape) > 2 else pred_mask
 
     # - Convert instance segmentation to binary
     msk[msk > 0] = 1.
@@ -1059,6 +1074,8 @@ def plot_hist(data: np.ndarray or list, bins: np.ndarray, save_file: pathlib.Pat
     plt.close(dist_plot.figure)
     sns.set_context(rc=RC)
 
+    print_pretty_message(message=f'An histogram was saved to: {save_file}', delimiter_symbol='*')
+
 
 def to_numpy(data: np.ndarray, file_path: str or pathlib.Path, overwrite: bool = False, logger: logging.Logger = None):
     if isinstance(file_path, str):
@@ -1115,11 +1132,13 @@ def to_pickle(data, save_file: str or pathlib.Path, logger: logging.Logger = Non
 def print_pretty_message(message: str, delimiter_symbol: str = '='):
     delimiter_len = len(message) + 6
 
+    print('\n\t', end='')
     for i in range(delimiter_len):
         print(delimiter_symbol, end='')
 
-    print(f'\n{delimiter_symbol}{delimiter_symbol} {message} {delimiter_symbol}{delimiter_symbol}')
+    print(f'\n\t{delimiter_symbol}{delimiter_symbol} {message} {delimiter_symbol}{delimiter_symbol}')
 
+    print('\t', end='')
     for i in range(delimiter_len):
         print(delimiter_symbol, end='')
 

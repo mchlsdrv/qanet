@@ -1,3 +1,4 @@
+import shutil
 import time
 import argparse
 import os
@@ -11,6 +12,7 @@ import numpy as np
 import pathlib
 import logging
 
+from global_configs.general_configs import EPSILON
 from utils import augs
 from utils.aux_funcs import (
     calc_seg_score,
@@ -26,30 +28,15 @@ from utils.aux_funcs import (
     get_ts,
     get_split_data,
     check_unique_file,
-    assert_pathable, get_image_mask_figure, split_instance_mask, instance_2_categorical, merge_categorical_masks
+    assert_pathable, get_image_mask_figure, split_instance_mask, instance_2_categorical, merge_categorical_masks, print_pretty_message, str_2_path, plot_mask_error
 )
 import multiprocessing as mp
-from multiprocessing import Pool
+from multiprocessing import Pool, Manager
+
 
 logging.getLogger('PIL').setLevel(logging.WARNING)
 
 __author__ = 'sidorov@post.bgu.ac.il'
-
-DATA_DIR = pathlib.Path('/home/sidorov/Projects/QANetV2/data/train/CytoPack')
-OUTPUT_DIR = pathlib.Path('/media/oldrrtammyfs/Users/sidorov/qanet/generated/masks')
-# OUTPUT_DIR = pathlib.Path('/home/sidorov/Projects/QANetV2/data/generated/masks')
-CROP_WIDTH = 419
-N_SAMPLES_IN_RANGE = 10
-FILE_MIN_SAMPLES_PCT = 96
-FILE_MAX_TIME = 3 * 60  # in seconds
-MAX_CPUS = 30
-MIN_J = 0.01
-MAX_J = 0.99
-
-SEG_DIR_POSTFIX = 'GT'
-IMAGE_PREFIX = 't'
-SEG_PREFIX = 'man_seg'
-SEG_SUB_DIR = 'SEG'
 
 
 def repaint_instance_segmentation(mask: np.ndarray):
@@ -116,19 +103,151 @@ def repaint_instance_segmentation(mask: np.ndarray):
     return np.expand_dims(msk_rpntd, -1)
 
 
+def print_seg_score_diff(current_seg_score: float, previous_mask_file: pathlib.Path or str, status: str):
+    prev_seg_scr = str_2_float(str_val=get_file_name(previous_mask_file))
+    seg_scr_diff = np.abs(prev_seg_scr - current_seg_score)
+    diff_prcnt = 100 - int((current_seg_score * 100) // (prev_seg_scr + EPSILON)) if current_seg_score != 0 else 0
+    print(f'> seg score: ', prev_seg_scr, '->', current_seg_score, f' ({status})', end='')
+    print(' [', end='')
+    for p in range(diff_prcnt):
+        print('+', end='')
+    print(']')
+
+
+def save_samples(mask_dir: pathlib.Path or str, image_file: pathlib.Path or str, gt_mask: np.ndarray, save_dir: pathlib.Path or str):
+    # - Convert the mask directory to pathlib,Path object
+    msk_dir = str_2_path(path=mask_dir)
+
+    # - Convert the image directory to pathlib,Path object
+    img_fl = str_2_path(path=image_file)
+
+    # - Convert the save directory to pathlib,Path object
+    save_dir = str_2_path(path=save_dir)
+
+    # - Make sure the save directory exists
+    os.makedirs(save_dir, exist_ok=True)
+
+    for idx, msk_fl in enumerate(os.listdir(msk_dir)):
+        plot_mask_error(
+            image=cv2.imread(str(img_fl), -1),
+            mask=gt_mask,
+            pred_mask=cv2.imread(f'{msk_dir}/{msk_fl}', -1),
+            suptitle=f'Seg Score: {str_2_float(str_val=get_file_name(path=msk_fl)):.3f}',
+            title='True - green / Pred - red',
+            figsize=(20, 20),
+            tensorboard_params=None,
+            save_file=save_dir / f'{idx}.png',
+            overwrite=False
+        )
+
+
+def recalculate_seg_scores(args):
+
+    mask_dirs = args[0]
+    root_save_dir = pathlib.Path(args[1])
+    shared_seg_scrs = args[2]
+
+    save_dir = root_save_dir / 'masks'
+
+    print_pretty_message(message=f'Starting process {os.getpid()} on {len(mask_dirs)} mask dirs')
+
+    pbar = tqdm(mask_dirs)
+    seg_scrs = np.array([])
+    for idx, msk_dir in enumerate(pbar):
+        msk_dir_name = pathlib.Path(msk_dir).name
+        img_name_parts = str(msk_dir_name).split(sep='_')
+        gt_msk_fl = f'{img_name_parts[0]}_{SEG_DIR_POSTFIX}/{SEG_SUB_DIR}/{SEG_PREFIX}{img_name_parts[1][1:]}.tif'
+        gt_msk = cv2.imread(str(DATA_ROOT_DIR / gt_msk_fl), -1)
+
+        msk_save_dir = save_dir / f'{msk_dir_name}'
+        os.makedirs(msk_save_dir, exist_ok=True)
+
+        for msk_dir_root, _, msk_files in os.walk(f'{msk_dir}'):
+            for msk_fl in msk_files:
+                # - Get the mask file
+                old_msk_fl = f'{msk_dir_root}/{msk_fl}'
+
+                # - Load the mask
+                old_msk = cv2.imread(old_msk_fl, -1)
+
+                # - Recalculate the seg score
+                new_seg_scr = calc_seg_score(gt_masks=gt_msk[np.newaxis, ...], pred_masks=old_msk[np.newaxis, ...])[0]
+
+                status = 'no action'
+                if MIN_J < new_seg_scr < MAX_J:
+                    shared_seg_scrs.append(new_seg_scr)
+                    seg_scrs = np.append(seg_scrs, new_seg_scr)
+
+                    # - Create a file name
+                    new_msk_fl_name = float_2_str(new_seg_scr) + '.tif'
+
+                    old_seg_scr = str_2_float(str_val=get_file_name(path=msk_fl))
+
+                    if old_seg_scr != new_seg_scr:
+                        if RENAME_ONLY:
+                            # - Create a new file
+                            new_msk_fl = f'{msk_dir_root}/{new_msk_fl_name}'
+
+                            # - Make sure it is unique
+                            new_msk_unique_fl = check_unique_file(file=new_msk_fl)
+
+                            # - Rename the old file
+                            os.rename(old_msk_fl, new_msk_unique_fl)
+
+                            status = 'renamed'
+                        else:
+                            # - Create the file to save the image, and make sure it is unique
+                            new_msk_unique_fl = check_unique_file(file=msk_save_dir / new_msk_fl_name)
+
+                            # - Copy the file with the fixed seg score
+                            shutil.copyfile(old_msk_fl, new_msk_unique_fl)
+
+                            status = 'copied'
+                else:
+                    # - If the file is not in the valid range - delete it
+                    os.remove(path=old_msk_fl)
+
+                    status = 'deleted'
+
+                # - Visualisation of the difference
+                print_seg_score_diff(
+                    current_seg_score=new_seg_scr,
+                    previous_mask_file=msk_fl,
+                    status=status
+                )
+
+            if CRATE_SAMPLES:
+                img_fl = str(DATA_ROOT_DIR / msk_dir_name.replace('_', '/')) + '.tif'
+                save_samples(
+                    mask_dir=msk_dir_root,
+                    image_file=img_fl,
+                    gt_mask=gt_msk,
+                    save_dir=root_save_dir / f'samples/{idx % HISTORY_LENGTH}'
+                )
+
+    np.save(str(root_save_dir / f'seg_scores-pid_{os.getpid()}.npy'), seg_scrs)
+
+    plot_hist(
+        data=seg_scrs,
+        bins=np.arange(0.0, 1.1, 0.1),
+        save_file=root_save_dir / f'plots/seg_scores_dist-pid_{os.getpid()}.png'
+    )
+    print_pretty_message(message=f'PID {os.getpid()} DONE', delimiter_symbol='*')
+
+    return seg_scrs
+
+
 def build_data(args):
     files = args[0]
     bins = args[1]
     n_samples_in_range = args[2]
-    output_dir = args[3]
+    save_dir = args[3]
     create_log = args[4]
     # - Create ranges from bins
     assert len(bins) >= 2, f'bins must include at least 2 values, but were provided only {len(bins)} value/s!'
-    print(f'''
-    =========================================================
-    > Starting process {os.getpid()} on {len(files)} files
-    =========================================================
-    ''')
+
+    print_pretty_message(message=f'Starting process {os.getpid()} on {len(files)} files')
+
     bins_min, bins_max, bins_diff = np.min(bins), np.max(bins), bins[1] - bins[0]
     ranges = np.array(list(zip(np.arange(bins_min, bins_max + bins_diff, bins_diff), np.arange(bins_min + bins_diff, bins_max + 2 * bins_diff, bins_diff))))
 
@@ -145,7 +264,7 @@ def build_data(args):
         gt_msk = load_image(image_file=str(seg_fl), add_channels=True)
 
         # - Create a dedicated dir for the current image augs
-        msk_dir = output_dir / f'{get_parent_dir_name(path=img_fl)}_{get_file_name(path=img_fl)}'
+        msk_dir = save_dir / f'{get_parent_dir_name(path=img_fl)}_{get_file_name(path=img_fl)}'
 
         # - If the msk_dir for this file exists - skip it
         if msk_dir.is_dir():
@@ -226,7 +345,7 @@ def build_data(args):
             img = load_image(image_file=str(img_fl), add_channels=True)
 
             # - Create a dedicated dir for the current image augs
-            img_log_dir = output_dir / f'log/{get_parent_dir_name(path=img_fl)}_{get_file_name(path=img_fl)}'
+            img_log_dir = save_dir / f'log/{get_parent_dir_name(path=img_fl)}_{get_file_name(path=img_fl)}'
             os.makedirs(img_log_dir)
 
             # - Plot the histogram of the seg measures
@@ -269,11 +388,7 @@ def build_data(args):
             - Mean for {len(file_run_times)} files: {get_runtime(seconds=file_run_times.mean())} +/- {get_runtime(seconds=file_run_times.std())}
         ''')
 
-    print(f'''
-    =============================
-    > PID {os.getpid()} DONE
-    =============================
-    ''')
+    print_pretty_message(message=f'PID {os.getpid()} DONE', delimiter_symbol='*')
 
 
 def clean_invalids(files, masks_root):
@@ -349,13 +464,13 @@ def analyze_data(files: list, masks_root: pathlib.Path, n_samples: int = 5, clea
 def get_arg_parser():
     parser = argparse.ArgumentParser()
 
-    parser.add_argument('--output_dir', type=str, default=OUTPUT_DIR, help='The root directory in which to save the generated data')
+    parser.add_argument('--save_dir', type=str, default=SAVE_DIR, help='The root directory in which to save the generated data')
 
-    parser.add_argument('--regenerate', default=False, action='store_true', help=f'If to create a new data')
+    parser.add_argument('--build', default=False, action='store_true', help=f'If to create a new data')
 
-    parser.add_argument('--n_samples_in_range', type=int, default=N_SAMPLES_IN_RANGE, help='The total number of samples to generate')
+    parser.add_argument('--rebuild', default=False, action='store_true', help=f'If to rebuild a new data')
 
-    parser.add_argument('--max_cpus', type=int, default=MAX_CPUS, help='The maximal number of CPUs to use')
+    parser.add_argument('--rescore', default=False, action='store_true', help=f'If to recalculate the seg scores')
 
     parser.add_argument('--create_log', default=False, action='store_true', help=f'If to plot the samples images of the data')
 
@@ -365,72 +480,12 @@ def get_arg_parser():
 
     parser.add_argument('--convert', default=False, action='store_true', help=f'Convert instance segmentation to categorical')
 
+    parser.add_argument('--n_samples_in_range', type=int, default=N_SAMPLES_IN_RANGE, help='The total number of samples to generate')
+
+    parser.add_argument('--cpus', type=int, default=MAX_CPUS, help='The maximal number of CPUs to use')
+
     return parser
 
-
-# def get_files_under_dir(dir_path: pathlib.Path or str):
-#     fls = []
-#     for root, dirs, files in os.walk(dir_path, topdown=False):
-#         for fl in files:
-#             fls.append(fl)
-#     fls = np.array(fls, dtype=object)
-#     return fls
-#
-
-# def merge_categorical_masks(masks: np.ndarray):
-#     msk = np.zeros(masks.shape[1:])
-#     for cat_mks in masks:
-#         msk += cat_mks
-#
-#     # - Fix the boundary if it was added several times from different cells
-#     msk[msk > 2] = 2
-#
-#     return msk
-#
-#
-# def split_instance_mask(instance_mask: np.ndarray):
-#     """
-#     Splits an instance mask into N binary masks
-#     :param: instance_mask - mask where integers represent different objects
-#     """
-#     # - Ensure the multi-class label is populated with int values
-#     inst_msk = instance_mask.astype(np.int16)
-#
-#     # - Find the classes
-#     labels = np.unique(inst_msk)
-#
-#     # - Discard the background (0)
-#     labels = labels[labels > 0]
-#
-#     # - Convert the ground truth mask to one-hot class masks
-#     bin_masks = []
-#     for lbl in labels:
-#         bin_class_mask = deepcopy(inst_msk)
-#         bin_class_mask[bin_class_mask != lbl] = 0
-#         bin_class_mask[bin_class_mask > 0] = 1
-#         bin_masks.append(bin_class_mask)
-#
-#     bin_masks = np.array(bin_masks)
-#
-#     return bin_masks
-
-
-# def instance_2_categorical(mask):
-#     # Shrinks the labels
-#     inner_msk = grey_erosion(mask, size=2)
-#
-#     # Create the contur of the cells
-#     contur_msk = mask - inner_msk
-#     contur_msk[contur_msk > 0] = 2
-#
-#     # - Create the inner part of the cell
-#     inner_msk[inner_msk > 0] = 1
-#
-#     # - Combine the inner and the contur masks to create the categorical mask with three classes, i.e., background 0, inner 1 and contur 2
-#     cat_msk = inner_msk + contur_msk
-#
-#     return cat_msk
-#
 
 def save_categorical_mask(mask: np.ndarray, save_file: pathlib.Path, show: bool = False):
     # - Prepare the mask overlap image
@@ -465,9 +520,9 @@ def save_categorical_mask(mask: np.ndarray, save_file: pathlib.Path, show: bool 
     plt.close()
 
 
-def plot_categorical_masks(mask_files: list, output_dir: pathlib.Path):
-    assert_pathable(argument=output_dir, argument_name='output_dir')
-    os.makedirs(output_dir, exist_ok=True)
+def plot_categorical_masks(mask_files: list, save_dir: pathlib.Path):
+    assert_pathable(argument=save_dir, argument_name='save_dir')
+    os.makedirs(save_dir, exist_ok=True)
 
     shp_dict = dict()
     for msk_fl in mask_files:
@@ -485,7 +540,28 @@ def plot_categorical_masks(mask_files: list, output_dir: pathlib.Path):
             cat_bin_msks.append(cat_msk)
         cat_bin_msks = np.array(cat_bin_msks)
         cat_msk = merge_categorical_masks(masks=cat_bin_msks)
-        save_categorical_mask(mask=cat_msk, save_file=output_dir / f'{get_parent_dir_name(path=msk_fl.parent)}_{get_file_name(path=msk_fl)}.png')
+        save_categorical_mask(mask=cat_msk, save_file=save_dir / f'{get_parent_dir_name(path=msk_fl.parent)}_{get_file_name(path=msk_fl)}.png')
+
+
+MASKS_ROOT_DIR = pathlib.Path('/home/sidorov/Projects/QANetV2/data/generated/masks')
+SAVE_DIR = pathlib.Path('/media/oldrrtammyfs/Users/sidorov/qanet/generated')
+DATA_ROOT_DIR = pathlib.Path('/home/sidorov/Projects/QANetV2/data/train/CytoPack')
+RENAME_ONLY = True
+CRATE_SAMPLES = False
+
+CROP_WIDTH = 419
+N_SAMPLES_IN_RANGE = 10
+HISTORY_LENGTH = 5
+FILE_MIN_SAMPLES_PCT = 96
+FILE_MAX_TIME = 3 * 60  # in seconds
+MAX_CPUS = 30
+MIN_J = 0.01
+MAX_J = 0.99
+
+SEG_DIR_POSTFIX = 'GT'
+IMAGE_PREFIX = 't'
+SEG_PREFIX = 'man_seg'
+SEG_SUB_DIR = 'SEG'
 
 
 if __name__ == '__main__':
@@ -494,29 +570,84 @@ if __name__ == '__main__':
     parser = get_arg_parser()
     args = parser.parse_args()
 
-    # - Scan the files in the data dir
-
-    fls = scan_files(
-        root_dir=DATA_DIR,
-        seg_dir_postfix=SEG_DIR_POSTFIX,
-        image_prefix=IMAGE_PREFIX,
-        seg_prefix=SEG_PREFIX,
-        seg_sub_dir=SEG_SUB_DIR
-    )
-
-    # - Build the data file
-    output_dir = args.output_dir
-    if not output_dir.is_dir() or args.regenerate:
-        output_dir = args.output_dir / get_ts()
-        os.makedirs(output_dir)
+    save_dir = str_2_path(args.save_dir) / get_ts()
+    os.makedirs(save_dir)
 
     if args.analyze:
-        analyze_data(files=[fl_tpl[0] for fl_tpl in fls], masks_root=output_dir, n_samples=5)
+        fls = scan_files(
+            root_dir=DATA_ROOT_DIR,
+            seg_dir_postfix=SEG_DIR_POSTFIX,
+            image_prefix=IMAGE_PREFIX,
+            seg_prefix=SEG_PREFIX,
+            seg_sub_dir=SEG_SUB_DIR
+        )
+
+        analyze_data(files=[fl_tpl[0] for fl_tpl in fls], masks_root=save_dir, n_samples=5)
     elif args.clean:
-        clean_invalids(files=[fl_tpl[0] for fl_tpl in fls], masks_root=output_dir / 'masks')
+        fls = scan_files(
+            root_dir=DATA_ROOT_DIR,
+            seg_dir_postfix=SEG_DIR_POSTFIX,
+            image_prefix=IMAGE_PREFIX,
+            seg_prefix=SEG_PREFIX,
+            seg_sub_dir=SEG_SUB_DIR
+        )
+
+        clean_invalids(files=[fl_tpl[0] for fl_tpl in fls], masks_root=save_dir / 'masks')
     elif args.convert:
-        plot_categorical_masks(mask_files=[fl[1] for fl in fls], output_dir=output_dir / 'categorical_masks_2')
-    else:
+        fls = scan_files(
+            root_dir=DATA_ROOT_DIR,
+            seg_dir_postfix=SEG_DIR_POSTFIX,
+            image_prefix=IMAGE_PREFIX,
+            seg_prefix=SEG_PREFIX,
+            seg_sub_dir=SEG_SUB_DIR
+        )
+
+        plot_categorical_masks(mask_files=[fl[1] for fl in fls], save_dir=save_dir / 'categorical_masks_2')
+    elif args.rescore:
+        n_cpus = np.min([mp.cpu_count(), args.cpus])
+        dirs = os.listdir(MASKS_ROOT_DIR)
+        # -
+        dirs = [f'{MASKS_ROOT_DIR}/{dir_nme}' for dir_nme in dirs]
+        n_dirs = len(dirs) // n_cpus
+        splt_dirs = get_split_data(data=dirs, n_items=n_dirs)
+        n_splits = len(splt_dirs)
+
+        # DEBUG
+        # recalculate_seg_scores(args=[splt_dirs[0], save_dir, []])
+
+        with Manager() as manager:
+            with Pool(processes=n_cpus) as p:
+                if dirs:
+                    seg_scrs_lst = manager.list()  # <-- can be shared between processes.
+                    args = list(
+                        zip(
+                            splt_dirs,
+                            [save_dir] * n_splits,
+                            [seg_scrs_lst] * n_splits
+                        )
+                    )
+                    seg_scrs = p.map(
+                        recalculate_seg_scores,
+                        args
+                    )
+                else:
+                    print_pretty_message(message='No dirs to recalculate!', delimiter_symbol='!')
+                    print(f'No dirs to recalculate!')
+
+            plot_hist(
+                data=np.array(seg_scrs_lst),
+                bins=np.arange(0.0, 1.1, 0.1),
+                save_file=save_dir / f'plots/global_seg_scores_dist.png'
+            )
+    elif args.build:
+        fls = scan_files(
+            root_dir=DATA_ROOT_DIR,
+            seg_dir_postfix=SEG_DIR_POSTFIX,
+            image_prefix=IMAGE_PREFIX,
+            seg_prefix=SEG_PREFIX,
+            seg_sub_dir=SEG_SUB_DIR
+        )
+
         n_cpus = np.min([mp.cpu_count(), args.max_cpus])
         n_items = len(fls) // n_cpus
         splt_fls = get_split_data(data=fls, n_items=n_items)
@@ -526,7 +657,7 @@ if __name__ == '__main__':
                 splt_fls,
                 [np.arange(0.0, 1.0, 0.1)] * n_splits,
                 [args.n_samples_in_range] * n_splits,
-                [output_dir] * n_splits,
+                [save_dir] * n_splits,
                 [args.create_log] * n_splits
             )
         )

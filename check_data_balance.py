@@ -1,13 +1,10 @@
-from scipy.stats import pearsonr
 import argparse
 import os
 import time
-from functools import partial
-
-import optuna as opt
 
 import cv2
 import pandas as pd
+from scipy.stats import pearsonr
 from tqdm import tqdm
 import numpy as np
 import pathlib
@@ -22,13 +19,7 @@ from scipy.ndimage import (
 )
 
 from utils import augs
-from utils.aux_funcs import scan_files, plot_hist, calc_seg_measure, monitor_seg_error, get_ts, calc_histogram
-from global_configs.general_configs import (
-    SEG_DIR_POSTFIX,
-    SEG_PREFIX,
-    IMAGE_PREFIX,
-    SEG_SUB_DIR, TRAIN_DATA_DIR
-)
+from utils.aux_funcs import plot_hist, calc_seg_score, monitor_seg_error, get_ts, calc_histogram
 
 logging.getLogger('PIL').setLevel(logging.WARNING)
 
@@ -49,6 +40,11 @@ P_OPENING = 0.5
 P_CLOSING = 0.5
 P_ONE_OF = 0.5
 P_ELASTIC = 0.5
+
+SEG_DIR_POSTFIX = 'GT'
+IMAGE_PREFIX = 't'
+SEG_PREFIX = 'man_seg'
+SEG_SUB_DIR = 'SEG'
 
 CLAHE_CLIP_LIMIT = 0.8
 CLAHE_TILE_GRID_SIZE = 8
@@ -134,7 +130,7 @@ def transforms():
 
 def calc_j_hists(files: list, trial_index: int, output_dir, normalize: bool = False, n_examples: int = 5, plot_examples: bool = False):
     t_start = time.time()
-    image_mask_augs = augs.image_mask_augs()
+    image_mask_augs = augs.train_augs(crop_height=IMAGE_HEIGHT, crop_width=IMAGE_WIDTH)
     trnsfrms = transforms()
     mask_augs = mask_augmentations()
 
@@ -184,7 +180,7 @@ def calc_j_hists(files: list, trial_index: int, output_dir, normalize: bool = Fa
     aug_dfrmd_msks = np.array(aug_dfrmd_msks)
 
     # - Calculate jaccards for the augmented samples
-    js = calc_seg_measure(gt_masks=trnsfrm_gt_msks, pred_masks=aug_dfrmd_msks)
+    js = calc_seg_score(gt_masks=trnsfrm_gt_msks, pred_masks=aug_dfrmd_msks)
 
     # - Calculate the histogram
     print(f'- Plotting J histogram ...')
