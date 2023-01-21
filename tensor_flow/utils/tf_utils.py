@@ -121,9 +121,9 @@ def get_callbacks(callback_type: str, hyper_parameters: dict, output_dir: pathli
         callbacks.append(
             tf.keras.callbacks.TensorBoard(
                 log_dir=output_dir,
-                write_images=hyper_parameters.get('callbacks')['tensor_board_write_images'],
-                write_steps_per_second=hyper_parameters.get('callbacks')['tensor_board_write_steps_per_second'],
-                update_freq=hyper_parameters.get('callbacks')['tensor_board_update_freq'],
+                write_images=hyper_parameters.get('callbacks')['tensorboard_write_images'],
+                write_steps_per_second=hyper_parameters.get('callbacks')['tensorboard_write_steps_per_second'],
+                update_freq=hyper_parameters.get('callbacks')['tensorboard_update_freq'],
             )
         )
         if hyper_parameters.get('callbacks')['progress_log']:

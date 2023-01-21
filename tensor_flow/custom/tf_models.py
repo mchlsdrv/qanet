@@ -176,7 +176,7 @@ class RibCage(keras.Model):
 
     # @tf.function(input_signature=(tf.TensorSpec([None, None, ])))
     @tf.function
-    def train_step(self, data) -> dict:
+    def learn(self, data) -> dict:
         print(f'Train Tracing')
         # - Get the data of the current epoch
         (btch_imgs_aug, btch_msks_aug), btch_true_seg_msrs = data
@@ -194,21 +194,45 @@ class RibCage(keras.Model):
         # - Update weights
         self.optimizer.apply_gradients(zip(gradients, trainable_vars))
 
-        # # Logs
-        # self._log(
-        #     images=btch_imgs_aug.numpy(),
-        #     masks=btch_msks_aug.numpy(),
-        #     true_seg_measures=btch_true_seg_msrs.numpy(),
-        #     pred_seg_measures=btch_pred_seg_msrs.numpy()[:, 0],
-        #     training=True
-        # )
-        # self.train_epch_losses = np.append(self.train_epch_losses, loss.numpy())
+        return dict(loss=loss, batch_seg_mesures=btch_pred_seg_msrs)
+
+    def train_step(self, data) -> dict:
+        # # - Get the data of the current epoch
+        # (btch_imgs_aug, btch_msks_aug), btch_true_seg_msrs = data
+        #
+        # # - Compute the loss according to the predictions
+        # with tf.GradientTape() as tape:
+        #     btch_pred_seg_msrs = self.model([btch_imgs_aug, btch_msks_aug], training=True)
+        #     loss = self.compiled_loss(btch_true_seg_msrs, btch_pred_seg_msrs)
+        # # - Get the weights to adjust according to the loss calculated
+        # trainable_vars = self.trainable_variables
+        #
+        # # - Calculate gradients
+        # gradients = tape.gradient(loss, trainable_vars)
+        #
+        # # - Update weights
+        # self.optimizer.apply_gradients(zip(gradients, trainable_vars))
+
+        learn_res = self.learn(data)
+        loss, btch_pred_seg_msrs = learn_res.get('loss'), learn_res.get('batch_seg_mesures')
+
+        (btch_imgs_aug, btch_msks_aug), btch_true_seg_msrs = data
+
+        # Logs
+        self._log(
+            images=btch_imgs_aug.numpy(),
+            masks=btch_msks_aug.numpy(),
+            true_seg_measures=btch_true_seg_msrs.numpy(),
+            pred_seg_measures=btch_pred_seg_msrs.numpy()[:, 0],
+            training=True
+        )
+        self.train_epch_losses = np.append(self.train_epch_losses, loss.numpy())
 
         # - Return the mapping metric names to current value
         return {metric.name: metric.result() for metric in self.metrics}
 
     @tf.function
-    def test_step(self, data) -> dict:
+    def validate(self, data) -> dict:
         print(f'Test Tracing')
         # - Get the data of the current epoch
         (btch_imgs_aug, btch_msks_aug), btch_true_seg_msrs = data
@@ -217,14 +241,29 @@ class RibCage(keras.Model):
         btch_pred_seg_msrs = self.model([btch_imgs_aug, btch_msks_aug], training=True)
         loss = self.compiled_loss(btch_true_seg_msrs, btch_pred_seg_msrs)
 
-        # self._log(
-        #     images=btch_imgs_aug.numpy(),
-        #     masks=btch_msks_aug.numpy(),
-        #     true_seg_measures=btch_true_seg_msrs.numpy(),
-        #     pred_seg_measures=btch_pred_seg_msrs.numpy()[:, 0],
-        #     training=False
-        # )
-        # self.val_epch_losses = np.append(self.val_epch_losses, loss.numpy())
+        return dict(loss=loss, batch_seg_mesures=btch_pred_seg_msrs)
+
+    def test_step(self, data) -> dict:
+        # # - Get the data of the current epoch
+        # (btch_imgs_aug, btch_msks_aug), btch_true_seg_msrs = data
+        #
+        # # - Compute the loss according to the predictions
+        # btch_pred_seg_msrs = self.model([btch_imgs_aug, btch_msks_aug], training=True)
+        # loss = self.compiled_loss(btch_true_seg_msrs, btch_pred_seg_msrs)
+
+        val_res = self.validate(data)
+
+        loss, btch_pred_seg_msrs = val_res.get('loss'), val_res.get('batch_seg_mesures')
+        (btch_imgs_aug, btch_msks_aug), btch_true_seg_msrs = data
+
+        self._log(
+            images=btch_imgs_aug.numpy(),
+            masks=btch_msks_aug.numpy(),
+            true_seg_measures=btch_true_seg_msrs.numpy(),
+            pred_seg_measures=btch_pred_seg_msrs.numpy()[:, 0],
+            training=False
+        )
+        self.val_epch_losses = np.append(self.val_epch_losses, loss.numpy())
 
         return {metric.name: metric.result() for metric in self.metrics}
 

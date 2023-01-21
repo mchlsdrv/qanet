@@ -183,7 +183,7 @@ def get_file_name(path: pathlib.Path or str):
 
     # - Discard the file extension if present
     if '.' in path:
-        file_name = path[::-1][path[::-1].index('.') + 1:][::-1]
+        file_name = file_name[::-1][file_name[::-1].index('.') + 1:][::-1]
 
     return file_name
 
