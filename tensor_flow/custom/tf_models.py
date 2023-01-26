@@ -1,4 +1,6 @@
 import os
+from copy import deepcopy
+
 import matplotlib.pyplot as plt
 from tqdm import tqdm
 import logging
@@ -157,7 +159,7 @@ class RibCage(keras.Model):
                 pred_sm = pred_seg_measures[rnd_smpl_idx]
                 self.train_btch_smpl_dict = dict(image=img, mask=msk, true_seg_measure=true_sm, pred_seg_measure=pred_sm)
 
-                self.learning_rate = self.optimizer.learning_rate.numpy()
+                # self.learning_rate = self.optimizer.learning_rate.numpy()
 
             else:
                 # - Add the target seg measures to epoch history
@@ -174,12 +176,14 @@ class RibCage(keras.Model):
                 pred_sm = pred_seg_measures[rnd_smpl_idx]
                 self.val_btch_smpl_dict = dict(image=img, mask=msk, true_seg_measure=true_sm, pred_seg_measure=pred_sm)
 
-    # @tf.function(input_signature=(tf.TensorSpec([None, None, ])))
-    @tf.function
-    def learn(self, data) -> dict:
+    @tf.function(input_signature=[tf.TensorSpec(shape=[None, None, None], dtype=tf.float64, name='btch_imgs_aug'),
+                                  tf.TensorSpec(shape=[None, None, None], dtype=tf.float64, name='btch_msks_aug'),
+                                  tf.TensorSpec(shape=[None], dtype=tf.float64, name='btch_true_seg_msrs')
+                                  ])
+    def learn(self, btch_imgs_aug, btch_msks_aug, btch_true_seg_msrs) -> dict:
         print(f'Train Tracing')
         # - Get the data of the current epoch
-        (btch_imgs_aug, btch_msks_aug), btch_true_seg_msrs = data
+        # (btch_imgs_aug, btch_msks_aug), btch_true_seg_msrs = data
 
         # - Compute the loss according to the predictions
         with tf.GradientTape() as tape:
@@ -197,23 +201,9 @@ class RibCage(keras.Model):
         return dict(loss=loss, batch_seg_mesures=btch_pred_seg_msrs)
 
     def train_step(self, data) -> dict:
-        # # - Get the data of the current epoch
-        # (btch_imgs_aug, btch_msks_aug), btch_true_seg_msrs = data
-        #
-        # # - Compute the loss according to the predictions
-        # with tf.GradientTape() as tape:
-        #     btch_pred_seg_msrs = self.model([btch_imgs_aug, btch_msks_aug], training=True)
-        #     loss = self.compiled_loss(btch_true_seg_msrs, btch_pred_seg_msrs)
-        # # - Get the weights to adjust according to the loss calculated
-        # trainable_vars = self.trainable_variables
-        #
-        # # - Calculate gradients
-        # gradients = tape.gradient(loss, trainable_vars)
-        #
-        # # - Update weights
-        # self.optimizer.apply_gradients(zip(gradients, trainable_vars))
 
-        learn_res = self.learn(data)
+        (btch_imgs_aug, btch_msks_aug), btch_true_seg_msrs = data
+        learn_res = self.learn(btch_imgs_aug, btch_msks_aug, btch_true_seg_msrs)
         loss, btch_pred_seg_msrs = learn_res.get('loss'), learn_res.get('batch_seg_mesures')
 
         (btch_imgs_aug, btch_msks_aug), btch_true_seg_msrs = data
@@ -227,15 +217,17 @@ class RibCage(keras.Model):
             training=True
         )
         self.train_epch_losses = np.append(self.train_epch_losses, loss.numpy())
-
         # - Return the mapping metric names to current value
         return {metric.name: metric.result() for metric in self.metrics}
 
-    @tf.function
-    def validate(self, data) -> dict:
+    @tf.function(input_signature=[tf.TensorSpec(shape=[None, None, None], dtype=tf.float64, name='images'),
+                                  tf.TensorSpec(shape=[None, None, None], dtype=tf.float64, name='masks'),
+                                  tf.TensorSpec(shape=[None], dtype=tf.float64, name='seg_scores')
+                                  ])
+    def validate(self, btch_imgs_aug, btch_msks_aug, btch_true_seg_msrs) -> dict:
         print(f'Test Tracing')
         # - Get the data of the current epoch
-        (btch_imgs_aug, btch_msks_aug), btch_true_seg_msrs = data
+        # (btch_imgs_aug, btch_msks_aug), btch_true_seg_msrs = data
 
         # - Compute the loss according to the predictions
         btch_pred_seg_msrs = self.model([btch_imgs_aug, btch_msks_aug], training=True)
@@ -251,7 +243,8 @@ class RibCage(keras.Model):
         # btch_pred_seg_msrs = self.model([btch_imgs_aug, btch_msks_aug], training=True)
         # loss = self.compiled_loss(btch_true_seg_msrs, btch_pred_seg_msrs)
 
-        val_res = self.validate(data)
+        (btch_imgs_aug, btch_msks_aug), btch_true_seg_msrs = data
+        val_res = self.validate(btch_imgs_aug, btch_msks_aug, btch_true_seg_msrs)
 
         loss, btch_pred_seg_msrs = val_res.get('loss'), val_res.get('batch_seg_mesures')
         (btch_imgs_aug, btch_msks_aug), btch_true_seg_msrs = data
@@ -267,17 +260,30 @@ class RibCage(keras.Model):
 
         return {metric.name: metric.result() for metric in self.metrics}
 
-    def infer(self, data_loader) -> np.ndarray:
+    @tf.function(input_signature=[tf.TensorSpec(shape=[None, None, None], dtype=tf.float64, name='image'),
+                                  tf.TensorSpec(shape=[None, None, None], dtype=tf.float64, name='mask'),
+                                  ])
+    def get_preds(self, image, mask):
+        return self.model([image, mask], training=False)
+
+    def infer(self, data_loader) -> dict:
         t_strt = time.time()
 
-        results = np.array([])
+        results_dict = dict()
+        # results = np.array([])
 
         # - Get the data of the current epoch
         pbar = tqdm(data_loader)
-        for idx, (imgs, msks) in enumerate(pbar):
+        for idx, (img, msk, key) in enumerate(pbar):
             # - Get the predictions
-            pred_seg_msrs = self.model([imgs, msks], training=False)
-            pred_seg_msrs = pred_seg_msrs.numpy().flatten()[0]
+            pred_seg_scr = self.get_preds(img, msk).numpy().flatten()[0]
+            # pred_seg_scr = self.model([img, msk], training=False).numpy().flatten()[0]
+
+            # - Append the predicted seg measures to the results
+            results_dict[key] = (img.numpy(), msk.numpy(), pred_seg_scr)
+
+            # results = np.append(results, pred_seg_msrs)
+            pbar.set_postfix(seg=f'{pred_seg_scr:.3f}')
 
             if DEBUG:
                 save_dir = pathlib.Path('inference_examples')
@@ -293,8 +299,4 @@ class RibCage(keras.Model):
                 fig.savefig(save_dir / f'{idx}.png')
                 plt.close(fig)
 
-            # - Append the predicted seg measures to the results
-            results = np.append(results, pred_seg_msrs)
-            pbar.set_postfix(seg=f'{pred_seg_msrs:.3f}')
-
-        return results
+        return results_dict

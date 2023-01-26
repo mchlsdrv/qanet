@@ -19,7 +19,7 @@ DEBUG_LEVEL = 0
 PROFILE = False
 
 # CONSTANTS
-EPSILON = 1e-7
+EPSILON = 1e-9
 
 # - Scatter Plot
 N_OUTLIERS = 5

@@ -3,10 +3,11 @@ import pathlib
 import time
 import datetime
 
+import pandas as pd
+
 import wandb
 import yaml
 
-from global_configs.general_configs import CONFIGS_DIR
 from tensor_flow.utils.tf_utils import (
     choose_gpu,
     infer_data
@@ -39,7 +40,7 @@ if __name__ == '__main__':
     if hyp_params_dict.get('training')['load_checkpoint']:
         current_run_dir = pathlib.Path(hyp_params_dict.get('training')['tf_checkpoint_dir']).parent
     else:
-        current_run_dir = pathlib.Path(hyp_params_dict.get('general')['output_dir']) / f'train/tensor_flow_{args.name}_{ts}'
+        current_run_dir = pathlib.Path(hyp_params_dict.get('general')['output_dir']) / f'inference/tensor_flow_{args.name}_{ts}'
         os.makedirs(current_run_dir)
 
     print_pretty_message(
@@ -55,7 +56,7 @@ if __name__ == '__main__':
 
     # - Configure the logger
     logger = get_logger(
-        configs_file=CONFIGS_DIR / 'logger_configs.yml',
+        configs_file=pathlib.Path(hyp_params_dict.get('general')['configs_dir']) / 'logger_configs.yml',
         save_file=current_run_dir / f'logs.log'
     )
 
@@ -67,14 +68,15 @@ if __name__ == '__main__':
     # - Configure the GPU to run on
     choose_gpu(gpu_id=args.gpu_id, logger=logger)
 
-    if hyp_params_dict.get('training')['wandb']:
-        wandb.init(project=hyp_params_dict.get('training')['wandb_project_name'])
-
-    infer_data(
+    res_dict = infer_data(
         hyper_parameters=hyp_params_dict,
         output_dir=current_run_dir,
         logger=logger
     )
+
+    res_df = pd.DataFrame(res_dict)
+    print(res_df.head())
+    res_df.to_csv(current_run_dir / 'results.csv')#, index=False)
 
     print_pretty_message(
         message=f'Total runtime: {get_runtime(seconds=time.time() - t_start)}',

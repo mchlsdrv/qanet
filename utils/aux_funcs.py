@@ -59,7 +59,7 @@ from global_configs.general_configs import (
     # TRAIN_DATA_DIR,
     # TEST_DATA_DIR,
     # MASKS_DIR,
-    HYPER_PARAMS_FILE,
+    HYPER_PARAMS_FILE, EPSILON,
 )
 
 # from pytorch.configs import general_configs as tr_configs
@@ -218,8 +218,12 @@ def add_channels_dim(image: np.ndarray):
     return image
 
 
+def standardize_image(image: np.ndarray):
+    return (image - image.mean()) / (image.std() + EPSILON)
+
+
 def normalize_image(image: np.ndarray):
-    return (image - image.mean()) / (image.std())
+    return (image - image.min()) / (image.max() - image.min() + EPSILON)
 
 
 def image_clip_values(image: np.ndarray, max_val: int):
@@ -938,17 +942,17 @@ def update_hyper_parameters(hyper_parameters: dict, arguments: argparse.Namespac
 
 def get_image_mask_figure(image: np.ndarray, mask: np.ndarray, suptitle: str = '', title: str = '', figsize: tuple = (20, 20)):
     # - Prepare the mask overlap image
-    msk = np.zeros((*mask.shape[:-1], 3))
+    msk = np.zeros((*mask.shape, 3))
 
     # - Green channel - inner cell
     inner_msk = deepcopy(mask)
     inner_msk[inner_msk != 1] = 0
-    msk[..., 1] = inner_msk[..., 0]
+    msk[..., 1] = inner_msk#[..., 0]
 
     # - Blue channel - contur of the cell
     contur_msk = deepcopy(mask)
     contur_msk[contur_msk != 2] = 0
-    msk[..., 2] = contur_msk[..., 0]
+    msk[..., 2] = contur_msk#[..., 0]
 
     fig, ax = plt.subplots(figsize=figsize)
     ax.imshow(image, cmap='gray')

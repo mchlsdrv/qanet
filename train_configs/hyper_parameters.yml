@@ -20,8 +20,16 @@ model:
   architecture:
     conv2d_blocks:
       out_channels: [64, 128, 256, 256]
-      kernel_sizes: [3, 3, 3, 3]
+      kernel_sizes: [5, 5, 5, 5]
 
+    fc_blocks:
+      out_features: [512, 1024]
+      drop_rate: 0.2
+
+  architecture2:
+    conv2d_blocks:
+      out_channels: [64, 128, 256, 256]
+      kernel_sizes: [3, 3, 3, 3]
     fc_blocks:
       out_features: [128, 128]
       drop_rate: 0.5
@@ -78,7 +86,7 @@ callbacks:
   min_improvement_delta: 0.00001
 
   # - Early Stopping
-  early_stopping: True
+  early_stopping: False
   early_stopping_patience: 30
   early_stopping_monitor: 'val_loss'
   early_stopping_min_delta: 0.00001
@@ -94,13 +102,14 @@ callbacks:
 
   # - LR Reduce on Plateau
   reduce_lr_on_plateau: False
-  reduce_lr_on_plateau_patience: 5
+  reduce_lr_on_plateau_patience: 10
   reduce_lr_on_plateau_factor: 0.7
   reduce_lr_on_plateau_monitor: 'val_loss'
-  reduce_lr_on_plateau_min_delta: 0.0001
+  reduce_lr_on_plateau_min_delta: 0.00001
   reduce_lr_on_plateau_cooldown: 0
   reduce_lr_on_plateau_mode: 'auto'
   reduce_lr_on_plateau_verbose: 1
+  reduce_lr_on_plateau_min_lr: 0.000001
 
 training:
   load_checkpoint: False
@@ -121,7 +130,7 @@ training:
 
   loss: 'mse'
   metrics: []
-  epochs: 500
+  epochs: 300
   batch_size: 16
   num_train_workers: 4
   val_prop: 0.05
@@ -133,7 +142,7 @@ training:
   optimizer_maximize: False
   optimizer_foreach: None
   optimizer: 'adam'
-  optimizer_lr: 0.0001
+  optimizer_lr: 0.001
   optimizer_lr_decay: 0.001
   optimizer_beta_1: 0.9
   optimizer_beta_2: 0.999
@@ -154,5 +163,6 @@ inference:
 
   data_dir: '../data/inference/UNSW-AU-Fluo-N2DH-SIM+'
   temp_data_file: '../data/inference/temp/UNSW-AU-Fluo-N2DH-SIM+/clean_data.pkl'
-  checkpoint_dir: '/home/sidorov/Projects/QANetV2/qanet/output/train/tensor_flow_gauss_blur_2023-01-17_01-10-32/checkpoints'
+  checkpoint_dir: '/home/sidorov/Projects/QANetV2/qanet/output/train/tensor_flow_arch_1_float64_2023-01-24_01-02-10/checkpoints'
+#  checkpoint_dir: '/home/sidorov/Projects/QANetV2/qanet/output/train/tensor_flow_gauss_blur_2023-01-17_01-10-32/checkpoints'
 

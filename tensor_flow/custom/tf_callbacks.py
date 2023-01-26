@@ -168,10 +168,10 @@ class ProgressLogCallback(tf.keras.callbacks.Callback):
             # -----------
             # - Samples -
             # -----------
-            train_img = self.model.train_btch_smpl_dict.get('image')
-            train_msk = self.model.train_btch_smpl_dict.get('mask')
-            train_true_sm = self.model.train_btch_smpl_dict.get('true_seg_measure')
-            train_pred_sm = self.model.train_btch_smpl_dict.get('pred_seg_measure')
+            train_img = self.model.train_btch_smpl_dict.get('image').astype(np.float32)
+            train_msk = self.model.train_btch_smpl_dict.get('mask').astype(np.float32)
+            train_true_sm = self.model.train_btch_smpl_dict.get('true_seg_measure').astype(np.float32)
+            train_pred_sm = self.model.train_btch_smpl_dict.get('pred_seg_measure').astype(np.float32)
             train_img_msk_fig = get_image_mask_figure(
                 image=train_img,
                 mask=train_msk,
@@ -240,10 +240,10 @@ class ProgressLogCallback(tf.keras.callbacks.Callback):
             # ----------
             # - Sample -
             # ----------
-            val_img = self.model.val_btch_smpl_dict.get('image')
-            val_msk = self.model.val_btch_smpl_dict.get('mask')
-            val_true_sm = self.model.val_btch_smpl_dict.get('true_seg_measure')
-            val_pred_sm = self.model.val_btch_smpl_dict.get('pred_seg_measure')
+            val_img = self.model.val_btch_smpl_dict.get('image').astype(np.float32)
+            val_msk = self.model.val_btch_smpl_dict.get('mask').astype(np.float32)
+            val_true_sm = self.model.val_btch_smpl_dict.get('true_seg_measure').astype(np.float32)
+            val_pred_sm = self.model.val_btch_smpl_dict.get('pred_seg_measure').astype(np.float32)
             val_img_msk_fig = get_image_mask_figure(
                 image=val_img,
                 mask=val_msk,
@@ -268,7 +268,7 @@ class ProgressLogCallback(tf.keras.callbacks.Callback):
                     'val rho': val_rho,
                     'train mse': train_mse,
                     'val mse': val_mse,
-                    'learning rate': self.model.learning_rate
+                    'learning rate': self.model.optimizer.learning_rate(epoch)
                 }
                 )
 

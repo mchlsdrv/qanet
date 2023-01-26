@@ -139,9 +139,12 @@ class DataLoader(tf.keras.utils.Sequence):
         for img_fl in self.file_keys[start_index:end_index]:
             # <1> Get the image and the mask
             img, _, msk_gt = self.data_dict.get(img_fl)
+            img = img[..., -1]
+            msk_gt = msk_gt[..., -1]
 
             # <2> Get the random augmentation and the corresponding seg measure
             msk, seg_scr = get_random_mask(masks_root=self.masks_dir, image_file=img_fl)
+            msk = msk[..., -1]
 
             # <3> Perform the image transformations
             aug_res = self.train_augs(image=img, mask=msk)
@@ -162,10 +165,10 @@ class DataLoader(tf.keras.utils.Sequence):
         # - Convert to tensors
 
         # - Images
-        btch_imgs_aug = tf.convert_to_tensor(np.array(btch_imgs_aug), dtype=tf.float32)
+        btch_imgs_aug = tf.convert_to_tensor(np.array(btch_imgs_aug), dtype=tf.float64)
 
         # - Seg measures
-        btch_seg_scrs = tf.convert_to_tensor(btch_seg_scrs, dtype=tf.float32)
+        btch_seg_scrs = tf.convert_to_tensor(btch_seg_scrs, dtype=tf.float64)
         btch_msks_aug = np.array(btch_msks_aug)
         if self.calc_seg_score:
             btch_seg_scrs = calc_seg_score(gt_masks=np.array(btch_msks_gt), pred_masks=btch_msks_aug)
@@ -173,7 +176,7 @@ class DataLoader(tf.keras.utils.Sequence):
         # - Masks
         btch_msks_aug = instance_2_categorical(masks=btch_msks_aug)
         try:
-            btch_msks_aug = tf.convert_to_tensor(btch_msks_aug, dtype=tf.float32)
+            btch_msks_aug = tf.convert_to_tensor(btch_msks_aug, dtype=tf.float64)
         except Exception as err:
             print(f'''
             =======================================================
@@ -221,14 +224,14 @@ class DataLoader(tf.keras.utils.Sequence):
         # <3> Calculate the seg measure of the aug masks with the GT masks, and convert it to tensor
         btch_js = calc_seg_score(gt_masks=btch_msks_aug, pred_masks=btch_msks_dfrmd)
         # <4> Convert btch_js to tensor
-        btch_js = tf.convert_to_tensor(btch_js, dtype=tf.float32)
+        btch_js = tf.convert_to_tensor(btch_js, dtype=tf.float16)
 
         # - Convert the btch_imgs_aug to numpy array and then to tensor
-        btch_imgs_aug = tf.convert_to_tensor(np.array(btch_imgs_aug), dtype=tf.float32)
+        btch_imgs_aug = tf.convert_to_tensor(np.array(btch_imgs_aug), dtype=tf.float16)
 
         # - Convert the btch_masks_aug to tensor right away, as it was already converted to numpy in <1>
         btch_msks_dfrmd = instance_2_categorical(masks=btch_msks_dfrmd)
-        btch_msks_dfrmd = tf.convert_to_tensor(btch_msks_dfrmd, dtype=tf.float32)
+        btch_msks_dfrmd = tf.convert_to_tensor(btch_msks_dfrmd, dtype=tf.float16)
 
         return (btch_imgs_aug, btch_msks_dfrmd), btch_js
 
@@ -239,22 +242,29 @@ class DataLoader(tf.keras.utils.Sequence):
         # - Get the image and the mask
         img, _, msk = self.data_dict.get(img_key)
         img, msk = img.astype(np.uint8), msk.astype(np.uint8)
-        img = enhance_contrast(image=img)
+        # img = enhance_contrast(image=img)
 
         # <4> Convert the image to float by clipping all the values by 255, and then dividing by it
         img = image_2_float(image=img, max_val=255)
 
-        # <5> Normalize the image by (I - E[I]) / STD(I)
+        # <5> Normalize the image by (I - min(I)) / (max(I) - min(I))
         img = normalize_image(image=img)
+
+        # <5> Normalize the image by (I - E[I]) / STD(I)
+        # img = normalize_image(image=img)
 
         # - Augment the image and the mask
         aug_res = self.inf_augs(image=img, mask=msk)
         img, msk = aug_res.get('image'), aug_res.get('mask')
-        msk = instance_2_categorical(masks=msk.astype(np.uint8))
-        # - Convert the image and the mask to  tensor
-        img, msk = tf.convert_to_tensor([img], dtype=tf.float32), tf.convert_to_tensor([msk], dtype=tf.float32)
+        msk = instance_2_categorical(masks=msk)
 
-        return img, msk
+        img = img[..., -1]
+        msk = msk[..., -1]
+
+        # - Convert the image and the mask to  tensor
+        img, msk = tf.convert_to_tensor([img], dtype=tf.float64), tf.convert_to_tensor([msk], dtype=tf.float64)
+
+        return img, msk, img_key
 
 
 def get_data_loaders(mode: str, data_dict: dict, hyper_parameters: dict, logger: logging.Logger = None):

@@ -1,4 +1,5 @@
 import os
+import numpy as np
 from functools import partial
 import logging
 import logging.config
@@ -6,6 +7,7 @@ import threading
 import multiprocessing as mlp
 import pathlib
 import tensorflow as tf
+import tensorflow_addons as tfa
 from keras import backend as K
 
 from utils.aux_funcs import (
@@ -309,7 +311,17 @@ def get_optimizer(args: dict):
             momentum=args.get('momentum'),
             centered=args.get('centered'),
         )
-    return optimizer(learning_rate=args.get('learning_rate'))
+
+    INIT_LR = 1e-4
+    MAX_LR = 1e-2
+    # steps_per_epoch = len(x_train) // BATCH_SIZE
+    clr = tfa.optimizers.CyclicalLearningRate(initial_learning_rate=INIT_LR,
+                                              maximal_learning_rate=MAX_LR,
+                                              scale_fn=lambda x: 1 / (2. ** (x - 1)),
+                                              step_size=2 * 392  # (6264 / 16)
+                                              )
+    return optimizer(learning_rate=clr)
+    # return optimizer(learning_rate=args.get('learning_rate'))
 
 
 def choose_gpu(gpu_id: int = 0, logger: logging.Logger = None):
@@ -405,16 +417,19 @@ def infer_data(hyper_parameters: dict, output_dir: pathlib.Path or str, logger: 
     assert weights_loaded, f'Could not load weights from {pathlib.Path(hyper_parameters.get("inference")["checkpoint_dir"])}!'
 
     # - Infer
-    preds = trained_model.infer(data_loader=inf_dl)
+    preds_dict = trained_model.infer(data_loader=inf_dl)
 
+    results = np.array(list(preds_dict.values()))[:, -1]
     print_pretty_message(
-        message=f'Preds: {preds}',
+        message=f'Preds: {results}',
         delimiter_symbol='='
     )
     print_pretty_message(
-        message=f'E[Preds]: {preds.mean():.3f}±{preds.std():5f}',
+        message=f'E[Preds]: {results.mean():.3f}±{results.std():5f}',
         delimiter_symbol='='
     )
+
+    return preds_dict
 
 
 def test_model(model, data_dict, file_tuples, hyper_parameters: dict, output_dir: pathlib.Path, logger: logging.Logger = None):
