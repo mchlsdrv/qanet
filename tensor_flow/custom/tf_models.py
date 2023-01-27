@@ -1,7 +1,6 @@
 import os
-from copy import deepcopy
+import pandas as pd
 
-import matplotlib.pyplot as plt
 from tqdm import tqdm
 import logging
 import time
@@ -11,7 +10,6 @@ import tensorflow as tf
 from tensorflow import keras
 from tensorflow.keras import layers
 
-from utils.aux_funcs import categorical_2_rgb
 from .tf_activations import (
     Swish
 )
@@ -277,7 +275,6 @@ class RibCage(keras.Model):
         for idx, (img, msk, key) in enumerate(pbar):
             # - Get the predictions
             pred_seg_scr = self.get_preds(img, msk).numpy().flatten()[0]
-            # pred_seg_scr = self.model([img, msk], training=False).numpy().flatten()[0]
 
             # - Append the predicted seg measures to the results
             results_dict[key] = (img.numpy(), msk.numpy(), pred_seg_scr)
@@ -285,18 +282,28 @@ class RibCage(keras.Model):
             # results = np.append(results, pred_seg_msrs)
             pbar.set_postfix(seg=f'{pred_seg_scr:.3f}')
 
-            if DEBUG:
-                save_dir = pathlib.Path('inference_examples')
-                os.makedirs(save_dir, exist_ok=True)
-                fig, ax = plt.subplots(1, 2, figsize=(20, 40))
-                ax[0].imshow(imgs.numpy()[0], cmap='gray')
-                msk = msks.numpy()[0, ..., 0]
-                print(f'mask classes before RGB: {np.unique(msk)}')
-                msk = categorical_2_rgb(mask=msk)
-                print(f'mask classes after RGB: {np.unique(msk)}')
-                ax[1].imshow(msk)
-                ax[1].set(title=f'{pred_seg_msrs:.3f}')
-                fig.savefig(save_dir / f'{idx}.png')
-                plt.close(fig)
-
         return results_dict
+
+    def test(self, data_loader) -> pd.DataFrame:
+        t_strt = time.time()
+
+        results_df = pd.DataFrame(columns=['image_file', 'gt_mask_file', 'pred_mask_file', 'seg_score'])
+
+        # - Get the data of the current epoch
+        pbar = tqdm(data_loader)
+        for idx, (img, msk, img_fl) in enumerate(pbar):
+            # - Get the predictions
+            pred_seg_scr = self.get_preds(img, msk).numpy().flatten()[0]
+
+            # - Append the predicted seg measures to the results
+            results_df = results_df.append(
+                dict(
+                    image_file=str(img_fl),
+                    gt_mask_file=None,
+                    pred_mask_file=str(msk),
+                    seg_score=pred_seg_scr
+                ), ignore_index=True)
+
+            pbar.set_postfix(seg=f'{pred_seg_scr:.3f}')
+
+        return results_df

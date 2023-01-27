@@ -6,6 +6,8 @@ import logging.config
 import threading
 import multiprocessing as mlp
 import pathlib
+
+import pandas as pd
 import tensorflow as tf
 import tensorflow_addons as tfa
 from keras import backend as K
@@ -14,7 +16,7 @@ from utils.aux_funcs import (
     info_log,
     warning_log,
     err_log,
-    get_data, str_2_path, print_pretty_message
+    get_data, str_2_path, print_pretty_message, get_data_dict
 )
 
 from .tf_data_utils import (
@@ -432,40 +434,49 @@ def infer_data(hyper_parameters: dict, output_dir: pathlib.Path or str, logger: 
     return preds_dict
 
 
-def test_model(model, data_dict, file_tuples, hyper_parameters: dict, output_dir: pathlib.Path, logger: logging.Logger = None):
-    # - Get the GT data loader
-    test_dl = DataLoader(
-        mode='test',
-        data_dict=data_dict,
-        file_keys=data_dict.keys(),
-        crop_height=hyper_parameters.get('training')['crop_height'],
-        crop_width=hyper_parameters.get('training')['crop_width'],
-        batch_size=hyper_parameters.get('training')['train_batch_size'],
-        calculate_seg_score=hyper_parameters.get('training')['image_height'] > hyper_parameters.get('training')['crop_height'] or hyper_parameters.get('training')['image_width'] > hyper_parameters.get('training')['crop_width'],
-        masks_dir=hyper_parameters.get('training')['test_mask_dir'],
-        logger=logger
-    )
+def test_model(hyper_parameters: dict, output_dir: pathlib.Path or str, logger: logging.Logger = None):
+    test_res_df = None
+    df_fl = pathlib.Path(hyper_parameters.get('test')['dataframe_file'])
+    if df_fl.is_file():
+        # - Load the dataframe
+        test_res_df = pd.read_csv(df_fl)
 
-    # -> Get the callbacks and optionally the thread which runs the tensorboard
-    callbacks, tb_prc = get_callbacks(
-        callback_type='test',
-        hyper_parameters=hyper_parameters,
-        output_dir=output_dir,
-        logger=logger
-    )
+        # - Clear the nans
+        test_res_df = test_res_df.loc[~test_res_df.loc[:, 'seg_score'].isna()]
 
-    # -> If the setting is to launch the tensorboard process automatically
-    if tb_prc is not None and hyper_parameters.get('callbacks')['tensorboard_launch']:
-        tb_prc.start()
+        # - Get the image, gt_mask, pred_mask files and the corresponding seg_score
+        img_fls = test_res_df.loc[:, 'image_file']
+        gt_msk_fls = test_res_df.loc[:, 'gt_mask_file']
+        pred_msk_fls = test_res_df.loc[:, 'pred_mask_file']
+        seg_scrs = test_res_df.loc[:, 'seg_score']
 
-    # -> Run the test
-    print(f'> Testing ...')
-    model.evaluate(
-        test_dl,
-        verbose=1,
-        callbacks=callbacks
-    )
+        # - Construct the data dictionary containing the image files, images, mask files, masks and seg sores
+        data_dict = get_data_dict(data_file_tuples=list(zip(img_fls, pred_msk_fls)))
 
-    # -> If the setting is to launch the tensorboard process automatically
-    if tb_prc is not None and hyper_parameters.get('callbacks')['tensorboard_launch']:
-        tb_prc.join()
+        test_dl = DataLoader(
+            mode='test',
+            data_dict=data_dict,
+            file_keys=list(data_dict.keys()),
+            crop_height=hyper_parameters.get('augmentations')['crop_height'],
+            crop_width=hyper_parameters.get('augmentations')['crop_width'],
+            masks_dir='',
+            batch_size=1,
+            logger=logger
+        )
+
+        # MODEL
+        # -1- Build the model and optionally load the weights
+        trained_model, weights_loaded = get_model(mode='test', hyper_parameters=hyper_parameters, output_dir=output_dir, logger=logger)
+
+        assert weights_loaded, f'Could not load weights from {pathlib.Path(hyper_parameters.get("inference")["checkpoint_dir"])}!'
+
+        # - Infer
+        pred_df = trained_model.test(data_loader=test_dl)
+
+        test_res_df.loc[test_res_df.loc[:, 'image_file'].isin(pred_df.loc[:, 'image_file']), 'pred_seg_scr'] = pred_df.loc[:, 'seg_score']
+
+        print_pretty_message(
+            message=f'Testing {len(data_dict)} images'
+        )
+
+    return test_res_df

@@ -22,8 +22,8 @@ from utils.aux_funcs import (
     get_files_under_dir,
     instance_2_categorical,
     err_log,
-    enhance_contrast,
-    calc_seg_score, normalize_image, image_2_float,
+    calc_seg_score,
+    transform_image,
 )
 
 
@@ -78,13 +78,16 @@ class DataLoader(tf.keras.utils.Sequence):
     2) Preprocessed Mode:
     The masks should be produced and saved in advance in the following format -
         - a - Root dir containing the generated samples
-        - b - All the generated masks for each image file will be placed in a new dir under the root, where the sub dirs of the file will be separated by '_'
+        - b - All the generated masks for each image file will be placed in a new dir under the root,
+        where the sub dirs of the file will be separated by '_'
         - c - Generated masks will have the seg measure as their name under the directory of the file
     This mode is much faster, as it doesn't require mask augmentation and the calculation of the seg measure.
-    (*) To use this mode provide the images_root and masks_root arguments are valid pathable objects (i.e., pathlib.Path or str) containing the path to the
+    (*) To use this mode provide the images_root and masks_root arguments are valid pathable objects (i.e., pathlib.Path or str)
+    containing the path to the
     root_dir in the aforementioned format.
     """
-    def __init__(self, mode: str, data_dict: dict, file_keys: list, crop_height: int, crop_width: int, batch_size: int, calculate_seg_score: bool = True, masks_dir: pathlib.Path or str = None, logger: logging = None):
+    def __init__(self, mode: str, data_dict: dict, file_keys: list, crop_height: int, crop_width: int, batch_size: int,
+                 calculate_seg_score: bool = True, masks_dir: pathlib.Path or str = None, logger: logging = None):
         self.mode = mode
         self.calc_seg_score = calculate_seg_score
 
@@ -123,8 +126,11 @@ class DataLoader(tf.keras.utils.Sequence):
             item = self.get_batch_fast_mode(start_index=start_idx, end_index=end_idx)
         elif self.mode == 'inference':
             item = self.get_batch_inference_mode(index=start_idx)
+        elif self.mode == 'test':
+            item = self.get_batch_test_mode(index=start_idx)
         else:
-            err_log(logger=self.logger, message=f'\'{self.mode}\' mode requires the masks_dir argument to point to a valid location ({self.masks_dir}) and be of type \'pathlib.Path\', but is of type \'{type(self.masks_dir)}\' ')
+            err_log(logger=self.logger, message=f'\'{self.mode}\' mode requires the masks_dir argument to point to a valid location '
+                                                f'({self.masks_dir}) and be of type \'pathlib.Path\', but is of type \'{type(self.masks_dir)}\' ')
 
         return item
 
@@ -150,11 +156,8 @@ class DataLoader(tf.keras.utils.Sequence):
             aug_res = self.train_augs(image=img, mask=msk)
             img, msk = aug_res.get('image'), aug_res.get('mask')
 
-            # <4> Convert the image to float by clipping all the values by 255, and then dividing by it
-            img = image_2_float(image=img, max_val=255)
-
-            # <5> Normalize the image by (I - E[I]) / STD(I)
-            img = normalize_image(image=img)
+            # <4> Apply image transformations
+            img = transform_image(image=img)
 
             # - Add the data to the corresponding lists
             btch_imgs_aug.append(img)
@@ -235,6 +238,33 @@ class DataLoader(tf.keras.utils.Sequence):
 
         return (btch_imgs_aug, btch_msks_dfrmd), btch_js
 
+    def get_batch_test_mode(self, index):
+        # - Get the key of the image
+        img_key = self.file_keys[index]
+
+        # - Get the image and the mask
+        img, _, msk = self.data_dict.get(img_key)
+        img, msk = img.astype(np.uint8), msk.astype(np.uint8)
+
+        # - Apply image transformations
+        img = transform_image(image=img)
+
+        # - Augment the image and the mask
+        aug_res = self.inf_augs(image=img, mask=msk)
+        img, msk = aug_res.get('image'), aug_res.get('mask')
+
+        # - Transform the mask from instance segmentation representation to
+        # categorical, i.e., 3 classes - background, inner part and the boundary
+        msk = instance_2_categorical(masks=msk)
+
+        img = img[..., -1]
+        msk = msk[..., -1]
+
+        # - Convert the image and the mask to  tensor
+        img, msk = tf.convert_to_tensor([img], dtype=tf.float64), tf.convert_to_tensor([msk], dtype=tf.float64)
+
+        return img, msk, img_key
+
     def get_batch_inference_mode(self, index):
         # - Get the key of the image
         img_key = self.file_keys[index]
@@ -242,16 +272,9 @@ class DataLoader(tf.keras.utils.Sequence):
         # - Get the image and the mask
         img, _, msk = self.data_dict.get(img_key)
         img, msk = img.astype(np.uint8), msk.astype(np.uint8)
-        # img = enhance_contrast(image=img)
 
-        # <4> Convert the image to float by clipping all the values by 255, and then dividing by it
-        img = image_2_float(image=img, max_val=255)
-
-        # <5> Normalize the image by (I - min(I)) / (max(I) - min(I))
-        img = normalize_image(image=img)
-
-        # <5> Normalize the image by (I - E[I]) / STD(I)
-        # img = normalize_image(image=img)
+        # - Apply image transformations
+        img = transform_image(image=img)
 
         # - Augment the image and the mask
         aug_res = self.inf_augs(image=img, mask=msk)

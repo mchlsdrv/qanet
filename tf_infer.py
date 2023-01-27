@@ -2,12 +2,8 @@ import os
 import pathlib
 import time
 import datetime
-
 import pandas as pd
-
-import wandb
 import yaml
-
 from tensor_flow.utils.tf_utils import (
     choose_gpu,
     infer_data
@@ -76,7 +72,7 @@ if __name__ == '__main__':
 
     res_df = pd.DataFrame(res_dict)
     print(res_df.head())
-    res_df.to_csv(current_run_dir / 'results.csv')#, index=False)
+    res_df.to_csv(current_run_dir / 'results.csv', index=False)
 
     print_pretty_message(
         message=f'Total runtime: {get_runtime(seconds=time.time() - t_start)}',

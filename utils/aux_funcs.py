@@ -232,7 +232,20 @@ def image_clip_values(image: np.ndarray, max_val: int):
 
 
 def image_2_float(image: np.ndarray, max_val: int = 255):
-    return image_clip_values(image=image, max_val=max_val) / max_val
+    return image / max_val if max_val != 0 else image
+
+
+def transform_image(image: np.ndarray):
+    # - Make sure the image is in the right range
+    img = image_clip_values(image=image, max_val=255)
+
+    # - Convert the image to float by clipping all the values by 255, and then dividing by it
+    img = image_2_float(image=img)
+
+    # - Normalize the image by (I - min(I)) / (max(I) - min(I))
+    img = normalize_image(image=img)
+
+    return img
 
 
 def load_image(image_file, add_channels: bool = False):
@@ -660,11 +673,8 @@ def scan_files(root_dir: pathlib.Path or str, seg_dir_postfix: str, image_prefix
 
 
 def get_data_dict(data_file_tuples: list):
-    print('''
-    ====================================================
-    == Loading images and corresponding segmentations ==
-    ====================================================
-    ''')
+    print_pretty_message(message='Loading images and corresponding segmentations')
+
     data_dict = dict()
     files_pbar = tqdm(data_file_tuples)
     for img_fl, msk_fl in files_pbar:
@@ -674,10 +684,9 @@ def get_data_dict(data_file_tuples: list):
 
         data_dict[str(img_fl)] = (img, str(msk_fl), msk)
 
+    print_pretty_message(message='Stats')
+
     print(f'''
-    =========
-    = Stats =
-    =========
     - Total data items: {len(data_dict)}
     ''')
 
@@ -947,12 +956,12 @@ def get_image_mask_figure(image: np.ndarray, mask: np.ndarray, suptitle: str = '
     # - Green channel - inner cell
     inner_msk = deepcopy(mask)
     inner_msk[inner_msk != 1] = 0
-    msk[..., 1] = inner_msk#[..., 0]
+    msk[..., 1] = inner_msk
 
     # - Blue channel - contur of the cell
     contur_msk = deepcopy(mask)
     contur_msk[contur_msk != 2] = 0
-    msk[..., 2] = contur_msk#[..., 0]
+    msk[..., 2] = contur_msk
 
     fig, ax = plt.subplots(figsize=figsize)
     ax.imshow(image, cmap='gray')

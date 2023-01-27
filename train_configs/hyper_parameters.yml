@@ -155,6 +155,14 @@ training:
   optimizer_nesterov: False
   optimizer_centered: False
 
+test:
+  dataframe_files: [
+    '/home/sidorov/Projects/QANetV2/RefModels/Results/Fluo-N2DH-SIM+/seg_scores.csv',
+    '/home/sidorov/Projects/QANetV2/RefModels/Results/Fluo-N2DH-GOWT1/seg_scores.csv',
+    '/home/sidorov/Projects/QANetV2/RefModels/Results/Fluo-N2DL-HeLa/seg_scores.csv'
+  ]
+  checkpoint_dir: '/home/sidorov/Projects/QANetV2/qanet/output/train/tensor_flow_arch_1_float64_2023-01-24_01-02-10/checkpoints'
+
 inference:
   seg_dir_postfix: 'MASKS'
   image_prefix: 'image'
