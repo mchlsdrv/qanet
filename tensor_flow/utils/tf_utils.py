@@ -16,7 +16,8 @@ from utils.aux_funcs import (
     info_log,
     warning_log,
     err_log,
-    get_data, str_2_path, print_pretty_message, get_data_dict
+    get_data, str_2_path, print_pretty_message, get_data_dict,
+    clear_unnecessary_columns
 )
 
 from .tf_data_utils import (
@@ -68,29 +69,45 @@ class WeightedMSE:
         # - Construct the specific weights to multiply the loss by in each range
         loss_weights = tf.ones_like(x, dtype=tf.float32)
 
-        tf.where(tf.greater_equal(x, 0.0) & tf.less(x, 0.1), x_weights[0], loss_weights)
-        tf.where(tf.greater_equal(x, 0.1) & tf.less(x, 0.2), x_weights[1], loss_weights)
-        tf.where(tf.greater_equal(x, 0.2) & tf.less(x, 0.3), x_weights[2], loss_weights)
-        tf.where(tf.greater_equal(x, 0.3) & tf.less(x, 0.4), x_weights[3], loss_weights)
-        tf.where(tf.greater_equal(x, 0.4) & tf.less(x, 0.5), x_weights[4], loss_weights)
-        tf.where(tf.greater_equal(x, 0.5) & tf.less(x, 0.6), x_weights[5], loss_weights)
-        tf.where(tf.greater_equal(x, 0.6) & tf.less(x, 0.7), x_weights[6], loss_weights)
-        tf.where(tf.greater_equal(x, 0.7) & tf.less(x, 0.8), x_weights[7], loss_weights)
-        tf.where(tf.greater_equal(x, 0.8) & tf.less(x, 0.9), x_weights[8], loss_weights)
-        tf.where(tf.greater_equal(x, 0.9) & tf.less(x, 1.0), x_weights[9], loss_weights)
+        tf.where(tf.greater_equal(x, 0.0) & tf.less(x, 0.1), x_weights[0],
+                 loss_weights)
+        tf.where(tf.greater_equal(x, 0.1) & tf.less(x, 0.2), x_weights[1],
+                 loss_weights)
+        tf.where(tf.greater_equal(x, 0.2) & tf.less(x, 0.3), x_weights[2],
+                 loss_weights)
+        tf.where(tf.greater_equal(x, 0.3) & tf.less(x, 0.4), x_weights[3],
+                 loss_weights)
+        tf.where(tf.greater_equal(x, 0.4) & tf.less(x, 0.5), x_weights[4],
+                 loss_weights)
+        tf.where(tf.greater_equal(x, 0.5) & tf.less(x, 0.6), x_weights[5],
+                 loss_weights)
+        tf.where(tf.greater_equal(x, 0.6) & tf.less(x, 0.7), x_weights[6],
+                 loss_weights)
+        tf.where(tf.greater_equal(x, 0.7) & tf.less(x, 0.8), x_weights[7],
+                 loss_weights)
+        tf.where(tf.greater_equal(x, 0.8) & tf.less(x, 0.9), x_weights[8],
+                 loss_weights)
+        tf.where(tf.greater_equal(x, 0.9) & tf.less(x, 1.0), x_weights[9],
+                 loss_weights)
 
         return loss_weights
 
     def __call__(self, y_true, y_pred):
-        return self.mse(y_true=y_true, y_pred=y_pred, sample_weight=self.calc_loss_weights(x=y_true) if self.weighted else None)
+        return self.mse(y_true=y_true, y_pred=y_pred,
+                        sample_weight=self.calc_loss_weights(
+                            x=y_true) if self.weighted else None)
 
 
 def weighted_mse(true, pred):
     # - Compute the histogram of the GT seg measures
-    true_seg_measure_hist = tf.histogram_fixed_width(true, value_range=[0.0, 1.0], nbins=10)
+    true_seg_measure_hist = tf.histogram_fixed_width(true,
+                                                     value_range=[0.0, 1.0],
+                                                     nbins=10)
 
     # - Replace the places with 0 occurrences with 1 to avoid division by 0
-    true_seg_measure_hist = tf.where(tf.equal(true_seg_measure_hist, 0), tf.ones_like(true_seg_measure_hist), true_seg_measure_hist)
+    true_seg_measure_hist = tf.where(tf.equal(true_seg_measure_hist, 0),
+                                     tf.ones_like(true_seg_measure_hist),
+                                     true_seg_measure_hist)
 
     # - Get the weights for each seg measure region based on its occurrence
     seg_measure_weights = tf.divide(1, true_seg_measure_hist)
@@ -101,21 +118,32 @@ def weighted_mse(true, pred):
     # - Construct the specific weights to multiply the loss by in each range
     btch_weights = tf.ones_like(true, dtype=tf.float32)
 
-    tf.where(tf.greater_equal(true, 0.0) & tf.less(true, 0.1), seg_measure_weights[0], btch_weights)
-    tf.where(tf.greater_equal(true, 0.1) & tf.less(true, 0.2), seg_measure_weights[1], btch_weights)
-    tf.where(tf.greater_equal(true, 0.2) & tf.less(true, 0.3), seg_measure_weights[2], btch_weights)
-    tf.where(tf.greater_equal(true, 0.3) & tf.less(true, 0.4), seg_measure_weights[3], btch_weights)
-    tf.where(tf.greater_equal(true, 0.4) & tf.less(true, 0.5), seg_measure_weights[4], btch_weights)
-    tf.where(tf.greater_equal(true, 0.5) & tf.less(true, 0.6), seg_measure_weights[5], btch_weights)
-    tf.where(tf.greater_equal(true, 0.6) & tf.less(true, 0.7), seg_measure_weights[6], btch_weights)
-    tf.where(tf.greater_equal(true, 0.7) & tf.less(true, 0.8), seg_measure_weights[7], btch_weights)
-    tf.where(tf.greater_equal(true, 0.8) & tf.less(true, 0.9), seg_measure_weights[8], btch_weights)
-    tf.where(tf.greater_equal(true, 0.9) & tf.less(true, 1.0), seg_measure_weights[9], btch_weights)
+    tf.where(tf.greater_equal(true, 0.0) & tf.less(true, 0.1),
+             seg_measure_weights[0], btch_weights)
+    tf.where(tf.greater_equal(true, 0.1) & tf.less(true, 0.2),
+             seg_measure_weights[1], btch_weights)
+    tf.where(tf.greater_equal(true, 0.2) & tf.less(true, 0.3),
+             seg_measure_weights[2], btch_weights)
+    tf.where(tf.greater_equal(true, 0.3) & tf.less(true, 0.4),
+             seg_measure_weights[3], btch_weights)
+    tf.where(tf.greater_equal(true, 0.4) & tf.less(true, 0.5),
+             seg_measure_weights[4], btch_weights)
+    tf.where(tf.greater_equal(true, 0.5) & tf.less(true, 0.6),
+             seg_measure_weights[5], btch_weights)
+    tf.where(tf.greater_equal(true, 0.6) & tf.less(true, 0.7),
+             seg_measure_weights[6], btch_weights)
+    tf.where(tf.greater_equal(true, 0.7) & tf.less(true, 0.8),
+             seg_measure_weights[7], btch_weights)
+    tf.where(tf.greater_equal(true, 0.8) & tf.less(true, 0.9),
+             seg_measure_weights[8], btch_weights)
+    tf.where(tf.greater_equal(true, 0.9) & tf.less(true, 1.0),
+             seg_measure_weights[9], btch_weights)
 
-    return K.mean(K.sum(btch_weights * K.square(true-pred)))
+    return K.mean(K.sum(btch_weights * K.square(true - pred)))
 
 
-def get_callbacks(callback_type: str, hyper_parameters: dict, output_dir: pathlib.Path, logger: logging.Logger = None):
+def get_callbacks(callback_type: str, hyper_parameters: dict,
+                  output_dir: pathlib.Path, logger: logging.Logger = None):
     callbacks = []
     # -------------------
     # Built-in  callbacks
@@ -125,23 +153,29 @@ def get_callbacks(callback_type: str, hyper_parameters: dict, output_dir: pathli
         callbacks.append(
             tf.keras.callbacks.TensorBoard(
                 log_dir=output_dir,
-                write_images=hyper_parameters.get('callbacks')['tensorboard_write_images'],
-                write_steps_per_second=hyper_parameters.get('callbacks')['tensorboard_write_steps_per_second'],
-                update_freq=hyper_parameters.get('callbacks')['tensorboard_update_freq'],
+                write_images=hyper_parameters.get('callbacks')[
+                    'tensorboard_write_images'],
+                write_steps_per_second=hyper_parameters.get('callbacks')[
+                    'tensorboard_write_steps_per_second'],
+                update_freq=hyper_parameters.get('callbacks')[
+                    'tensorboard_update_freq'],
             )
         )
         if hyper_parameters.get('callbacks')['progress_log']:
             callbacks.append(
                 ProgressLogCallback(
                     log_dir=output_dir,
-                    tensorboard_logs=hyper_parameters.get('callbacks')['tensorboard'],
+                    tensorboard_logs=hyper_parameters.get('callbacks')[
+                        'tensorboard'],
                     wandb_logs=hyper_parameters.get('callbacks')['wandb'],
                     logger=logger
                 )
             )
         # - Launch the tensorboard in a thread
         if hyper_parameters.get('callbacks')['tensorboard_launch']:
-            info_log(logger=logger, message=f'Launching a Tensor Board thread on logdir: \'{output_dir}\'...')
+            info_log(logger=logger,
+                     message=f'Launching a Tensor Board thread on logdir: '
+                             f'\'{output_dir}\'...')
             tb_prc = mlp.Process(
                 target=lambda: os.system(f'tensorboard --logdir={output_dir}'),
             )
@@ -149,12 +183,17 @@ def get_callbacks(callback_type: str, hyper_parameters: dict, output_dir: pathli
     if hyper_parameters.get('callbacks')['early_stopping']:
         callbacks.append(
             tf.keras.callbacks.EarlyStopping(
-                monitor=hyper_parameters.get('callbacks')['early_stopping_monitor'],
-                min_delta=hyper_parameters.get('callbacks')['early_stopping_min_delta'],
-                patience=hyper_parameters.get('callbacks')['early_stopping_patience'],
+                monitor=hyper_parameters.get('callbacks')[
+                    'early_stopping_monitor'],
+                min_delta=hyper_parameters.get('callbacks')[
+                    'early_stopping_min_delta'],
+                patience=hyper_parameters.get('callbacks')[
+                    'early_stopping_patience'],
                 mode=hyper_parameters.get('callbacks')['early_stopping_mode'],
-                restore_best_weights=hyper_parameters.get('callbacks')['early_stopping_restore_best_weights'],
-                verbose=hyper_parameters.get('callbacks')['early_stopping_verbose'],
+                restore_best_weights=hyper_parameters.get('callbacks')[
+                    'early_stopping_restore_best_weights'],
+                verbose=hyper_parameters.get('callbacks')[
+                    'early_stopping_verbose'],
             )
         )
 
@@ -166,27 +205,39 @@ def get_callbacks(callback_type: str, hyper_parameters: dict, output_dir: pathli
     if hyper_parameters.get('callbacks')['reduce_lr_on_plateau']:
         callbacks.append(
             tf.keras.callbacks.ReduceLROnPlateau(
-                monitor=hyper_parameters.get('callbacks')['reduce_lr_on_plateau_monitor'],
-                factor=hyper_parameters.get('callbacks')['reduce_lr_on_plateau_factor'],
-                patience=hyper_parameters.get('callbacks')['reduce_lr_on_plateau_patience'],
-                min_delta=hyper_parameters.get('callbacks')['reduce_lr_on_plateau_min_delta'],
-                cooldown=hyper_parameters.get('callbacks')['reduce_lr_on_plateau_cooldown'],
-                min_lr=hyper_parameters.get('callbacks')['reduce_lr_on_plateau_min_lr'],
-                mode=hyper_parameters.get('callbacks')['reduce_lr_on_plateau_mode'],
-                verbose=hyper_parameters.get('callbacks')['reduce_lr_on_plateau_verbose'],
+                monitor=hyper_parameters.get('callbacks')[
+                    'reduce_lr_on_plateau_monitor'],
+                factor=hyper_parameters.get('callbacks')[
+                    'reduce_lr_on_plateau_factor'],
+                patience=hyper_parameters.get('callbacks')[
+                    'reduce_lr_on_plateau_patience'],
+                min_delta=hyper_parameters.get('callbacks')[
+                    'reduce_lr_on_plateau_min_delta'],
+                cooldown=hyper_parameters.get('callbacks')[
+                    'reduce_lr_on_plateau_cooldown'],
+                min_lr=hyper_parameters.get('callbacks')[
+                    'reduce_lr_on_plateau_min_lr'],
+                mode=hyper_parameters.get('callbacks')[
+                    'reduce_lr_on_plateau_mode'],
+                verbose=hyper_parameters.get('callbacks')[
+                    'reduce_lr_on_plateau_verbose'],
             )
         )
 
     if hyper_parameters.get('callbacks')['checkpoint']:
         callbacks.append(
             tf.keras.callbacks.ModelCheckpoint(
-                filepath=output_dir / hyper_parameters.get('callbacks')['checkpoint_file_best_model'],
+                filepath=output_dir / hyper_parameters.get('callbacks')[
+                    'checkpoint_file_best_model'],
                 monitor=hyper_parameters.get('callbacks')['checkpoint_monitor'],
                 verbose=hyper_parameters.get('callbacks')['checkpoint_verbose'],
-                save_best_only=hyper_parameters.get('callbacks')['checkpoint_save_best_only'],
+                save_best_only=hyper_parameters.get('callbacks')[
+                    'checkpoint_save_best_only'],
                 mode=hyper_parameters.get('callbacks')['checkpoint_mode'],
-                save_weights_only=hyper_parameters.get('callbacks')['checkpoint_save_weights_only'],
-                save_freq=hyper_parameters.get('callbacks')['checkpoint_save_freq'],
+                save_weights_only=hyper_parameters.get('callbacks')[
+                    'checkpoint_save_weights_only'],
+                save_freq=hyper_parameters.get('callbacks')[
+                    'checkpoint_save_freq'],
             )
         )
 
@@ -202,35 +253,47 @@ def launch_tensorboard(logdir):
     return tensorboard_th
 
 
-def get_model(mode: str, hyper_parameters: dict, output_dir: pathlib.Path or str, logger: logging.Logger = None):
+def get_model(mode: str, hyper_parameters: dict,
+              output_dir: pathlib.Path or str, logger: logging.Logger = None):
     weights_loaded = False
 
     model_configs = dict(
-        input_image_dims=(hyper_parameters.get('augmentations')['crop_height'], hyper_parameters.get('augmentations')['crop_width']),
+        input_image_dims=(hyper_parameters.get('augmentations')['crop_height'],
+                          hyper_parameters.get('augmentations')['crop_width']),
         drop_block=dict(
             use=hyper_parameters.get('regularization')['drop_block'],
-            keep_prob=hyper_parameters.get('regularization')['drop_block_keep_prob'],
-            block_size=hyper_parameters.get('regularization')['drop_block_block_size']
+            keep_prob=hyper_parameters.get('regularization')[
+                'drop_block_keep_prob'],
+            block_size=hyper_parameters.get('regularization')[
+                'drop_block_block_size']
         ),
         architecture=hyper_parameters.get('model')['architecture'],
         kernel_regularizer=dict(
-            type=hyper_parameters.get('regularization')['kernel_regularizer_type'],
+            type=hyper_parameters.get('regularization')[
+                'kernel_regularizer_type'],
             l1=hyper_parameters.get('regularization')['kernel_regularizer_l1'],
             l2=hyper_parameters.get('regularization')['kernel_regularizer_l2'],
-            factor=hyper_parameters.get('regularization')['kernel_regularizer_factor'],
-            mode=hyper_parameters.get('regularization')['kernel_regularizer_mode']
+            factor=hyper_parameters.get('regularization')[
+                'kernel_regularizer_factor'],
+            mode=hyper_parameters.get('regularization')[
+                'kernel_regularizer_mode']
         ),
         activation=dict(
             type=hyper_parameters.get('model')['activation'],
-            max_value=hyper_parameters.get('model')['activation_relu_max_value'],
-            negative_slope=hyper_parameters.get('model')['activation_relu_negative_slope'],
-            threshold=hyper_parameters.get('model')['activation_relu_threshold'],
+            max_value=hyper_parameters.get('model')[
+                'activation_relu_max_value'],
+            negative_slope=hyper_parameters.get('model')[
+                'activation_relu_negative_slope'],
+            threshold=hyper_parameters.get('model')[
+                'activation_relu_threshold'],
             alpha=hyper_parameters.get('model')['activation_leaky_relu_alpha']
         )
     )
-    model = RibCage(model_configs=model_configs, output_dir=output_dir, logger=logger)
+    model = RibCage(model_configs=model_configs, output_dir=output_dir,
+                    logger=logger)
 
-    checkpoint_dir = str_2_path(path=hyper_parameters.get(mode)['checkpoint_dir'])
+    checkpoint_dir = str_2_path(
+        path=hyper_parameters.get(mode)['checkpoint_dir'])
     if checkpoint_dir.is_dir():
         try:
             latest_cpt = tf.train.latest_checkpoint(checkpoint_dir)
@@ -239,13 +302,20 @@ def get_model(mode: str, hyper_parameters: dict, output_dir: pathlib.Path or str
                 weights_loaded = True
         except Exception as err:
             if isinstance(logger, logging.Logger):
-                err_log(logger=logger, message=f'Can\'t load weighs from \'{checkpoint_dir}\' due to error: {err}')
+                err_log(logger=logger,
+                        message=f'Can\'t load weighs from '
+                                f'\'{checkpoint_dir}\' due to error: {err}')
         else:
             if isinstance(logger, logging.Logger):
                 if latest_cpt is not None:
-                    info_log(logger=logger, message=f'Weights from \'{checkpoint_dir}\' were loaded successfully to the \'RibCage\' model!')
+                    info_log(logger=logger,
+                             message=f'Weights from '
+                                     f'\'{checkpoint_dir}\' were loaded '
+                                     f'successfully to the \'RibCage\' model!')
                 else:
-                    warning_log(logger=logger, message=f'No weights were found to load in \'{checkpoint_dir}\'!')
+                    warning_log(logger=logger,
+                                message=f'No weights were found to load in '
+                                        f'\'{checkpoint_dir}\'!')
     if isinstance(logger, logging.Logger):
         info_log(logger=logger, message=model.summary())
 
@@ -319,7 +389,8 @@ def get_optimizer(args: dict):
     # steps_per_epoch = len(x_train) // BATCH_SIZE
     clr = tfa.optimizers.CyclicalLearningRate(initial_learning_rate=INIT_LR,
                                               maximal_learning_rate=MAX_LR,
-                                              scale_fn=lambda x: 1 / (2. ** (x - 1)),
+                                              scale_fn=lambda x: 1 / (
+                                                      2. ** (x - 1)),
                                               step_size=2 * 392  # (6264 / 16)
                                               )
     return optimizer(learning_rate=clr)
@@ -354,9 +425,11 @@ def choose_gpu(gpu_id: int = 0, logger: logging.Logger = None):
                 logger.exception(err)
 
 
-def train_model(hyper_parameters: dict, output_dir: pathlib.Path or str, logger: logging.Logger = None):
+def train_model(hyper_parameters: dict, output_dir: pathlib.Path or str,
+                logger: logging.Logger = None):
     # - Load the data
-    data_dict = get_data(mode='training', hyper_parameters=hyper_parameters, logger=logger)
+    data_dict = get_data(mode='training', hyper_parameters=hyper_parameters,
+                         logger=logger)
 
     print_pretty_message(
         message=f'Training on {len(data_dict)} examples',
@@ -365,16 +438,23 @@ def train_model(hyper_parameters: dict, output_dir: pathlib.Path or str, logger:
 
     # MODEL
     # -1- Build the model and optionally load the weights
-    model, weights_loaded = get_model(mode='training', hyper_parameters=hyper_parameters, output_dir=output_dir, logger=logger)
+    model, weights_loaded = get_model(mode='training',
+                                      hyper_parameters=hyper_parameters,
+                                      output_dir=output_dir, logger=logger)
 
     # - Get the train and the validation data loaders
-    train_dl, val_dl = get_data_loaders(mode='training', data_dict=data_dict, hyper_parameters=hyper_parameters, logger=logger)
+    train_dl, val_dl = get_data_loaders(mode='training', data_dict=data_dict,
+                                        hyper_parameters=hyper_parameters,
+                                        logger=logger)
 
     # - Get the callbacks and optionally the thread which runs the tensorboard
-    callbacks, tb_prc = get_callbacks(callback_type='training', hyper_parameters=hyper_parameters, output_dir=output_dir, logger=logger)
+    callbacks, tb_prc = get_callbacks(callback_type='training',
+                                      hyper_parameters=hyper_parameters,
+                                      output_dir=output_dir, logger=logger)
 
     # - If the setting is to launch the tensorboard process automatically
-    if tb_prc is not None and hyper_parameters.get('callbacks')['tensorboard_launch']:
+    if tb_prc is not None \
+            and hyper_parameters.get('callbacks')['tensorboard_launch']:
         tb_prc.start()
 
     # - Train -
@@ -388,13 +468,16 @@ def train_model(hyper_parameters: dict, output_dir: pathlib.Path or str, logger:
     )
 
     # -> If the setting is to launch the tensorboard process automatically
-    if tb_prc is not None and hyper_parameters.get('callbacks')['tensorboard_launch']:
+    if tb_prc is not None and \
+            hyper_parameters.get('callbacks')['tensorboard_launch']:
         tb_prc.join()
 
 
-def infer_data(hyper_parameters: dict, output_dir: pathlib.Path or str, logger: logging.Logger = None):
+def infer_data(hyper_parameters: dict, output_dir: pathlib.Path or str,
+               logger: logging.Logger = None):
     # - Load the data
-    data_dict = get_data(mode='inference', hyper_parameters=hyper_parameters, logger=logger)
+    data_dict = get_data(mode='inference', hyper_parameters=hyper_parameters,
+                         logger=logger)
 
     inf_dl = DataLoader(
         mode='inference',
@@ -414,9 +497,13 @@ def infer_data(hyper_parameters: dict, output_dir: pathlib.Path or str, logger: 
 
     # MODEL
     # -1- Build the model and optionally load the weights
-    trained_model, weights_loaded = get_model(mode='inference', hyper_parameters=hyper_parameters, output_dir=output_dir, logger=logger)
+    trained_model, weights_loaded = get_model(mode='inference',
+                                              hyper_parameters=hyper_parameters,
+                                              output_dir=output_dir,
+                                              logger=logger)
 
-    assert weights_loaded, f'Could not load weights from {pathlib.Path(hyper_parameters.get("inference")["checkpoint_dir"])}!'
+    chkpt_dir = hyper_parameters.get("inference")["checkpoint_dir"]
+    assert weights_loaded, f'Could not load weights from {chkpt_dir}!'
 
     # - Infer
     preds_dict = trained_model.infer(data_loader=inf_dl)
@@ -434,24 +521,28 @@ def infer_data(hyper_parameters: dict, output_dir: pathlib.Path or str, logger: 
     return preds_dict
 
 
-def test_model(hyper_parameters: dict, output_dir: pathlib.Path or str, logger: logging.Logger = None):
+def test_model(hyper_parameters: dict, output_dir: pathlib.Path or str,
+               logger: logging.Logger = None):
     test_res_df = None
     df_fl = pathlib.Path(hyper_parameters.get('test')['dataframe_file'])
     if df_fl.is_file():
         # - Load the dataframe
         test_res_df = pd.read_csv(df_fl)
 
+        # - Clear unnecessary columns
+        test_res_df = clear_unnecessary_columns(dataframe=test_res_df)
+
         # - Clear the nans
-        test_res_df = test_res_df.loc[~test_res_df.loc[:, 'seg_score'].isna()]
+        test_res_df = test_res_df.loc[~test_res_df.loc[:, 'seg_score'].isna()] \
+            .reset_index(drop=True)
 
-        # - Get the image, gt_mask, pred_mask files and the corresponding seg_score
-        img_fls = test_res_df.loc[:, 'image_file']
-        gt_msk_fls = test_res_df.loc[:, 'gt_mask_file']
-        pred_msk_fls = test_res_df.loc[:, 'pred_mask_file']
-        seg_scrs = test_res_df.loc[:, 'seg_score']
+        # - Create the data tuples for the to be fed into the get_data_dict
+        data_file_tuples = [(img_fl, pred_msk_fl) for
+                            img_fl, _, pred_msk_fl, _ in test_res_df.values]
 
-        # - Construct the data dictionary containing the image files, images, mask files, masks and seg sores
-        data_dict = get_data_dict(data_file_tuples=list(zip(img_fls, pred_msk_fls)))
+        # - Construct the data dictionary containing the image files, images,
+        # mask files and masks
+        data_dict = get_data_dict(data_file_tuples=data_file_tuples)
 
         test_dl = DataLoader(
             mode='test',
@@ -466,14 +557,21 @@ def test_model(hyper_parameters: dict, output_dir: pathlib.Path or str, logger: 
 
         # MODEL
         # -1- Build the model and optionally load the weights
-        trained_model, weights_loaded = get_model(mode='test', hyper_parameters=hyper_parameters, output_dir=output_dir, logger=logger)
+        trained_model, weights_loaded = get_model(
+            mode='test',
+            hyper_parameters=hyper_parameters,
+            output_dir=output_dir, logger=logger)
 
-        assert weights_loaded, f'Could not load weights from {pathlib.Path(hyper_parameters.get("inference")["checkpoint_dir"])}!'
+        chkpt_dir = hyper_parameters.get("test")["checkpoint_dir"]
+        assert weights_loaded, \
+            f'Could not load weights from {pathlib.Path(chkpt_dir)}!'
 
         # - Infer
         pred_df = trained_model.test(data_loader=test_dl)
 
-        test_res_df.loc[test_res_df.loc[:, 'image_file'].isin(pred_df.loc[:, 'image_file']), 'pred_seg_scr'] = pred_df.loc[:, 'seg_score']
+        test_res_df.loc[test_res_df.loc[:, 'image_file'].isin(
+            pred_df.loc[:, 'image_file']), 'pred_seg_score'] = \
+            pred_df.loc[:, 'seg_score']
 
         print_pretty_message(
             message=f'Testing {len(data_dict)} images'

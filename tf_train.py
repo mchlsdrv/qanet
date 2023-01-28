@@ -37,9 +37,11 @@ if __name__ == '__main__':
 
     # - Create the directory for the current run
     if hyp_params_dict.get('training')['load_checkpoint']:
-        current_run_dir = pathlib.Path(hyp_params_dict.get('training')['tf_checkpoint_dir']).parent
+        current_run_dir = pathlib.Path(hyp_params_dict.get(
+            'training')['tf_checkpoint_dir']).parent
     else:
-        current_run_dir = pathlib.Path(hyp_params_dict.get('general')['output_dir']) / f'train/tensor_flow_{args.name}_{ts}'
+        current_run_dir = pathlib.Path(hyp_params_dict.get(
+            'general')['output_dir']) / f'train/tensor_flow_{args.name}_{ts}'
         os.makedirs(current_run_dir)
 
     # - Save the updated hyperparameters to the current run directory
@@ -50,7 +52,8 @@ if __name__ == '__main__':
 
     # - Configure the logger
     logger = get_logger(
-        configs_file=pathlib.Path(hyp_params_dict.get('general')['configs_dir']) / 'logger_configs.yml',
+        configs_file=pathlib.Path(hyp_params_dict.get(
+            'general')['configs_dir']) / 'logger_configs.yml',
         save_file=current_run_dir / f'logs.log'
     )
 
@@ -64,7 +67,8 @@ if __name__ == '__main__':
     choose_gpu(gpu_id=args.gpu_id, logger=logger)
 
     if hyp_params_dict.get('callbacks')['wandb']:
-        wandb.init(project=hyp_params_dict.get('callbacks')['wandb_project_name'])
+        wandb.init(project=hyp_params_dict.get(
+            'callbacks')['wandb_project_name'])
 
     # - Train model
     trained_model = None

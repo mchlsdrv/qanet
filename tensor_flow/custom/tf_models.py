@@ -10,6 +10,7 @@ import tensorflow as tf
 from tensorflow import keras
 from tensorflow.keras import layers
 
+from global_configs.general_configs import COLUMN_NAMES
 from .tf_activations import (
     Swish
 )
@@ -17,16 +18,22 @@ DEBUG = False
 
 
 class RibCage(keras.Model):
-    def __init__(self, model_configs: dict, output_dir: pathlib.Path or str, logger: logging.Logger = None):
+    def __init__(self, model_configs: dict, output_dir: pathlib.Path or str,
+                 logger: logging.Logger = None):
         super().__init__()
         self.input_image_dims = model_configs.get('input_image_dims')
         self.logger = logger
-        self.activation_layer = self._get_activation(configs=model_configs.get('activation'))
-        self.kernel_regularizer = self._get_kernel_regularizer(configs=model_configs.get('kernel_regularizer'))
+        self.activation_layer = self._get_activation(
+            configs=model_configs.get('activation'))
+        self.kernel_regularizer = self._get_kernel_regularizer(
+            configs=model_configs.get('kernel_regularizer'))
         self.output_dir = output_dir
         if isinstance(self.output_dir, str):
             self.output_dir = pathlib.Path(output_dir)
-        assert isinstance(self.output_dir, pathlib.Path), f'The save_dir parameter must be of types str or pathlib.Path, but {type(output_dir)} was provided!'
+        assert isinstance(
+            self.output_dir, pathlib.Path), \
+            f'The save_dir parameter must be of types str or ' \
+            f'pathlib.Path, but {type(output_dir)} was provided!'
         if not self.output_dir.is_dir():
             os.makedirs(self.output_dir)
 
@@ -62,7 +69,10 @@ class RibCage(keras.Model):
         if configs.get('type') == 'swish':
             activation = Swish()
         elif configs.get('type') == 'relu':
-            activation = tf.keras.layers.ReLU(max_value=configs.get('max_value'), negative_slope=configs.get('negative_slope'), threshold=configs.get('threshold'))
+            activation = tf.keras.layers.ReLU(
+                max_value=configs.get('max_value'),
+                negative_slope=configs.get('negative_slope'),
+                threshold=configs.get('threshold'))
         elif configs.get('type') == 'leaky_relu':
             activation = tf.keras.layers.LeakyReLU(alpha=configs.get('alpha'))
         return activation
@@ -75,16 +85,20 @@ class RibCage(keras.Model):
         elif configs.get('type') == 'l2':
             kernel_regularizer = tf.keras.regularizers.L2(l2=configs.get('l2'))
         elif configs.get('type') == 'l1l2':
-            kernel_regularizer = tf.keras.regularizers.L2(l1=configs.get('l1'), l2=configs.get('l2'))
+            kernel_regularizer = tf.keras.regularizers.L2(l1=configs.get('l1'),
+                                                          l2=configs.get('l2'))
         elif configs.get('type') == 'orthogonal':
-            kernel_regularizer = tf.keras.regularizers.OrthogonalRegularizer(factor=configs.get('factor'), l2=configs.get('mode'))
+            kernel_regularizer = tf.keras.regularizers.OrthogonalRegularizer(
+                factor=configs.get('factor'), l2=configs.get('mode'))
         return kernel_regularizer
 
     # @staticmethod
     def _build_conv2d_block(self, filters: int, kernel_size: int):
         return keras.Sequential(
             [
-                layers.Conv2D(filters=filters, kernel_size=kernel_size, padding='same', kernel_regularizer=self.kernel_regularizer),
+                layers.Conv2D(filters=filters, kernel_size=kernel_size,
+                              padding='same',
+                              kernel_regularizer=self.kernel_regularizer),
                 layers.BatchNormalization(),
                 self.activation_layer,
                 layers.MaxPool2D(padding='same'),
@@ -94,7 +108,8 @@ class RibCage(keras.Model):
     def _build_fully_connected_block(self, units: int, drop_rate: float):
         return keras.Sequential(
             [
-                keras.layers.Dense(units=units, kernel_regularizer=self.kernel_regularizer),
+                keras.layers.Dense(units=units,
+                                   kernel_regularizer=self.kernel_regularizer),
                 keras.layers.BatchNormalization(),
                 self.activation_layer,
                 keras.layers.Dropout(rate=drop_rate)
@@ -102,31 +117,44 @@ class RibCage(keras.Model):
         )
 
     def build_model(self):
-        block_filters, block_kernel_sizes = self.architecture.get('conv2d_blocks')['out_channels'], self.architecture.get('conv2d_blocks')['kernel_sizes']
+        block_filters, block_kernel_sizes = \
+            self.architecture.get('conv2d_blocks')['out_channels'], \
+            self.architecture.get('conv2d_blocks')['kernel_sizes']
 
-        input_left_rib = tmp_input_left_rib = keras.Input(self.input_image_dims + (1, ), name='input_left_rib')
-        input_right_rib = tmp_input_right_rib = keras.Input(self.input_image_dims + (1, ), name='input_right_rib')
-        input_spine = keras.layers.Concatenate()([input_left_rib, input_right_rib])
+        input_left_rib = tmp_input_left_rib = keras.Input(
+            self.input_image_dims + (1, ), name='input_left_rib')
+        input_right_rib = tmp_input_right_rib = keras.Input(
+            self.input_image_dims + (1, ), name='input_right_rib')
+        input_spine = keras.layers.Concatenate()([
+            input_left_rib, input_right_rib])
 
         for filters, kernel_size in zip(block_filters, block_kernel_sizes):
-            tmp_input_left_rib = self._build_conv2d_block(filters=filters, kernel_size=kernel_size)(tmp_input_left_rib)
-            tmp_input_right_rib = self._build_conv2d_block(filters=filters, kernel_size=kernel_size)(tmp_input_right_rib)
+            tmp_input_left_rib = self._build_conv2d_block(
+                filters=filters, kernel_size=kernel_size)(tmp_input_left_rib)
+            tmp_input_right_rib = self._build_conv2d_block(
+                filters=filters, kernel_size=kernel_size)(tmp_input_right_rib)
             input_spine = keras.layers.Concatenate()(
                 [
                     tmp_input_left_rib,
                     tmp_input_right_rib,
-                    self._build_conv2d_block(filters=filters, kernel_size=kernel_size)(input_spine)
+                    self._build_conv2d_block(
+                        filters=filters, kernel_size=kernel_size)(input_spine)
                 ]
             )
 
-        layer_units, drop_rate = self.architecture.get('fc_blocks')['out_features'], self.architecture.get('fc_blocks')['drop_rate']
+        layer_units, drop_rate = \
+            self.architecture.get('fc_blocks')['out_features'], \
+            self.architecture.get('fc_blocks')['drop_rate']
         fc_layer = keras.layers.Flatten()(input_spine)
         for units in layer_units:
-            fc_layer = self._build_fully_connected_block(units=units, drop_rate=drop_rate)(fc_layer)
+            fc_layer = self._build_fully_connected_block(
+                units=units, drop_rate=drop_rate)(fc_layer)
 
-        output_layer = keras.layers.Dense(units=1, activation=tf.keras.activations.sigmoid)(fc_layer)
+        output_layer = keras.layers.Dense(
+            units=1, activation=tf.keras.activations.sigmoid)(fc_layer)
 
-        return keras.Model(inputs=[input_left_rib, input_right_rib], outputs=[output_layer])
+        return keras.Model(
+            inputs=[input_left_rib, input_right_rib], outputs=[output_layer])
 
     def call(self, inputs, training: bool = False):
         return self.model(inputs)
@@ -137,17 +165,20 @@ class RibCage(keras.Model):
     def summary(self):
         return self.model.summary()
 
-    def _log(self, images, masks, true_seg_measures, pred_seg_measures, training: bool = True):
+    def _log(self, images, masks, true_seg_measures, pred_seg_measures,
+             training: bool = True):
         with tf.device('CPU:0'):
             # --------------------------------------------------------------
             # - ADD THE HISTORY OF THE TRUE AND THE PREDICTED SEG MEASURES -
             # --------------------------------------------------------------
             if training:
                 # - Add the target seg measures to epoch history
-                self.train_epch_gt_seg_msrs = np.append(self.train_epch_gt_seg_msrs, true_seg_measures)
+                self.train_epch_gt_seg_msrs = np.append(
+                    self.train_epch_gt_seg_msrs, true_seg_measures)
 
                 # - Add the modified seg measures to epoch history
-                self.train_epch_pred_seg_msrs = np.append(self.train_epch_pred_seg_msrs, pred_seg_measures)
+                self.train_epch_pred_seg_msrs = np.append(
+                    self.train_epch_pred_seg_msrs, pred_seg_measures)
 
                 rnd_smpl_idx = np.random.randint(0, len(images) - 1)
 
@@ -155,16 +186,20 @@ class RibCage(keras.Model):
                 msk = masks[rnd_smpl_idx]
                 true_sm = true_seg_measures[rnd_smpl_idx]
                 pred_sm = pred_seg_measures[rnd_smpl_idx]
-                self.train_btch_smpl_dict = dict(image=img, mask=msk, true_seg_measure=true_sm, pred_seg_measure=pred_sm)
+                self.train_btch_smpl_dict = dict(
+                    image=img, mask=msk,
+                    true_seg_measure=true_sm, pred_seg_measure=pred_sm)
 
                 # self.learning_rate = self.optimizer.learning_rate.numpy()
 
             else:
                 # - Add the target seg measures to epoch history
-                self.val_epch_gt_seg_msrs = np.append(self.val_epch_gt_seg_msrs, true_seg_measures)
+                self.val_epch_gt_seg_msrs = np.append(
+                    self.val_epch_gt_seg_msrs, true_seg_measures)
 
                 # - Add the modified seg measures to epoch history
-                self.val_epch_pred_seg_msrs = np.append(self.val_epch_pred_seg_msrs, pred_seg_measures)
+                self.val_epch_pred_seg_msrs = np.append(
+                    self.val_epch_pred_seg_msrs, pred_seg_measures)
 
                 rnd_smpl_idx = np.random.randint(0, len(images) - 1)
 
@@ -172,11 +207,16 @@ class RibCage(keras.Model):
                 msk = masks[rnd_smpl_idx]
                 true_sm = true_seg_measures[rnd_smpl_idx]
                 pred_sm = pred_seg_measures[rnd_smpl_idx]
-                self.val_btch_smpl_dict = dict(image=img, mask=msk, true_seg_measure=true_sm, pred_seg_measure=pred_sm)
+                self.val_btch_smpl_dict = dict(
+                    image=img, mask=msk, true_seg_measure=true_sm,
+                    pred_seg_measure=pred_sm)
 
-    @tf.function(input_signature=[tf.TensorSpec(shape=[None, None, None], dtype=tf.float64, name='btch_imgs_aug'),
-                                  tf.TensorSpec(shape=[None, None, None], dtype=tf.float64, name='btch_msks_aug'),
-                                  tf.TensorSpec(shape=[None], dtype=tf.float64, name='btch_true_seg_msrs')
+    @tf.function(input_signature=[tf.TensorSpec(shape=[None, None, None],
+                                  dtype=tf.float64, name='btch_imgs_aug'),
+                                  tf.TensorSpec(shape=[None, None, None],
+                                  dtype=tf.float64, name='btch_msks_aug'),
+                                  tf.TensorSpec(shape=[None],
+                                  dtype=tf.float64, name='btch_true_seg_msrs')
                                   ])
     def learn(self, btch_imgs_aug, btch_msks_aug, btch_true_seg_msrs) -> dict:
         print(f'Train Tracing')
@@ -185,7 +225,8 @@ class RibCage(keras.Model):
 
         # - Compute the loss according to the predictions
         with tf.GradientTape() as tape:
-            btch_pred_seg_msrs = self.model([btch_imgs_aug, btch_msks_aug], training=True)
+            btch_pred_seg_msrs = self.model([btch_imgs_aug, btch_msks_aug],
+                                            training=True)
             loss = self.compiled_loss(btch_true_seg_msrs, btch_pred_seg_msrs)
         # - Get the weights to adjust according to the loss calculated
         trainable_vars = self.trainable_variables
@@ -202,7 +243,8 @@ class RibCage(keras.Model):
 
         (btch_imgs_aug, btch_msks_aug), btch_true_seg_msrs = data
         learn_res = self.learn(btch_imgs_aug, btch_msks_aug, btch_true_seg_msrs)
-        loss, btch_pred_seg_msrs = learn_res.get('loss'), learn_res.get('batch_seg_mesures')
+        loss, btch_pred_seg_msrs = learn_res.get('loss'), \
+            learn_res.get('batch_seg_mesures')
 
         (btch_imgs_aug, btch_msks_aug), btch_true_seg_msrs = data
 
@@ -218,33 +260,33 @@ class RibCage(keras.Model):
         # - Return the mapping metric names to current value
         return {metric.name: metric.result() for metric in self.metrics}
 
-    @tf.function(input_signature=[tf.TensorSpec(shape=[None, None, None], dtype=tf.float64, name='images'),
-                                  tf.TensorSpec(shape=[None, None, None], dtype=tf.float64, name='masks'),
-                                  tf.TensorSpec(shape=[None], dtype=tf.float64, name='seg_scores')
+    @tf.function(input_signature=[tf.TensorSpec(shape=[None, None, None],
+                                  dtype=tf.float64, name='images'),
+                                  tf.TensorSpec(shape=[None, None, None],
+                                  dtype=tf.float64, name='masks'),
+                                  tf.TensorSpec(shape=[None],
+                                  dtype=tf.float64, name='seg_scores')
                                   ])
-    def validate(self, btch_imgs_aug, btch_msks_aug, btch_true_seg_msrs) -> dict:
+    def validate(self, btch_imgs_aug, btch_msks_aug, btch_true_seg_msrs) \
+            -> dict:
         print(f'Test Tracing')
         # - Get the data of the current epoch
         # (btch_imgs_aug, btch_msks_aug), btch_true_seg_msrs = data
 
         # - Compute the loss according to the predictions
-        btch_pred_seg_msrs = self.model([btch_imgs_aug, btch_msks_aug], training=True)
+        btch_pred_seg_msrs = self.model([btch_imgs_aug, btch_msks_aug],
+                                        training=True)
         loss = self.compiled_loss(btch_true_seg_msrs, btch_pred_seg_msrs)
 
         return dict(loss=loss, batch_seg_mesures=btch_pred_seg_msrs)
 
     def test_step(self, data) -> dict:
-        # # - Get the data of the current epoch
-        # (btch_imgs_aug, btch_msks_aug), btch_true_seg_msrs = data
-        #
-        # # - Compute the loss according to the predictions
-        # btch_pred_seg_msrs = self.model([btch_imgs_aug, btch_msks_aug], training=True)
-        # loss = self.compiled_loss(btch_true_seg_msrs, btch_pred_seg_msrs)
-
         (btch_imgs_aug, btch_msks_aug), btch_true_seg_msrs = data
-        val_res = self.validate(btch_imgs_aug, btch_msks_aug, btch_true_seg_msrs)
+        val_res = self.validate(
+            btch_imgs_aug, btch_msks_aug, btch_true_seg_msrs)
 
-        loss, btch_pred_seg_msrs = val_res.get('loss'), val_res.get('batch_seg_mesures')
+        loss, btch_pred_seg_msrs = val_res.get('loss'), \
+            val_res.get('batch_seg_mesures')
         (btch_imgs_aug, btch_msks_aug), btch_true_seg_msrs = data
 
         self._log(
@@ -258,8 +300,10 @@ class RibCage(keras.Model):
 
         return {metric.name: metric.result() for metric in self.metrics}
 
-    @tf.function(input_signature=[tf.TensorSpec(shape=[None, None, None], dtype=tf.float64, name='image'),
-                                  tf.TensorSpec(shape=[None, None, None], dtype=tf.float64, name='mask'),
+    @tf.function(input_signature=[tf.TensorSpec(shape=[None, None, None],
+                                  dtype=tf.float64, name='image'),
+                                  tf.TensorSpec(shape=[None, None, None],
+                                  dtype=tf.float64, name='mask'),
                                   ])
     def get_preds(self, image, mask):
         return self.model([image, mask], training=False)
@@ -287,7 +331,7 @@ class RibCage(keras.Model):
     def test(self, data_loader) -> pd.DataFrame:
         t_strt = time.time()
 
-        results_df = pd.DataFrame(columns=['image_file', 'gt_mask_file', 'pred_mask_file', 'seg_score'])
+        results_df = pd.DataFrame(columns=COLUMN_NAMES)
 
         # - Get the data of the current epoch
         pbar = tqdm(data_loader)

@@ -12,14 +12,22 @@ import logging
 
 import albumentations as A
 import albumentations.augmentations.transforms as tr
-from albumentations.augmentations.crops.transforms import CropNonEmptyMaskIfExists
+from albumentations.augmentations.crops.transforms import (
+    CropNonEmptyMaskIfExists
+)
 from scipy.ndimage import (
     grey_dilation,
     grey_erosion
 )
 
 from utils import augs
-from utils.aux_funcs import plot_hist, calc_seg_score, monitor_seg_error, get_ts, calc_histogram
+from utils.aux_funcs import (
+    plot_hist,
+    calc_seg_score,
+    monitor_seg_error,
+    get_ts,
+    calc_histogram
+)
 
 logging.getLogger('PIL').setLevel(logging.WARNING)
 
@@ -49,7 +57,8 @@ SEG_SUB_DIR = 'SEG'
 CLAHE_CLIP_LIMIT = 0.8
 CLAHE_TILE_GRID_SIZE = 8
 
-OUTPUT_DIR = pathlib.Path('/home/sidorov/Projects/QANetV2/data/data_balance') / get_ts()
+OUTPUT_DIR = pathlib.Path(
+    '/home/sidorov/Projects/QANetV2/data/data_balance') / get_ts()
 os.makedirs(OUTPUT_DIR)
 
 
@@ -128,9 +137,12 @@ def transforms():
     )
 
 
-def calc_j_hists(files: list, trial_index: int, output_dir, normalize: bool = False, n_examples: int = 5, plot_examples: bool = False):
+def calc_j_hists(files: list, trial_index: int, output_dir,
+                 normalize: bool = False, n_examples: int = 5,
+                 plot_examples: bool = False):
     t_start = time.time()
-    image_mask_augs = augs.train_augs(crop_height=IMAGE_HEIGHT, crop_width=IMAGE_WIDTH)
+    image_mask_augs = augs.train_augs(crop_height=IMAGE_HEIGHT,
+                                      crop_width=IMAGE_WIDTH)
     trnsfrms = transforms()
     mask_augs = mask_augmentations()
 
@@ -165,7 +177,9 @@ def calc_j_hists(files: list, trial_index: int, output_dir, normalize: bool = Fa
     img_msk_pbar = tqdm(img_msk_data)
     for img, msk in img_msk_pbar:
         trnsfrm_res = trnsfrms(image=img, mask=msk)
-        trnsfrm_img, trnsfrm_gt_msk = trnsfrm_res.get('image'), trnsfrm_res.get('mask')
+        trnsfrm_img, trnsfrm_gt_msk = \
+            trnsfrm_res.get('image'), \
+            trnsfrm_res.get('mask')
 
         # - Deform the augmented gt mask
         aug_res = mask_augs(image=trnsfrm_img, mask=trnsfrm_gt_msk)
@@ -199,7 +213,9 @@ def calc_j_hists(files: list, trial_index: int, output_dir, normalize: bool = Fa
         plot_hist(
             data=js,
             bins=bins,
-            save_file=OUTPUT_DIR / f'trial_{trial_index}/j_distribution.png' if isinstance(OUTPUT_DIR, pathlib.Path) else None
+            save_file=OUTPUT_DIR /
+            f'trial_{trial_index}/j_distribution.png' if
+            isinstance(OUTPUT_DIR, pathlib.Path) else None
         )
         print(f'- Plotting samples..')
         monitor_seg_error(
@@ -235,17 +251,25 @@ def calc_j_hists(files: list, trial_index: int, output_dir, normalize: bool = Fa
 def get_arg_parser():
     parser = argparse.ArgumentParser()
 
-    parser.add_argument('--data_type', type=str, choices=['train', 'test'], help='The type of the data (i.e, train or test)')
+    parser.add_argument('--data_type', type=str, choices=['train', 'test'],
+                        help='The type of the data (i.e, train or test)')
 
-    parser.add_argument('--seg_dir_postfix', type=str, default=SEG_DIR_POSTFIX, help='The postfix of the directory which holds the segmentations')
+    parser.add_argument('--seg_dir_postfix', type=str, default=SEG_DIR_POSTFIX,
+                        help='The postfix of the directory which holds '
+                             'the segmentations')
 
-    parser.add_argument('--image_prefix', type=str, default=IMAGE_PREFIX, help='The prefix of the images')
+    parser.add_argument('--image_prefix', type=str, default=IMAGE_PREFIX,
+                        help='The prefix of the images')
 
-    parser.add_argument('--seg_prefix', type=str, default=SEG_PREFIX, help='The prefix of the segmentations')
+    parser.add_argument('--seg_prefix', type=str, default=SEG_PREFIX,
+                        help='The prefix of the segmentations')
 
-    parser.add_argument('--n_samples', type=int, default=100, help='The total number of samples to generate')
+    parser.add_argument('--n_samples', type=int, default=100,
+                        help='The total number of samples to generate')
 
-    parser.add_argument('--plot_samples', default=False, action='store_true', help=f'If to plot the samples images of the data')
+    parser.add_argument('--plot_samples', default=False,
+                        action='store_true',
+                        help=f'If to plot the samples images of the data')
 
     return parser
 
@@ -288,7 +312,8 @@ def objective(trial, files):
     P_ELASTIC = trial.suggest_float('p_elastic', 0.0, 1.0)
     P_ONE_OF = trial.suggest_float('p_one_of', 0.0, 1.0)
 
-    j_dist = calc_j_hists(files=files, trial_index=trial.number, output_dir=OUTPUT_DIR, normalize=True)
+    j_dist = calc_j_hists(files=files, trial_index=trial.number,
+                          output_dir=OUTPUT_DIR, normalize=True)
 
     mse = np.mean(np.square(np.ones_like(j_dist) * 0.5 - j_dist))
     print(f'''
@@ -311,67 +336,37 @@ def objective(trial, files):
     if trial.study.best_trials:
         print(f'''
         ===================================
-        > Best Trial: #{trial.study.best_trial.number}, mse: {trial.study.best_trial.value:.4f}
+        > Best Trial: #{trial.study.best_trial.number}, 
+        mse: {trial.study.best_trial.value:.4f}
         ===================================
         ''')
     return mse
 
 
 if __name__ == '__main__':
-    gt_train = '/home/sidorov/Projects/QANetV2/qanet/output/train/tensor_flow_2022-11-25_21-56-39/train/plots/scatter/metadata/gt_seg_measures_epoch_527.npy'
-    pred_train = '/home/sidorov/Projects/QANetV2/qanet/output/train/tensor_flow_2022-11-25_21-56-39/train/plots/scatter/metadata/pred_seg_measures_epoch_527.npy'
+    gt_train = '/home/sidorov/Projects/QANetV2/qanet/output/train/' \
+               'tensor_flow_2022-11-25_21-56-39/train/plots/scatter/metadata' \
+               '/gt_seg_measures_epoch_527.npy'
+    pred_train = '/home/sidorov/Projects/QANetV2/qanet/output/train/' \
+                 'tensor_flow_2022-11-25_21-56-39/train/plots/scatter/' \
+                 'metadata/pred_seg_measures_epoch_527.npy'
     gt_seg_measure_train = np.load(gt_train)
     pred_seg_measure_train = np.load(pred_train)
     r_train, _ = pearsonr(gt_seg_measure_train, pred_seg_measure_train)
 
-    gt_val = '/home/sidorov/Projects/QANetV2/qanet/output/train/tensor_flow_2022-11-25_21-56-39/validation/plots/scatter/metadata/gt_seg_measures_epoch_527.npy'
-    pred_val = '/home/sidorov/Projects/QANetV2/qanet/output/train/tensor_flow_2022-11-25_21-56-39/validation/plots/scatter/metadata/pred_seg_measures_epoch_527.npy'
+    gt_val = '/home/sidorov/Projects/QANetV2/qanet/output/train/' \
+             'tensor_flow_2022-11-25_21-56-39/validation/plots/scatter/' \
+             'metadata/gt_seg_measures_epoch_527.npy'
+    pred_val = '/home/sidorov/Projects/QANetV2/qanet/output/train/' \
+               'tensor_flow_2022-11-25_21-56-39/validation/plots/scatter' \
+               '/metadata/pred_seg_measures_epoch_527.npy'
     gt_seg_measure_val = np.load(gt_val)
     pred_seg_measure_val = np.load(pred_val)
     r_val, _ = pearsonr(gt_seg_measure_val, pred_seg_measure_val)
 
-    mse_train = np.mean(np.square(gt_seg_measure_train - pred_seg_measure_train))
+    mse_train = np.mean(
+        np.square(gt_seg_measure_train - pred_seg_measure_train))
     mse_val = np.mean(np.square(gt_seg_measure_val - pred_seg_measure_val))
 
     print(f'Train R - {r_train:.4f}\nTrain MSE - {mse_train:.4f}')
     print(f'Val R - {r_val:.4f}\nVal MSE - {mse_val:.4f}')
-    # - Get the argument parser
-    # parser = get_arg_parser()
-    # args = parser.parse_args()
-    #
-    # # - Scan the files in the data dir
-    #
-    # fl_tupls = scan_files(
-    #     root_dir=TRAIN_DATA_DIR,
-    #     seg_dir_postfix=SEG_DIR_POSTFIX,
-    #     image_prefix=IMAGE_PREFIX,
-    #     seg_prefix=SEG_PREFIX,
-    #     seg_sub_dir=SEG_SUB_DIR
-    # )
-    # np.random.shuffle(fl_tupls)
-    # study = opt.create_study(direction='minimize')
-    # study.optimize(partial(objective, files=fl_tupls[:100]), n_trials=10000)
-    #
-    # best_trial = study.best_trial
-    # best_trial_params = best_trial.params
-    # print(f'''
-    # ========================================================================================================
-    # ============================================ SUMMARY ===================================================
-    # ========================================================================================================
-    #     Best trial:
-    #         - MSE: {best_trial.values[0]}
-    #         - Params:
-    #             > Number of erosion sizes: {best_trial_params.get('n_erosion_sizes')}
-    #             > DILATION SIZES: {best_trial_params.get('n_dilation_sizes')}
-    #             > ALPHA (factor = {best_trial_params.get('alpha_factor')}): {IMAGE_WIDTH * best_trial_params.get('alpha_factor')}
-    #             > ALPHA AFFINE (factor = {best_trial_params.get('alpha_affine_factor')}): {IMAGE_WIDTH * best_trial_params.get('alpha_affine_factor')}
-    #             > SIGMA (factor = {best_trial_params.get('sigma_factor')}): {IMAGE_WIDTH * best_trial_params.get('sigma_factor')}
-    #             > P EROSION: {best_trial_params.get('p_erosion')}
-    #             > P DILATION: {best_trial_params.get('p_dilation')}
-    #             > P OPENING: {best_trial_params.get('p_opening')}
-    #             > P CLOSING: {best_trial_params.get('p_closing')}
-    #             > P ELASTIC: {best_trial_params.get('p_elastic')}
-    #             > P ONE OF: {best_trial_params.get('p_one_of')}
-    # ========================================================================================================
-    # ========================================================================================================
-    # ''')

@@ -2,7 +2,6 @@ import pathlib
 
 __author__ = 'sidorov@post.bgu.ac.il'
 
-# CONFIGS_DIR = pathlib.Path('./global_configs')
 
 HYPER_PARAMS_FILE = pathlib.Path('./train_configs/hyper_parameters.yml')
 
@@ -32,10 +31,5 @@ HR_AET_PERCENTAGE = 80
 PLOT_OUTLIERS = True
 PLOT_TRAIN_DATA_BATCHES = False
 PLOT_VALIDATION_DATA_BATCHES = True
-# LOSS_DELTA_TH = 0.01
-# LAUNCH_TB = False
-# METRICS = []
 
-# VAL_BATCH_SIZE = 10
-# REDUCE_LR_ON_PLATEAU_MIN_LR = 1e-9
-# REDUCE_LR_ON_PLATEAU_VERBOSE = 1
+COLUMN_NAMES = ['image_file', 'gt_mask_file', 'pred_mask_file', 'seg_score']

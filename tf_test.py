@@ -2,7 +2,10 @@ import os
 import pathlib
 import time
 import datetime
+
+import matplotlib.pyplot as plt
 import yaml
+
 from tensor_flow.utils.tf_utils import (
     choose_gpu,
     test_model
@@ -12,6 +15,7 @@ from utils.aux_funcs import (
     get_runtime,
     get_logger,
     update_hyper_parameters, print_pretty_message, get_scatter_plot_figure,
+    print_results, get_simple_scatter_plot_figure,
 )
 
 
@@ -32,8 +36,15 @@ if __name__ == '__main__':
     update_hyper_parameters(hyper_parameters=hyp_params_dict, arguments=args)
 
     # - Create the directory for the current run
+    dir_name = args.name
+    if args.test_data == 'sim+' and dir_name == '':
+        dir_name = 'SIM+'
+    if args.test_data == 'gowt1' and dir_name == '':
+        dir_name = 'GOWT1'
+    elif args.test_data == 'hela' and dir_name == '':
+        dir_name = 'HeLa'
     current_run_dir = pathlib.Path(hyp_params_dict.get('general')['output_dir']
-                                   ) / f'test/tensor_flow_{args.name}_{ts}'
+                                   ) / f'test/tensor_flow_{dir_name}_{ts}'
     os.makedirs(current_run_dir)
 
     print_pretty_message(
@@ -70,14 +81,34 @@ if __name__ == '__main__':
     )
 
     # - Plot the scatter plot of the test vs gt
+    x = test_res_df.loc[:, 'seg_score'].values
+    y = test_res_df.loc[:, 'pred_seg_score'].values
+
     fig, rho, p, mse = get_scatter_plot_figure(
-        x=test_res_df.loc[:, 'seg_score'].values,
-        y=test_res_df.loc[:, 'pred_seg_score'].values,
-        plot_type='test', logger=logger)
-    fig.savefig(current_run_dir / 'test_results_scatter_plot.png')
+        x=x,
+        y=y,
+        plot_type='test',
+        logger=logger)
+    plt.close(fig)
+
+    fig, ax = get_simple_scatter_plot_figure(
+        x=x,
+        y=y,
+        xlabel='GT Quality Value',
+        ylabel='Estimated Quality Value',
+        save_file=current_run_dir / 'gt vs estimated scatter plot.png'
+    )
 
     # - Save the results
     test_res_df.to_csv(current_run_dir / 'test_results.csv')
+
+    print_pretty_message(
+        message=f'Test Results',
+        delimiter_symbol='*'
+    )
+
+    # - Print the results
+    print_results(results=test_res_df, rho=rho, p=p, mse=mse)
 
     print_pretty_message(
         message=f'Total runtime: {get_runtime(seconds=time.time() - t_start)}',

@@ -34,6 +34,15 @@ model:
       out_features: [128, 128]
       drop_rate: 0.5
 
+  architecture3:
+    conv2d_blocks:
+      out_channels: [32, 64, 128, 256]
+      kernel_sizes: [5, 5, 5, 5]
+
+    fc_blocks:
+      out_features: [512, 1024]
+      drop_rate: 0.2
+
   activation: 'swish'
   activation_relu_max_value: None
   activation_relu_negative_slope: 0.0
@@ -156,21 +165,42 @@ training:
   optimizer_centered: False
 
 test:
-  dataframe_files: [
-    '/home/sidorov/Projects/QANetV2/RefModels/Results/Fluo-N2DH-SIM+/seg_scores.csv',
-    '/home/sidorov/Projects/QANetV2/RefModels/Results/Fluo-N2DH-GOWT1/seg_scores.csv',
-    '/home/sidorov/Projects/QANetV2/RefModels/Results/Fluo-N2DL-HeLa/seg_scores.csv'
-  ]
-  checkpoint_dir: '/home/sidorov/Projects/QANetV2/qanet/output/train/tensor_flow_arch_1_float64_2023-01-24_01-02-10/checkpoints'
+  test_data: 'sim+'
+
+  # - SIM+
+  dataframe_file_sim+: '/home/sidorov/Projects/QANetV2/RefModels/Results/Fluo-N2DH-SIM+/seg_scores.csv'
+  checkpoint_dir_sim+: '/home/sidorov/Projects/QANetV2/qanet/output/train/tensor_flow_arch_1_float64_SIM+_3_3_pct/checkpoints'
+
+  # - GOWT1
+  dataframe_file_gowt1:  '/home/sidorov/Projects/QANetV2/RefModels/Results/Fluo-N2DH-GOWT1/seg_scores.csv'
+  checkpoint_dir_gowt1: '/home/sidorov/Projects/QANetV2/qanet/output/train/tensor_flow_arch1_float64_GOWT1_5_7_pct/checkpoints'
+
+  # - HeLa
+  dataframe_file_hela: '/home/sidorov/Projects/QANetV2/RefModels/Results/Fluo-N2DL-HeLa/seg_scores.csv'
+  checkpoint_dir_hela: '/home/sidorov/Projects/QANetV2/qanet/output/train/tensor_flow_arch_1_float64_cyclic_HeLa_3.5_pct/checkpoints'
+
 
 inference:
+  inference_data: 'unsw_au_sim+'
+
   seg_dir_postfix: 'MASKS'
   image_prefix: 'image'
   seg_prefix: 'mask'
   seg_sub_dir: ''
 
-  data_dir: '../data/inference/UNSW-AU-Fluo-N2DH-SIM+'
   temp_data_file: '../data/inference/temp/UNSW-AU-Fluo-N2DH-SIM+/clean_data.pkl'
-  checkpoint_dir: '/home/sidorov/Projects/QANetV2/qanet/output/train/tensor_flow_arch_1_float64_2023-01-24_01-02-10/checkpoints'
+
+  # - SIM+
+  data_dir_unsw_au_sim+: '../data/inference/UNSW-AU-Fluo-N2DH-SIM+'
+  dataframe_file_sim+: '/home/sidorov/Projects/QANetV2/RefModels/Results/Fluo-N2DH-SIM+/seg_scores.csv'
+  checkpoint_dir_sim+: '/home/sidorov/Projects/QANetV2/qanet/output/train/tensor_flow_arch_1_float64_SIM+_3_3_pct/checkpoints'
+
+  # - GOWT1
+  dataframe_file_gowt1:  '/home/sidorov/Projects/QANetV2/RefModels/Results/Fluo-N2DH-GOWT1/seg_scores.csv'
+  checkpoint_dir_gowt1: '/home/sidorov/Projects/QANetV2/qanet/output/train/tensor_flow_arch1_float64_GOWT1_5_7_pct/checkpoints'
+
+  # - HeLa
+  dataframe_file_hela: '/home/sidorov/Projects/QANetV2/RefModels/Results/Fluo-N2DL-HeLa/seg_scores.csv'
+  checkpoint_dir_hela: '/home/sidorov/Projects/QANetV2/qanet/output/train/tensor_flow_arch_1_float64_cyclic_HeLa_3.5_pct/checkpoints'
 #  checkpoint_dir: '/home/sidorov/Projects/QANetV2/qanet/output/train/tensor_flow_gauss_blur_2023-01-17_01-10-32/checkpoints'
 

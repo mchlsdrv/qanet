@@ -34,9 +34,12 @@ if __name__ == '__main__':
 
     # - Create the directory for the current run
     if hyp_params_dict.get('training')['load_checkpoint']:
-        current_run_dir = pathlib.Path(hyp_params_dict.get('training')['tf_checkpoint_dir']).parent
+        current_run_dir = pathlib.Path(
+            hyp_params_dict.get('training')['tf_checkpoint_dir']).parent
     else:
-        current_run_dir = pathlib.Path(hyp_params_dict.get('general')['output_dir']) / f'inference/tensor_flow_{args.name}_{ts}'
+        current_run_dir = pathlib.Path(
+            hyp_params_dict.get('general')['output_dir']) / \
+                          f'inference/tensor_flow_{args.name}_{ts}'
         os.makedirs(current_run_dir)
 
     print_pretty_message(
@@ -52,12 +55,15 @@ if __name__ == '__main__':
 
     # - Configure the logger
     logger = get_logger(
-        configs_file=pathlib.Path(hyp_params_dict.get('general')['configs_dir']) / 'logger_configs.yml',
+        configs_file=pathlib.Path(
+            hyp_params_dict.get(
+                'general')['configs_dir']) / 'logger_configs.yml',
         save_file=current_run_dir / f'logs.log'
     )
 
     print_pretty_message(
-        message=f'Running inference with TensorFlow model from {hyp_params_dict.get("inference")["checkpoint_dir"]}',
+        message=f'Running inference with TensorFlow model from '
+                f'{hyp_params_dict.get("inference")["checkpoint_dir"]}',
         delimiter_symbol='='
     )
 

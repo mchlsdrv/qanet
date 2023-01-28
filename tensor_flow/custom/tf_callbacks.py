@@ -33,7 +33,9 @@ def write_figure_to_tensorboard(writer, figure, tag: str, step: int):
 
 # - CLASSES
 class ProgressLogCallback(tf.keras.callbacks.Callback):
-    def __init__(self, log_dir: pathlib.Path or str, tensorboard_logs: bool = False, wandb_logs: bool = False, logger: logging.Logger = None):
+    def __init__(self, log_dir: pathlib.Path or str,
+                 tensorboard_logs: bool = False, wandb_logs: bool = False,
+                 logger: logging.Logger = None):
         super().__init__()
 
         # - Create the log dir
@@ -41,10 +43,12 @@ class ProgressLogCallback(tf.keras.callbacks.Callback):
         os.makedirs(self.log_dir, exist_ok=True)
 
         # - Create the train file writer
-        self.train_file_writer = tf.summary.create_file_writer(str(self.log_dir / 'train'))
+        self.train_file_writer = tf.summary.create_file_writer(
+            str(self.log_dir / 'train'))
 
         # - Create the train file writer
-        self.val_file_writer = tf.summary.create_file_writer(str(self.log_dir / 'validation'))
+        self.val_file_writer = tf.summary.create_file_writer(
+            str(self.log_dir / 'validation'))
 
         # - Create the train scatter plots directory
         self.train_scatter_plots_dir = self.log_dir / f'train/plots/scatter'
@@ -63,7 +67,8 @@ class ProgressLogCallback(tf.keras.callbacks.Callback):
         os.makedirs(self.val_scatter_plots_dir, exist_ok=True)
 
         # - Create the train hit rate plots directory
-        self.val_hit_rate_plots_dir = self.log_dir / f'validation/plots/hit_rate'
+        self.val_hit_rate_plots_dir = \
+            self.log_dir / f'validation/plots/hit_rate'
         os.makedirs(self.val_hit_rate_plots_dir, exist_ok=True)
 
         # - Create the train samples directory
@@ -88,7 +93,8 @@ class ProgressLogCallback(tf.keras.callbacks.Callback):
 
         self.logger = logger
 
-    def log_figure(self, figure, file_writer, step: int, tag: str, procedure: str, save_file: pathlib.Path or str):
+    def log_figure(self, figure, file_writer, step: int, tag: str,
+                   procedure: str, save_file: pathlib.Path or str):
         save_figure(
             figure=figure,
             save_file=save_file,
@@ -107,7 +113,8 @@ class ProgressLogCallback(tf.keras.callbacks.Callback):
         if self.wandb_logs:
             wandb.log(
                 {
-                    f'{tag}-{procedure}': wandb.Image(get_image_from_figure(figure=figure))
+                    f'{tag}-{procedure}': wandb.Image(
+                        get_image_from_figure(figure=figure))
                 }
             )
 
@@ -119,14 +126,17 @@ class ProgressLogCallback(tf.keras.callbacks.Callback):
             # ----------------
             # - Scatter plot -
             # ----------------
-            train_sctr_fig, train_rho, train_p, train_mse = get_scatter_plot_figure(
-                x=np.array(self.model.train_epch_gt_seg_msrs).flatten(),
-                y=np.array(self.model.train_epch_pred_seg_msrs).flatten(),
-                plot_type='train',
-                logger=self.logger
-            )
+            train_sctr_fig, train_rho, train_p, train_mse = \
+                get_scatter_plot_figure(
+                    x=np.array(self.model.train_epch_gt_seg_msrs).flatten(),
+                    y=np.array(self.model.train_epch_pred_seg_msrs).flatten(),
+                    plot_type='train',
+                    logger=self.logger
+                )
 
-            self.train_rhos, self.train_mses = np.append(self.train_rhos, train_rho), np.append(self.train_mses, train_mse)
+            self.train_rhos, self.train_mses = \
+                np.append(self.train_rhos, train_rho), \
+                np.append(self.train_mses, train_mse)
 
             self.log_figure(
                 figure=train_sctr_fig,
@@ -138,19 +148,29 @@ class ProgressLogCallback(tf.keras.callbacks.Callback):
             )
 
             # * Save metadata
-            to_numpy(data=np.array(self.model.train_epch_gt_seg_msrs).flatten(), file_path=self.train_scatter_plots_dir / f'metadata/gt_seg_measures_epoch_{epoch}.npy', overwrite=False, logger=self.logger)
-            to_numpy(data=np.array(self.model.train_epch_pred_seg_msrs).flatten(), file_path=self.train_scatter_plots_dir / f'metadata/pred_seg_measures_epoch_{epoch}.npy', overwrite=False, logger=self.logger)
+            to_numpy(
+                data=np.array(self.model.train_epch_gt_seg_msrs).flatten(),
+                file_path=self.train_scatter_plots_dir /
+                f'metadata/gt_seg_measures_epoch_{epoch}.npy',
+                overwrite=False, logger=self.logger)
+            to_numpy(
+                data=np.array(self.model.train_epch_pred_seg_msrs).flatten(),
+                file_path=self.train_scatter_plots_dir /
+                f'metadata/pred_seg_measures_epoch_{epoch}.npy',
+                overwrite=False, logger=self.logger)
 
             # -----------------
             # - Hit rate plot -
             # -----------------
-            train_hit_rate_fig, train_hit_rate_hist, train_hit_rate_bins = get_hit_rate_plot_figure(
-                true=np.array(self.model.train_epch_gt_seg_msrs).flatten(),
-                pred=np.array(self.model.train_epch_pred_seg_msrs).flatten(),
-                hit_rate_percent=HR_AET_PERCENTAGE,
-                figsize=HR_AET_FIGSIZE,
-                logger=self.logger
-            )
+            train_hit_rate_fig, train_hit_rate_hist, train_hit_rate_bins = \
+                get_hit_rate_plot_figure(
+                    true=np.array(self.model.train_epch_gt_seg_msrs).flatten(),
+                    pred=np.array(
+                        self.model.train_epch_pred_seg_msrs).flatten(),
+                    hit_rate_percent=HR_AET_PERCENTAGE,
+                    figsize=HR_AET_FIGSIZE,
+                    logger=self.logger
+                )
 
             self.log_figure(
                 figure=train_hit_rate_fig,
@@ -162,21 +182,34 @@ class ProgressLogCallback(tf.keras.callbacks.Callback):
             )
 
             # * Save metadata
-            to_numpy(data=train_hit_rate_hist, file_path=self.train_hit_rate_plots_dir / f'metadata/hit_rate_hist_epoch_{epoch}.npy', overwrite=False, logger=self.logger)
-            to_numpy(data=train_hit_rate_bins, file_path=self.train_hit_rate_plots_dir / f'metadata/hit_rate_bins_epoch_{epoch}.npy', overwrite=False, logger=self.logger)
+            to_numpy(
+                data=train_hit_rate_hist,
+                file_path=self.train_hit_rate_plots_dir /
+                f'metadata/hit_rate_hist_epoch_{epoch}.npy',
+                overwrite=False, logger=self.logger)
+            to_numpy(
+                data=train_hit_rate_bins,
+                file_path=self.train_hit_rate_plots_dir /
+                f'metadata/hit_rate_bins_epoch_{epoch}.npy',
+                overwrite=False, logger=self.logger)
 
             # -----------
             # - Samples -
             # -----------
-            train_img = self.model.train_btch_smpl_dict.get('image').astype(np.float32)
-            train_msk = self.model.train_btch_smpl_dict.get('mask').astype(np.float32)
-            train_true_sm = self.model.train_btch_smpl_dict.get('true_seg_measure').astype(np.float32)
-            train_pred_sm = self.model.train_btch_smpl_dict.get('pred_seg_measure').astype(np.float32)
+            train_img = self.model.train_btch_smpl_dict.get(
+                'image').astype(np.float32)
+            train_msk = self.model.train_btch_smpl_dict.get(
+                'mask').astype(np.float32)
+            train_true_sm = self.model.train_btch_smpl_dict.get(
+                'true_seg_measure').astype(np.float32)
+            train_pred_sm = self.model.train_btch_smpl_dict.get(
+                'pred_seg_measure').astype(np.float32)
             train_img_msk_fig = get_image_mask_figure(
                 image=train_img,
                 mask=train_msk,
                 suptitle='Image with Corresponding Mask',
-                title=f'Seg measure: true - {train_true_sm:.4f}, pred - {train_pred_sm:.4f}',
+                title=f'Seg measure: true - {train_true_sm:.4f}, '
+                      f'pred - {train_pred_sm:.4f}',
                 figsize=(20, 20),
             )
             self.log_figure(
@@ -199,7 +232,9 @@ class ProgressLogCallback(tf.keras.callbacks.Callback):
                 logger=self.logger
             )
 
-            self.val_rhos, self.val_mses = np.append(self.val_rhos, val_rho), np.append(self.val_mses, val_mse)
+            self.val_rhos, self.val_mses = \
+                np.append(self.val_rhos, val_rho), \
+                np.append(self.val_mses, val_mse)
 
             self.log_figure(
                 figure=val_sctr_fig,
@@ -211,19 +246,28 @@ class ProgressLogCallback(tf.keras.callbacks.Callback):
             )
 
             # * Save metadata
-            to_numpy(data=np.array(self.model.val_epch_gt_seg_msrs).flatten(), file_path=self.val_scatter_plots_dir / f'metadata/gt_seg_measures_epoch_{epoch}.npy', overwrite=False, logger=self.logger)
-            to_numpy(data=np.array(self.model.val_epch_pred_seg_msrs).flatten(), file_path=self.val_scatter_plots_dir / f'metadata/pred_seg_measures_epoch_{epoch}.npy', overwrite=False, logger=self.logger)
+            to_numpy(
+                data=np.array(self.model.val_epch_gt_seg_msrs).flatten(),
+                file_path=self.val_scatter_plots_dir /
+                f'metadata/gt_seg_measures_epoch_{epoch}.npy',
+                overwrite=False, logger=self.logger)
+            to_numpy(
+                data=np.array(self.model.val_epch_pred_seg_msrs).flatten(),
+                file_path=self.val_scatter_plots_dir /
+                f'metadata/pred_seg_measures_epoch_{epoch}.npy',
+                overwrite=False, logger=self.logger)
 
             # -----------------
             # - Hit rate plot -
             # -----------------
-            val_hit_rate_fig, val_hit_rate_hist, val_hit_rate_bins = get_hit_rate_plot_figure(
-                true=np.array(self.model.val_epch_gt_seg_msrs).flatten(),
-                pred=np.array(self.model.val_epch_pred_seg_msrs).flatten(),
-                hit_rate_percent=HR_AET_PERCENTAGE,
-                figsize=HR_AET_FIGSIZE,
-                logger=self.logger
-            )
+            val_hit_rate_fig, val_hit_rate_hist, val_hit_rate_bins = \
+                get_hit_rate_plot_figure(
+                    true=np.array(self.model.val_epch_gt_seg_msrs).flatten(),
+                    pred=np.array(self.model.val_epch_pred_seg_msrs).flatten(),
+                    hit_rate_percent=HR_AET_PERCENTAGE,
+                    figsize=HR_AET_FIGSIZE,
+                    logger=self.logger
+                )
             self.log_figure(
                 figure=val_hit_rate_fig,
                 file_writer=self.val_file_writer,
@@ -234,21 +278,34 @@ class ProgressLogCallback(tf.keras.callbacks.Callback):
             )
 
             # * Save metadata
-            to_numpy(data=val_hit_rate_hist, file_path=self.val_hit_rate_plots_dir / f'metadata/hit_rate_hist_epoch_{epoch}.npy', overwrite=False, logger=self.logger)
-            to_numpy(data=val_hit_rate_bins, file_path=self.val_hit_rate_plots_dir / f'metadata/hit_rate_bins_epoch_{epoch}.npy', overwrite=False, logger=self.logger)
+            to_numpy(
+                data=val_hit_rate_hist,
+                file_path=self.val_hit_rate_plots_dir /
+                f'metadata/hit_rate_hist_epoch_{epoch}.npy',
+                overwrite=False, logger=self.logger)
+            to_numpy(
+                data=val_hit_rate_bins,
+                file_path=self.val_hit_rate_plots_dir /
+                f'metadata/hit_rate_bins_epoch_{epoch}.npy',
+                overwrite=False, logger=self.logger)
 
             # ----------
             # - Sample -
             # ----------
-            val_img = self.model.val_btch_smpl_dict.get('image').astype(np.float32)
-            val_msk = self.model.val_btch_smpl_dict.get('mask').astype(np.float32)
-            val_true_sm = self.model.val_btch_smpl_dict.get('true_seg_measure').astype(np.float32)
-            val_pred_sm = self.model.val_btch_smpl_dict.get('pred_seg_measure').astype(np.float32)
+            val_img = self.model.val_btch_smpl_dict.get(
+                'image').astype(np.float32)
+            val_msk = self.model.val_btch_smpl_dict.get(
+                'mask').astype(np.float32)
+            val_true_sm = self.model.val_btch_smpl_dict.get(
+                'true_seg_measure').astype(np.float32)
+            val_pred_sm = self.model.val_btch_smpl_dict.get(
+                'pred_seg_measure').astype(np.float32)
             val_img_msk_fig = get_image_mask_figure(
                 image=val_img,
                 mask=val_msk,
                 suptitle='Image with Corresponding Mask',
-                title=f'Seg measure: true - {val_true_sm:.4f}, pred - {val_pred_sm:.4f}',
+                title=f'Seg measure: true - {val_true_sm:.4f}, '
+                      f'pred - {val_pred_sm:.4f}',
                 figsize=(20, 20),
             )
             self.log_figure(

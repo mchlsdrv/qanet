@@ -6,7 +6,6 @@ from copy import deepcopy
 
 import cv2
 import matplotlib.pyplot as plt
-# from scipy.ndimage import grey_erosion
 from tqdm import tqdm
 import numpy as np
 import pathlib
@@ -28,7 +27,9 @@ from utils.aux_funcs import (
     get_ts,
     get_split_data,
     check_unique_file,
-    assert_pathable, get_image_mask_figure, split_instance_mask, instance_2_categorical, merge_categorical_masks, print_pretty_message, str_2_path, plot_mask_error
+    assert_pathable, get_image_mask_figure, split_instance_mask,
+    instance_2_categorical, merge_categorical_masks, print_pretty_message,
+    str_2_path, plot_mask_error
 )
 import multiprocessing as mp
 from multiprocessing import Pool, Manager
@@ -47,7 +48,8 @@ def repaint_instance_segmentation(mask: np.ndarray):
     lbls = lbls[lbls > 0]
 
     # Apply the Component analysis function
-    (_, msk_cntd, _, centroids) = cv2.connectedComponentsWithStats(mask.astype(np.uint8), cv2.CV_16U)
+    (_, msk_cntd, _, centroids) = cv2.connectedComponentsWithStats(
+        mask.astype(np.uint8), cv2.CV_16U)
 
     # - For preserve the old labels
     msk_rpntd = np.zeros_like(msk_cntd, dtype=np.float32)
@@ -65,7 +67,8 @@ def repaint_instance_segmentation(mask: np.ndarray):
         # - Turn all the label pixels to 1
         msk_bin[msk_bin > 0] = 1
 
-        # - FIND THE CORRESPONDING CONNECTED COMPONENT IN THE CONNECTED COMPONENT LABEL
+        # - FIND THE CORRESPONDING CONNECTED COMPONENT IN THE CONNECTED
+        # COMPONENT LABEL
         msk_cntd_roi = msk_bin * msk_cntd
         lbls_cntd_roi, n_pxs = np.unique(msk_cntd_roi, return_counts=True)
 
@@ -91,30 +94,37 @@ def repaint_instance_segmentation(mask: np.ndarray):
         msk_cntd_roi_bin = msk_cntd_roi / lbl_cntd_roi
 
         if lbl_cntd_roi not in lbl_cntd_roi_history.keys():
-            # - If the color is new - paint it in this color and add it to the history
+            # - If the color is new - paint it in this color and add it to the
+            # history
             msk_rpntd += msk_cntd_roi_bin * lbl
 
             # - Add the ROI label to history
             lbl_cntd_roi_history[lbl_cntd_roi] = lbl
         else:
-            # - If the color was previously used - the cells were connected, so paint the ROI in the color previously used
-            msk_rpntd += msk_cntd_roi_bin * lbl_cntd_roi_history.get(lbl_cntd_roi)
+            # - If the color was previously used - the cells were connected,
+            # so paint the ROI in the color previously used
+            msk_rpntd += msk_cntd_roi_bin * lbl_cntd_roi_history.get(
+                lbl_cntd_roi)
 
     return np.expand_dims(msk_rpntd, -1)
 
 
-def print_seg_score_diff(current_seg_score: float, previous_mask_file: pathlib.Path or str, status: str):
+def print_seg_score_diff(current_seg_score: float,
+                         previous_mask_file: pathlib.Path or str, status: str):
     prev_seg_scr = str_2_float(str_val=get_file_name(previous_mask_file))
     seg_scr_diff = np.abs(prev_seg_scr - current_seg_score)
-    diff_prcnt = 100 - int((current_seg_score * 100) // (prev_seg_scr + EPSILON)) if current_seg_score != 0 else 0
-    print(f'> seg score: ', prev_seg_scr, '->', current_seg_score, f' ({status})', end='')
+    diff_prcnt = 100 - int((current_seg_score * 100) // (
+            prev_seg_scr + EPSILON)) if current_seg_score != 0 else 0
+    print(f'> seg score: ', prev_seg_scr, '->', current_seg_score,
+          f' ({status})', end='')
     print(' [', end='')
     for p in range(diff_prcnt):
         print('+', end='')
     print(']')
 
 
-def save_samples(mask_dir: pathlib.Path or str, image_file: pathlib.Path or str, gt_mask: np.ndarray, save_dir: pathlib.Path or str):
+def save_samples(mask_dir: pathlib.Path or str, image_file: pathlib.Path or str,
+                 gt_mask: np.ndarray, save_dir: pathlib.Path or str):
     # - Convert the mask directory to pathlib,Path object
     msk_dir = str_2_path(path=mask_dir)
 
@@ -132,7 +142,8 @@ def save_samples(mask_dir: pathlib.Path or str, image_file: pathlib.Path or str,
             image=cv2.imread(str(img_fl), -1),
             mask=gt_mask,
             pred_mask=cv2.imread(f'{msk_dir}/{msk_fl}', -1),
-            suptitle=f'Seg Score: {str_2_float(str_val=get_file_name(path=msk_fl)):.3f}',
+            suptitle=f'Seg Score: '
+                     f'{str_2_float(str_val=get_file_name(path=msk_fl)):.3f}',
             title='True - green / Pred - red',
             figsize=(20, 20),
             tensorboard_params=None,
@@ -149,14 +160,16 @@ def recalculate_seg_scores(args):
 
     save_dir = root_save_dir / 'masks'
 
-    print_pretty_message(message=f'Starting process {os.getpid()} on {len(mask_dirs)} mask dirs')
+    print_pretty_message(message=f'Starting process {os.getpid()} on '
+                                 f'{len(mask_dirs)} mask dirs')
 
     pbar = tqdm(mask_dirs)
     seg_scrs = np.array([])
     for idx, msk_dir in enumerate(pbar):
         msk_dir_name = pathlib.Path(msk_dir).name
         img_name_parts = str(msk_dir_name).split(sep='_')
-        gt_msk_fl = f'{img_name_parts[0]}_{SEG_DIR_POSTFIX}/{SEG_SUB_DIR}/{SEG_PREFIX}{img_name_parts[1][1:]}.tif'
+        gt_msk_fl = f'{img_name_parts[0]}_{SEG_DIR_POSTFIX}/{SEG_SUB_DIR}/' \
+                    f'{SEG_PREFIX}{img_name_parts[1][1:]}.tif'
         gt_msk = cv2.imread(str(DATA_ROOT_DIR / gt_msk_fl), -1)
 
         msk_save_dir = save_dir / f'{msk_dir_name}'
@@ -171,7 +184,9 @@ def recalculate_seg_scores(args):
                 old_msk = cv2.imread(old_msk_fl, -1)
 
                 # - Recalculate the seg score
-                new_seg_scr = calc_seg_score(gt_masks=gt_msk[np.newaxis, ...], pred_masks=old_msk[np.newaxis, ...])[0]
+                new_seg_scr = calc_seg_score(
+                    gt_masks=gt_msk[np.newaxis, ...],
+                    pred_masks=old_msk[np.newaxis, ...])[0]
 
                 status = 'no action'
                 if MIN_J < new_seg_scr < MAX_J:
@@ -181,7 +196,8 @@ def recalculate_seg_scores(args):
                     # - Create a file name
                     new_msk_fl_name = float_2_str(new_seg_scr) + '.tif'
 
-                    old_seg_scr = str_2_float(str_val=get_file_name(path=msk_fl))
+                    old_seg_scr = str_2_float(
+                        str_val=get_file_name(path=msk_fl))
 
                     if old_seg_scr != new_seg_scr:
                         if RENAME_ONLY:
@@ -189,15 +205,18 @@ def recalculate_seg_scores(args):
                             new_msk_fl = f'{msk_dir_root}/{new_msk_fl_name}'
 
                             # - Make sure it is unique
-                            new_msk_unique_fl = check_unique_file(file=new_msk_fl)
+                            new_msk_unique_fl = check_unique_file(
+                                file=new_msk_fl)
 
                             # - Rename the old file
                             os.rename(old_msk_fl, new_msk_unique_fl)
 
                             status = 'renamed'
                         else:
-                            # - Create the file to save the image, and make sure it is unique
-                            new_msk_unique_fl = check_unique_file(file=msk_save_dir / new_msk_fl_name)
+                            # - Create the file to save the image, and make sure
+                            # it is unique
+                            new_msk_unique_fl = check_unique_file(
+                                file=msk_save_dir / new_msk_fl_name)
 
                             # - Copy the file with the fixed seg score
                             shutil.copyfile(old_msk_fl, new_msk_unique_fl)
@@ -217,7 +236,8 @@ def recalculate_seg_scores(args):
                 )
 
             if CRATE_SAMPLES:
-                img_fl = str(DATA_ROOT_DIR / msk_dir_name.replace('_', '/')) + '.tif'
+                img_fl = str(
+                    DATA_ROOT_DIR / msk_dir_name.replace('_', '/')) + '.tif'
                 save_samples(
                     mask_dir=msk_dir_root,
                     image_file=img_fl,
@@ -232,7 +252,8 @@ def recalculate_seg_scores(args):
         bins=np.arange(0.0, 1.1, 0.1),
         save_file=root_save_dir / f'plots/seg_scores_dist-pid_{os.getpid()}.png'
     )
-    print_pretty_message(message=f'PID {os.getpid()} DONE', delimiter_symbol='*')
+    print_pretty_message(message=f'PID {os.getpid()} DONE',
+                         delimiter_symbol='*')
 
     return seg_scrs
 
@@ -244,12 +265,20 @@ def build_data(args):
     save_dir = args[3]
     create_log = args[4]
     # - Create ranges from bins
-    assert len(bins) >= 2, f'bins must include at least 2 values, but were provided only {len(bins)} value/s!'
+    assert len(bins) >= 2, \
+        f'bins must include at least 2 values, but were provided only ' \
+        f'{len(bins)} value/s!'
 
-    print_pretty_message(message=f'Starting process {os.getpid()} on {len(files)} files')
+    print_pretty_message(message=f'Starting process {os.getpid()} on '
+                                 f'{len(files)} files')
 
-    bins_min, bins_max, bins_diff = np.min(bins), np.max(bins), bins[1] - bins[0]
-    ranges = np.array(list(zip(np.arange(bins_min, bins_max + bins_diff, bins_diff), np.arange(bins_min + bins_diff, bins_max + 2 * bins_diff, bins_diff))))
+    bins_min, bins_max, bins_diff = np.min(bins), \
+        np.max(bins), \
+        bins[1] - bins[0]
+    ranges = np.array(
+        list(zip(np.arange(bins_min, bins_max + bins_diff, bins_diff),
+                 np.arange(bins_min + bins_diff, bins_max + 2 * bins_diff,
+                           bins_diff))))
 
     n_rngs = len(ranges)
     total_image_samples = n_rngs * n_samples_in_range
@@ -264,7 +293,8 @@ def build_data(args):
         gt_msk = load_image(image_file=str(seg_fl), add_channels=True)
 
         # - Create a dedicated dir for the current image augs
-        msk_dir = save_dir / f'{get_parent_dir_name(path=img_fl)}_{get_file_name(path=img_fl)}'
+        msk_dir = save_dir / f'{get_parent_dir_name(path=img_fl)}_' \
+                             f'{get_file_name(path=img_fl)}'
 
         # - If the msk_dir for this file exists - skip it
         if msk_dir.is_dir():
@@ -279,7 +309,8 @@ def build_data(args):
         # - Create a seg measure history array
         seg_msrs = np.array([])
 
-        # - While not all the ranges for the current image have n_samples_in_range images
+        # - While not all the ranges for the current image have
+        # n_samples_in_range images
         rngs_done = sum(rng_cnt_arr == n_samples_in_range)
         cur_file_run_time = time.time() - t_start
         cur_rngs_pct = 100 * rngs_done / n_rngs
@@ -298,11 +329,13 @@ def build_data(args):
             rng_min, rng_max, rng_idx = get_range(value=seg_msr, ranges=ranges)
 
             # - If the seg measure is in the desired range - save it
-            if MIN_J < seg_msr < MAX_J and rng_cnt_arr[rng_idx] < n_samples_in_range:
+            if MIN_J < seg_msr < MAX_J \
+                    and rng_cnt_arr[rng_idx] < n_samples_in_range:
                 # - Create a file name
                 f_name = float_2_str(seg_msr) + '.tif'
 
-                # - Create the file to save the image, and make sure it is unique
+                # - Create the file to save the image, and make sure it is
+                # unique
                 img_unique_fl = check_unique_file(file=msk_dir / f_name)
 
                 # - Save the mask
@@ -314,7 +347,8 @@ def build_data(args):
                 # - Append the current seg measure to the seg measure history
                 seg_msrs = np.append(seg_msrs, seg_msr)
 
-            # - Update the number of ranges where there are n_samples_in_range samples
+            # - Update the number of ranges where there are n_samples_in_range
+            # samples
             rngs_done = sum(rng_cnt_arr == n_samples_in_range)
 
             # - Update current run time
@@ -323,17 +357,25 @@ def build_data(args):
             # - Update the current samples number
             current_image_samples = sum(rng_cnt_arr)
 
-            # - Update the number of percentage of the ranges where there are n_samples_in_range samples
+            # - Update the number of percentage of the ranges where there are
+            # n_samples_in_range samples
             cur_rngs_pct = 100 * rngs_done / n_rngs
 
-            # - Update the number of percentage of the ranges where there are n_samples_in_range samples
+            # - Update the number of percentage of the ranges where there are
+            # n_samples_in_range samples
             cur_samples_pct = 100 * current_image_samples / total_image_samples
 
             # - Update the progress bar
-            files_pbar.set_postfix(pid=f'{os.getpid()}', seg_measure=f'{seg_msr:.4f}', samples=f'{current_image_samples}/{total_image_samples} ({cur_samples_pct:.2f}%)', ranges=f'{rngs_done}/{n_rngs} ({cur_rngs_pct:.2f}%)')
+            files_pbar.set_postfix(
+                pid=f'{os.getpid()}', seg_measure=f'{seg_msr:.4f}',
+                samples=f'{current_image_samples}/{total_image_samples} '
+                        f'({cur_samples_pct:.2f}%)',
+                ranges=f'{rngs_done}/{n_rngs} ({cur_rngs_pct:.2f}%)')
 
-            # - In order to avoid long runs we can break this loop if there are enough samples in most of the ranges
-            if cur_file_run_time >= FILE_MAX_TIME and cur_samples_pct >= FILE_MIN_SAMPLES_PCT:
+            # - In order to avoid long runs we can break this loop if
+            # there are enough samples in most of the ranges
+            if cur_file_run_time >= FILE_MAX_TIME \
+                    and cur_samples_pct >= FILE_MIN_SAMPLES_PCT:
                 break
 
         # - Add the file runtime to history
@@ -345,11 +387,13 @@ def build_data(args):
             img = load_image(image_file=str(img_fl), add_channels=True)
 
             # - Create a dedicated dir for the current image augs
-            img_log_dir = save_dir / f'log/{get_parent_dir_name(path=img_fl)}_{get_file_name(path=img_fl)}'
+            img_log_dir = save_dir / f'log/{get_parent_dir_name(path=img_fl)}' \
+                                     f'_{get_file_name(path=img_fl)}'
             os.makedirs(img_log_dir)
 
             # - Plot the histogram of the seg measures
-            plot_bins = np.append(bins, 1.0 + bins[2] - bins[1])  # <= for the histogram to include the 1.0
+            plot_bins = np.append(bins, 1.0 + bins[2] - bins[1])  # <= for the
+            # histogram to include the 1.0
             plot_hist(
                 data=seg_msrs,
                 bins=plot_bins,
@@ -360,16 +404,20 @@ def build_data(args):
             aug_msk_fls = [msk_dir / str(fl) for fl in os.listdir(msk_dir)]
 
             for aug_msk_fl in aug_msk_fls:
-                # - Get the name of the mask, which is also the seg measure with its ground truth label
+                # - Get the name of the mask, which is also the seg measure
+                # with its ground truth label
                 seg_msr_str = get_file_name(path=str(aug_msk_fl))
 
                 # - Load the augmented mask
-                aug_msk = load_image(image_file=str(aug_msk_fl), add_channels=True)
+                aug_msk = load_image(image_file=str(aug_msk_fl),
+                                     add_channels=True)
 
-                rng_min, rng_max, _ = get_range(value=str_2_float(seg_msr_str), ranges=ranges)
+                rng_min, rng_max, _ = get_range(value=str_2_float(seg_msr_str),
+                                                ranges=ranges)
 
                 # - Create a dedicated dir for the current seg measure range
-                rng_img_log_dir = img_log_dir / f'[{float_2_str(rng_min)}-{float_2_str(rng_max)})'
+                rng_img_log_dir = img_log_dir / f'[{float_2_str(rng_min)}-' \
+                                                f'{float_2_str(rng_max)})'
                 os.makedirs(rng_img_log_dir, exist_ok=True)
 
                 # - Plot the image the GT mask and the augmented mask
@@ -385,10 +433,13 @@ def build_data(args):
         Process id: {os.getpid()}
         Stats for file \'{img_fl}\':
             - Run time: {get_runtime(seconds=time.time() - t_start)}
-            - Mean for {len(file_run_times)} files: {get_runtime(seconds=file_run_times.mean())} +/- {get_runtime(seconds=file_run_times.std())}
+            - Mean for {len(file_run_times)} files: {get_runtime(
+            seconds=file_run_times.mean())} 
+            +/- {get_runtime(seconds=file_run_times.std())}
         ''')
 
-    print_pretty_message(message=f'PID {os.getpid()} DONE', delimiter_symbol='*')
+    print_pretty_message(
+        message=f'PID {os.getpid()} DONE', delimiter_symbol='*')
 
 
 def clean_invalids(files, masks_root):
@@ -404,7 +455,8 @@ def clean_invalids(files, masks_root):
     return invalid_files
 
 
-def analyze_data(files: list, masks_root: pathlib.Path, n_samples: int = 5, clean_invalid_files: bool = False):
+def analyze_data(files: list, masks_root: pathlib.Path, n_samples: int = 5,
+                 clean_invalid_files: bool = False):
     msk_dir = masks_root / f'images'
     os.makedirs(msk_dir, exist_ok=True)
 
@@ -417,7 +469,8 @@ def analyze_data(files: list, masks_root: pathlib.Path, n_samples: int = 5, clea
         fl_name = get_file_name(path=img_fl)
         fl_msk_dir = msk_dir / f'{get_parent_dir_name(path=img_fl)}_{fl_name}'
 
-        # - If there is no directory for the current file, or there are too few examples - skip it
+        # - If there is no directory for the current file, or there are too few
+        # examples - skip it
         if not fl_msk_dir.is_dir() or len(os.listdir(fl_msk_dir)) < 96:
             continue
 
@@ -433,8 +486,10 @@ def analyze_data(files: list, masks_root: pathlib.Path, n_samples: int = 5, clea
             rnd_msk_fl = fl_msk_dir / rnd_msk_name
             j_str = get_file_name(path=rnd_msk_fl)
 
-            # - Strip the '-' character in case it was added due to overlap in generated J values
-            j = str_2_float(str_val=j_str if '-' not in j_str else j_str[:j_str.index('-')])
+            # - Strip the '-' character in case it was added due to overlap in
+            # generated J values
+            j = str_2_float(
+                str_val=j_str if '-' not in j_str else j_str[:j_str.index('-')])
             seg_measures = np.append(seg_measures, j)
             msk = load_image(image_file=str(rnd_msk_fl), add_channels=True)
 
@@ -464,30 +519,44 @@ def analyze_data(files: list, masks_root: pathlib.Path, n_samples: int = 5, clea
 def get_arg_parser():
     parser = argparse.ArgumentParser()
 
-    parser.add_argument('--save_dir', type=str, default=SAVE_DIR, help='The root directory in which to save the generated data')
+    parser.add_argument('--save_dir', type=str, default=SAVE_DIR,
+                        help='The root directory in which to save the generated'
+                             ' data')
 
-    parser.add_argument('--build', default=False, action='store_true', help=f'If to create a new data')
+    parser.add_argument('--build', default=False, action='store_true',
+                        help=f'If to create a new data')
 
-    parser.add_argument('--rebuild', default=False, action='store_true', help=f'If to rebuild a new data')
+    parser.add_argument('--rebuild', default=False, action='store_true',
+                        help=f'If to rebuild a new data')
 
-    parser.add_argument('--rescore', default=False, action='store_true', help=f'If to recalculate the seg scores')
+    parser.add_argument('--rescore', default=False, action='store_true',
+                        help=f'If to recalculate the seg scores')
 
-    parser.add_argument('--create_log', default=False, action='store_true', help=f'If to plot the samples images of the data')
+    parser.add_argument('--create_log', default=False, action='store_true',
+                        help=f'If to plot the samples images of the data')
 
-    parser.add_argument('--analyze', default=False, action='store_true', help=f'If to run the analysis of the data')
+    parser.add_argument('--analyze', default=False, action='store_true',
+                        help=f'If to run the analysis of the data')
 
-    parser.add_argument('--clean', default=False, action='store_true', help=f'Deletes the files which have no dir in the masks image dir')
+    parser.add_argument('--clean', default=False, action='store_true',
+                        help=f'Deletes the files which have no dir in the masks'
+                             f' image dir')
 
-    parser.add_argument('--convert', default=False, action='store_true', help=f'Convert instance segmentation to categorical')
+    parser.add_argument('--convert', default=False, action='store_true',
+                        help=f'Convert instance segmentation to categorical')
 
-    parser.add_argument('--n_samples_in_range', type=int, default=N_SAMPLES_IN_RANGE, help='The total number of samples to generate')
+    parser.add_argument('--n_samples_in_range', type=int,
+                        default=N_SAMPLES_IN_RANGE,
+                        help='The total number of samples to generate')
 
-    parser.add_argument('--cpus', type=int, default=MAX_CPUS, help='The maximal number of CPUs to use')
+    parser.add_argument('--cpus', type=int, default=MAX_CPUS,
+                        help='The maximal number of CPUs to use')
 
     return parser
 
 
-def save_categorical_mask(mask: np.ndarray, save_file: pathlib.Path, show: bool = False):
+def save_categorical_mask(mask: np.ndarray, save_file: pathlib.Path,
+                          show: bool = False):
     # - Prepare the mask overlap image
     msk = np.zeros((*mask.shape[:-1], 3))
 
@@ -540,12 +609,18 @@ def plot_categorical_masks(mask_files: list, save_dir: pathlib.Path):
             cat_bin_msks.append(cat_msk)
         cat_bin_msks = np.array(cat_bin_msks)
         cat_msk = merge_categorical_masks(masks=cat_bin_msks)
-        save_categorical_mask(mask=cat_msk, save_file=save_dir / f'{get_parent_dir_name(path=msk_fl.parent)}_{get_file_name(path=msk_fl)}.png')
+        save_categorical_mask(
+            mask=cat_msk,
+            save_file=save_dir / f'{get_parent_dir_name(path=msk_fl.parent)}'
+                                 f'_{get_file_name(path=msk_fl)}.png')
 
 
-MASKS_ROOT_DIR = pathlib.Path('/home/sidorov/Projects/QANetV2/data/generated/masks')
-SAVE_DIR = pathlib.Path('/media/oldrrtammyfs/Users/sidorov/qanet/generated')
-DATA_ROOT_DIR = pathlib.Path('/home/sidorov/Projects/QANetV2/data/train/CytoPack')
+MASKS_ROOT_DIR = pathlib.Path(
+    '/home/sidorov/Projects/QANetV2/data/generated/masks')
+SAVE_DIR = pathlib.Path(
+    '/media/oldrrtammyfs/Users/sidorov/qanet/generated')
+DATA_ROOT_DIR = pathlib.Path(
+    '/home/sidorov/Projects/QANetV2/data/train/CytoPack')
 RENAME_ONLY = True
 CRATE_SAMPLES = False
 
@@ -582,7 +657,8 @@ if __name__ == '__main__':
             seg_sub_dir=SEG_SUB_DIR
         )
 
-        analyze_data(files=[fl_tpl[0] for fl_tpl in fls], masks_root=save_dir, n_samples=5)
+        analyze_data(files=[fl_tpl[0] for fl_tpl in fls], masks_root=save_dir,
+                     n_samples=5)
     elif args.clean:
         fls = scan_files(
             root_dir=DATA_ROOT_DIR,
@@ -592,7 +668,8 @@ if __name__ == '__main__':
             seg_sub_dir=SEG_SUB_DIR
         )
 
-        clean_invalids(files=[fl_tpl[0] for fl_tpl in fls], masks_root=save_dir / 'masks')
+        clean_invalids(files=[fl_tpl[0] for fl_tpl in fls],
+                       masks_root=save_dir / 'masks')
     elif args.convert:
         fls = scan_files(
             root_dir=DATA_ROOT_DIR,
@@ -602,7 +679,8 @@ if __name__ == '__main__':
             seg_sub_dir=SEG_SUB_DIR
         )
 
-        plot_categorical_masks(mask_files=[fl[1] for fl in fls], save_dir=save_dir / 'categorical_masks_2')
+        plot_categorical_masks(mask_files=[fl[1] for fl in fls],
+                               save_dir=save_dir / 'categorical_masks_2')
     elif args.rescore:
         n_cpus = np.min([mp.cpu_count(), args.cpus])
         dirs = os.listdir(MASKS_ROOT_DIR)
@@ -618,7 +696,8 @@ if __name__ == '__main__':
         with Manager() as manager:
             with Pool(processes=n_cpus) as p:
                 if dirs:
-                    seg_scrs_lst = manager.list()  # <-- can be shared between processes.
+                    seg_scrs_lst = manager.list()  # <-- can be shared between
+                    # processes.
                     args = list(
                         zip(
                             splt_dirs,
@@ -631,7 +710,8 @@ if __name__ == '__main__':
                         args
                     )
                 else:
-                    print_pretty_message(message='No dirs to recalculate!', delimiter_symbol='!')
+                    print_pretty_message(message='No dirs to recalculate!',
+                                         delimiter_symbol='!')
                     print(f'No dirs to recalculate!')
 
             plot_hist(
