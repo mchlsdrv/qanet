@@ -11,13 +11,17 @@ __author__ = 'sidorov@post.bgu.ac.il'
 
 # from global_configs.general_configs import CROP_HEIGHT, CROP_WIDTH
 
-# ========================================================================================================================================================================================
-# ========================================================================================================================================================================================
-# * Parameters were found with the Optuna library, by minimizing the Mean Squared Error of the seg measure histogram produced by the augmentation and a vector of [0.5, 0.5, ..., 0.5]
-# which represented ranges of 0.1, i.e., [0.0, 0.1, 0.2, ..., 0.9, 1.0], and meant to represent a balanced data, i.e., data in which there is as much as possible equal number of samples
+# ==============================================================================
+# ==============================================================================
+# * Parameters were found with the Optuna library, by minimizing the Mean
+# Squared Error of the seg measure histogram produced by the augmentation and a
+# vector of [0.5, 0.5, ..., 0.5]
+# which represented ranges of 0.1, i.e., [0.0, 0.1, 0.2, ..., 0.9, 1.0], and
+# meant to represent a balanced data, i.e., data in which there is as much as
+# possible equal number of samples
 # in each of the ranges above.
-# ========================================================================================================================================================================================
-# ========================================================================================================================================================================================
+# ==============================================================================
+# ==============================================================================
 
 # - Erosion / dilation / opening / closing parameters
 EROSION_SIZES = np.arange(4, 8)
@@ -69,7 +73,8 @@ def random_closing(mask, **kwargs):
     return mask
 
 
-def mask_augs(image_width, alpha_factor=ALPHA_FACTOR, sigma_factor=SIGMA_FACTOR, alpha_affine_factor=ALPHA_AFFINE_FACTOR):
+def mask_augs(image_width, alpha_factor=ALPHA_FACTOR, sigma_factor=SIGMA_FACTOR,
+              alpha_affine_factor=ALPHA_AFFINE_FACTOR):
     return A.Compose(
         [
             A.OneOf(

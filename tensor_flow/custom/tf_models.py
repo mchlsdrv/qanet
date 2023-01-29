@@ -61,8 +61,6 @@ class RibCage(keras.Model):
         self.val_mses = np.array([])
         self.val_btch_smpl_dict = dict()
 
-        self.learning_rate = 0.0
-
     @staticmethod
     def _get_activation(configs: dict):
         activation = None
@@ -70,7 +68,8 @@ class RibCage(keras.Model):
             activation = Swish()
         elif configs.get('type') == 'relu':
             activation = tf.keras.layers.ReLU(
-                max_value=configs.get('max_value'),
+                max_value=None if configs.get('max_value') == 'None'
+                else configs.get('max_value'),
                 negative_slope=configs.get('negative_slope'),
                 threshold=configs.get('threshold'))
         elif configs.get('type') == 'leaky_relu':
@@ -189,8 +188,6 @@ class RibCage(keras.Model):
                 self.train_btch_smpl_dict = dict(
                     image=img, mask=msk,
                     true_seg_measure=true_sm, pred_seg_measure=pred_sm)
-
-                # self.learning_rate = self.optimizer.learning_rate.numpy()
 
             else:
                 # - Add the target seg measures to epoch history

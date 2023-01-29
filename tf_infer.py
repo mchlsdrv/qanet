@@ -33,14 +33,16 @@ if __name__ == '__main__':
     update_hyper_parameters(hyper_parameters=hyp_params_dict, arguments=args)
 
     # - Create the directory for the current run
-    if hyp_params_dict.get('training')['load_checkpoint']:
-        current_run_dir = pathlib.Path(
-            hyp_params_dict.get('training')['tf_checkpoint_dir']).parent
-    else:
-        current_run_dir = pathlib.Path(
-            hyp_params_dict.get('general')['output_dir']) / \
-                          f'inference/tensor_flow_{args.name}_{ts}'
-        os.makedirs(current_run_dir)
+    dir_name = args.name
+    if args.test_data == 'sim+' and dir_name == '':
+        dir_name = 'SIM+'
+    if args.test_data == 'gowt1' and dir_name == '':
+        dir_name = 'GOWT1'
+    elif args.test_data == 'hela' and dir_name == '':
+        dir_name = 'HeLa'
+    current_run_dir = pathlib.Path(hyp_params_dict.get('general')['output_dir']
+                                   ) / f'test/tensor_flow_{dir_name}_{ts}'
+    os.makedirs(current_run_dir)
 
     print_pretty_message(
         message=f'Current run dir was set to: {current_run_dir}',
@@ -77,7 +79,6 @@ if __name__ == '__main__':
     )
 
     res_df = pd.DataFrame(res_dict)
-    print(res_df.head())
     res_df.to_csv(current_run_dir / 'results.csv', index=False)
 
     print_pretty_message(

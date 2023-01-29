@@ -331,6 +331,13 @@ def get_model(mode: str, hyper_parameters: dict,
         momentum=hyper_parameters.get('training')['optimizer_momentum'],
         nesterov=hyper_parameters.get('training')['optimizer_nesterov'],
         centered=hyper_parameters.get('training')['optimizer_centered'],
+        cyclical_lr=hyper_parameters.get('callbacks')['cyclical_lr'],
+        cyclical_lr_init_lr=hyper_parameters.get(
+            'callbacks')['cyclical_lr_init_lr'],
+        cyclical_lr_max_lr=hyper_parameters.get(
+            'callbacks')['cyclical_lr_max_lr'],
+        cyclical_lr_step_size=hyper_parameters.get(
+            'callbacks')['cyclical_lr_step_size']
     )
     model.compile(
         loss=WeightedMSE(weighted=compilation_configs.get('weighted_loss')),
@@ -384,17 +391,16 @@ def get_optimizer(args: dict):
             centered=args.get('centered'),
         )
 
-    INIT_LR = 1e-4
-    MAX_LR = 1e-2
-    # steps_per_epoch = len(x_train) // BATCH_SIZE
-    clr = tfa.optimizers.CyclicalLearningRate(initial_learning_rate=INIT_LR,
-                                              maximal_learning_rate=MAX_LR,
-                                              scale_fn=lambda x: 1 / (
-                                                      2. ** (x - 1)),
-                                              step_size=2 * 392  # (6264 / 16)
-                                              )
-    return optimizer(learning_rate=clr)
-    # return optimizer(learning_rate=args.get('learning_rate'))
+    if args.get('cyclical_lr'):
+        learning_rate = tfa.optimizers.CyclicalLearningRate(
+            initial_learning_rate=args.get('cyclical_lr_init_lr'),
+            maximal_learning_rate=args.get('cyclical_lr_max_lr'),
+            scale_fn=lambda x: 1 / (2. ** (x - 1)),
+            step_size=args.get('cyclical_lr_step_size')
+        )
+    else:
+        learning_rate = args.get('learning_rate')
+    return optimizer(learning_rate=learning_rate)
 
 
 def choose_gpu(gpu_id: int = 0, logger: logging.Logger = None):
@@ -509,10 +515,11 @@ def infer_data(hyper_parameters: dict, output_dir: pathlib.Path or str,
     preds_dict = trained_model.infer(data_loader=inf_dl)
 
     results = np.array(list(preds_dict.values()))[:, -1]
-    print_pretty_message(
-        message=f'Preds: {results}',
-        delimiter_symbol='='
-    )
+    print(f'''
+    > Preds: 
+        {results}
+    '''
+          )
     print_pretty_message(
         message=f'E[Preds]: {results.mean():.3f}±{results.std():5f}',
         delimiter_symbol='='

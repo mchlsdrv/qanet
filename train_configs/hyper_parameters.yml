@@ -43,7 +43,8 @@ model:
       out_features: [512, 1024]
       drop_rate: 0.2
 
-  activation: 'swish'
+  activation: 'relu'
+#  activation: 'swish'
   activation_relu_max_value: None
   activation_relu_negative_slope: 0.0
   activation_relu_threshold: 0.0
@@ -108,6 +109,12 @@ callbacks:
   lr_reduction_scheduler_patience: [150, 300]
   lr_reduction_scheduler_factor: 0.5
   lr_reduction_scheduler_min: 1e-9
+
+  # - Cyclical LR
+  cyclical_lr: False
+  cyclical_lr_init_lr: 0.0001
+  cyclical_lr_max_lr: 0.001
+  cyclical_lr_step_size: 784
 
   # - LR Reduce on Plateau
   reduce_lr_on_plateau: False
@@ -191,16 +198,15 @@ inference:
   temp_data_file: '../data/inference/temp/UNSW-AU-Fluo-N2DH-SIM+/clean_data.pkl'
 
   # - SIM+
-  data_dir_unsw_au_sim+: '../data/inference/UNSW-AU-Fluo-N2DH-SIM+'
-  dataframe_file_sim+: '/home/sidorov/Projects/QANetV2/RefModels/Results/Fluo-N2DH-SIM+/seg_scores.csv'
+#  data_dir: '../data/inference/UNSW-AU-Fluo-N2DH-SIM+'
+#  data_dir: '/home/sidorov/Projects/QANetV2/data/inference/BGU-IL-Fluo-N2DH-GOWT1(4)'
+  data_dir: '/home/sidorov/Projects/QANetV2/data/inference/DKFZ-GE-Fluo-N2DH-SIM+'
   checkpoint_dir_sim+: '/home/sidorov/Projects/QANetV2/qanet/output/train/tensor_flow_arch_1_float64_SIM+_3_3_pct/checkpoints'
 
   # - GOWT1
-  dataframe_file_gowt1:  '/home/sidorov/Projects/QANetV2/RefModels/Results/Fluo-N2DH-GOWT1/seg_scores.csv'
   checkpoint_dir_gowt1: '/home/sidorov/Projects/QANetV2/qanet/output/train/tensor_flow_arch1_float64_GOWT1_5_7_pct/checkpoints'
 
   # - HeLa
-  dataframe_file_hela: '/home/sidorov/Projects/QANetV2/RefModels/Results/Fluo-N2DL-HeLa/seg_scores.csv'
   checkpoint_dir_hela: '/home/sidorov/Projects/QANetV2/qanet/output/train/tensor_flow_arch_1_float64_cyclic_HeLa_3.5_pct/checkpoints'
 #  checkpoint_dir: '/home/sidorov/Projects/QANetV2/qanet/output/train/tensor_flow_gauss_blur_2023-01-17_01-10-32/checkpoints'
 

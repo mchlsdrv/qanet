@@ -1094,6 +1094,26 @@ def update_hyper_parameters(hyper_parameters: dict,
                             hyper_parameters.get('test')['dataframe_file_hela']
                         hyper_parameters.get('test')['checkpoint_dir'] = \
                             hyper_parameters.get('test')['checkpoint_dir_hela']
+                elif arg_name == 'inference_data':
+                    inf_dt = args.get('inference_data')
+                    if inf_dt == 'sim+':
+                        hyper_parameters.get(
+                            'inference')['inference_data'] = 'sim+'
+                        hyper_parameters.get('inference')['checkpoint_dir'] = \
+                            hyper_parameters.get(
+                                'inference')['checkpoint_dir_sim+']
+                    if inf_dt == 'gowt1':
+                        hyper_parameters.get(
+                            'inference')['inference_data'] = 'gowt1'
+                        hyper_parameters.get('inference')['checkpoint_dir'] = \
+                            hyper_parameters.get(
+                                'inference')['checkpoint_dir_gowt1']
+                    if inf_dt == 'hela':
+                        hyper_parameters.get(
+                            'inference')['inference_data'] = 'hela'
+                        hyper_parameters.get('inference')['checkpoint_dir'] = \
+                            hyper_parameters.get(
+                                'inference')['checkpoint_dir_hela']
                 else:
                     hyper_parameters.get(
                         hyp_param_cat)[arg_name] = args.get(arg_name)
@@ -1335,36 +1355,37 @@ def print_pretty_message(message: str, delimiter_symbol: str = '='):
 def get_data(mode: str, hyper_parameters: dict, logger: logging.Logger = None):
     data_dict = dict()
 
-    dt_fl = str_2_path(path=hyper_parameters.get(mode)['temp_data_file'])
-    if not hyper_parameters.get('data')['reload_data'] and dt_fl.is_file():
-        data_dict = from_pickle(data_file=dt_fl, logger=logger)
-    else:
-        dt_dir = str_2_path(path=hyper_parameters.get(mode)['data_dir'])
-        fl_tupls = scan_files(
-            root_dir=dt_dir,
-            seg_dir_postfix=hyper_parameters.get(mode)['seg_dir_postfix'],
-            image_prefix=hyper_parameters.get(mode)['image_prefix'],
-            seg_prefix=hyper_parameters.get(mode)['seg_prefix'],
-            seg_sub_dir=hyper_parameters.get(mode)['seg_sub_dir']
-        )
+    # dt_fl = str_2_path(path=hyper_parameters.get(mode)['temp_data_file'])
+    # if not hyper_parameters.get('data')['reload_data'] and dt_fl.is_file():
+    #     data_dict = from_pickle(data_file=dt_fl, logger=logger)
+    # else:
+    dt_dir = str_2_path(path=hyper_parameters.get(mode)['data_dir'])
+    fl_tupls = scan_files(
+        root_dir=dt_dir,
+        seg_dir_postfix=hyper_parameters.get(mode)['seg_dir_postfix'],
+        image_prefix=hyper_parameters.get(mode)['image_prefix'],
+        seg_prefix=hyper_parameters.get(mode)['seg_prefix'],
+        seg_sub_dir=hyper_parameters.get(mode)['seg_sub_dir']
+    )
 
+    data_dict = get_data_dict(data_file_tuples=fl_tupls)
+
+    # - Load images and their masks
+    if mode == 'training':
         np.random.shuffle(fl_tupls)
-
-        # - Load images and their masks
         data_dict = get_data_dict(data_file_tuples=fl_tupls)
 
-        if mode == 'training':
-            # - Clean data items with no objects in them
-            data_dict = clean_items_with_empty_masks(
-                data_dict=data_dict,
-                save_file=hyper_parameters.get(mode)['temp_data_file'])
+        # - Clean data items with no objects in them
+        data_dict = clean_items_with_empty_masks(
+            data_dict=data_dict,
+            save_file=hyper_parameters.get(mode)['temp_data_file'])
 
-            data_dict = get_relevant_data(
-                data_dict=data_dict,
-                relevant_files=os.listdir(
-                    hyper_parameters.get(mode)['mask_dir']),
-                save_file=hyper_parameters.get(mode)['temp_data_file'],
-                logger=logger)
+        data_dict = get_relevant_data(
+            data_dict=data_dict,
+            relevant_files=os.listdir(
+                hyper_parameters.get(mode)['mask_dir']),
+            save_file=hyper_parameters.get(mode)['temp_data_file'],
+            logger=logger)
 
     return data_dict
 
@@ -1427,6 +1448,10 @@ def get_arg_parser():
     parser.add_argument('--test_data', type=str,
                         choices=['sim+', 'gowt1', 'hela'],
                         default='sim+',
+                        help=f'The data to run test on')
+    parser.add_argument('--inference_data', type=str,
+                        choices=['sim+', 'gowt1', 'hela'],
+                        default='gowt1',
                         help=f'The data to run test on')
     parser.add_argument('--debug', default=False, action='store_true',
                         help=f'If the run is a debugging run')
@@ -1559,6 +1584,18 @@ def get_arg_parser():
                              f'but is slightly more expensive in terms of '
                              f'computation and memory. (RMSprop)')
 
+    parser.add_argument('--cyclical_lr', default=False,
+                        action='store_true',
+                        help=f'If to use the cyclical learning rate scheduler')
+    parser.add_argument('--cyclical_lr_init_lr', type=float,
+                        help=f'The initial value of the cyclical learning rate'
+                             f' scheduler')
+    parser.add_argument('--cyclical_lr_max_lr', type=float,
+                        help=f'The maximal value of the cyclical learning rate'
+                             f' scheduler')
+    parser.add_argument('--cyclical_lr_tep_size', type=float,
+                        help=f'The maximal value of the cyclical learning rate'
+                             f' scheduler')
     # - KERNEL REGULARIZER
     parser.add_argument('--kernel_regularizer_type', type=str,
                         choices=['l1', 'l2', 'l1l2'],
