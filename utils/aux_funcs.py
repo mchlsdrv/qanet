@@ -7,7 +7,6 @@ import logging.config
 import pickle as pkl
 import re
 from copy import deepcopy
-
 import numpy as np
 import pandas as pd
 import torch
@@ -214,8 +213,8 @@ def transform_image(image: np.ndarray):
     # - Convert the image to float dividing by it by 255
     img = image_2_float(image=img, max_val=255)
 
-    # - Normalize the image by (I - min(I)) / (max(I) - min(I))
-    img = normalize_image(image=img)
+    # - Standardize the image by (I - E[I]) / std(I)
+    img = standardize_image(image=img)
 
     return img
 
@@ -261,7 +260,6 @@ def line_plot(x: list or np.ndarray, ys: list or np.ndarray, suptitle: str,
               labels: list, colors: tuple = ('r', 'g', 'b'),
               save_file: pathlib.Path or str = None,
               logger: logging.Logger = None):
-
     fig, ax = plt.subplots()
     for y, lbl, clr in zip(ys, labels, colors):
         ax.plot(x, y, color=clr, label=lbl)
@@ -337,7 +335,7 @@ def print_results(results: pd.DataFrame, rho: float, p: float, mse: float):
     ******************************* RESULTS *******************************
     ***********************************************************************
     ** > Mean Seg Score Error (%): {100 - (true_seg_scr_mu * 100) /
-                        (pred_seg_scr_mu + EPSILON):.1f}%
+                                    (pred_seg_scr_mu + EPSILON):.1f}%
     **    - True = {true_seg_scr_mu:.3f}±{true_seg_scr_std:.4f}
     **    - Predicted = {pred_seg_scr_mu:.3f}±{pred_seg_scr_std:.4f}
     ** > Pearson\'s correlation: 
@@ -759,7 +757,7 @@ def scan_files(root_dir: pathlib.Path or str, seg_dir_postfix: str,
                             seg_name = file.replace(image_prefix, seg_prefix)
                         else:
                             seg_name = seg_prefix + file[file.index(
-                                image_prefix)+1:]
+                                image_prefix) + 1:]
 
                         # - If there was provided a sub-dir - add it
                         if seg_sub_dir is not None:
@@ -1003,7 +1001,7 @@ def calc_seg_score(gt_masks: np.ndarray, pred_masks: np.ndarray):
         gt_one_hot_masks = np.expand_dims(gt_one_hot_masks, axis=0)
 
     # - Calculate the ground truth object area
-    A = gt_one_hot_masks.sum(axis=(-3, -2, -1))
+    A = gt_one_hot_masks.sum(axis=(-2, -1))
 
     # - Convert the predicted mask to one-hot class masks
     pred_one_hot_masks = split_instance_mask(instance_mask=pred_masks,
@@ -1014,36 +1012,28 @@ def calc_seg_score(gt_masks: np.ndarray, pred_masks: np.ndarray):
 
     # - Calculate an intersection for each object with each other object
     Is = (gt_one_hot_masks[:, np.newaxis, ...] *
-          pred_one_hot_masks[np.newaxis, ...]).sum(axis=(-1, -2, -3))
+          pred_one_hot_masks[np.newaxis, ...]).sum(axis=(-1, -2))
 
     # - Calculate a union for each object with each other object
     Us = np.logical_or(
         gt_one_hot_masks[:, np.newaxis, ...],
-        pred_one_hot_masks[np.newaxis, ...]).sum(axis=(-1, -2, -3))
+        pred_one_hot_masks[np.newaxis, ...]).sum(axis=(-1, -2))
     Us[Us == 0] = 1  # to avoid division by 0
 
-    # - Calculate the IoU
-    IoU = (Is / Us).max(axis=1)
+    # - Calculate the IoUs for each label for each mask
+    IoUs = (Is / Us).max(axis=1)
 
-    # - Find objects which more than a half of them is covered by a mask
-    object_coverage_mask = Is.max(axis=1) / A
-    valid_idxs = np.argwhere(object_coverage_mask > 0.5).flatten()
+    # - Leave only the IoUs which are > 0.5 (may introduce np.inf in case all
+    # the IoUs <= 0.5
+    non_zero_iou_sums = (IoUs > 0.5).sum(axis=0)
 
-    # - Choose only the valid IoU
-    IoU = IoU[valid_idxs]
+    # - Calculate the mean IoU for each mask
+    IoUs = IoUs.sum(axis=0) / non_zero_iou_sums
 
-    # - Among the valid IoUs - zero the once which are lower than a 0.5
-    IoU[IoU <= 0.5] = 0
+    # - Replace all the IoUs which lower than 0.5 with 0
+    IoUs[(IoUs == np.inf) | (np.isnan(IoUs))] = .0
 
-    # - Calculate the mean seg score
-    seg_scr = np.nanmean(IoU, axis=0)
-    if isinstance(seg_scr, np.ndarray):
-        # - Replace np.nan with 0.
-        seg_scr[np.isnan(seg_scr)] = 0.0
-    else:
-        seg_scr = np.array([seg_scr])
-
-    return seg_scr
+    return IoUs
 
 
 def update_hyper_parameters(hyper_parameters: dict,

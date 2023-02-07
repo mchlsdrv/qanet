@@ -39,8 +39,6 @@ class RibCage(keras.Model):
 
         # - Open the models' configurations file
         self.architecture = model_configs.get('architecture')
-        # with MODEL_CONFIGS_FILE.open(mode='r') as config_file:
-        #     self.architecture = yaml.safe_load(config_file)
 
         # - Build the model
         self.model = self.build_model()
@@ -144,13 +142,14 @@ class RibCage(keras.Model):
         layer_units, drop_rate = \
             self.architecture.get('fc_blocks')['out_features'], \
             self.architecture.get('fc_blocks')['drop_rate']
-        fc_layer = keras.layers.Flatten()(input_spine)
-        for units in layer_units:
-            fc_layer = self._build_fully_connected_block(
-                units=units, drop_rate=drop_rate)(fc_layer)
 
-        output_layer = keras.layers.Dense(
-            units=1, activation=tf.keras.activations.sigmoid)(fc_layer)
+        fc_layer = keras.layers.Flatten()(input_spine)
+        sub_model = None
+        for units in layer_units:
+            sub_model = self._build_fully_connected_block(
+                units=units, drop_rate=drop_rate)
+            fc_layer = sub_model(fc_layer)
+        output_layer = fc_layer
 
         return keras.Model(
             inputs=[input_left_rib, input_right_rib], outputs=[output_layer])
@@ -209,11 +208,11 @@ class RibCage(keras.Model):
                     pred_seg_measure=pred_sm)
 
     @tf.function(input_signature=[tf.TensorSpec(shape=[None, None, None],
-                                  dtype=tf.float64, name='btch_imgs_aug'),
+                                  dtype=tf.float32, name='btch_imgs_aug'),
                                   tf.TensorSpec(shape=[None, None, None],
-                                  dtype=tf.float64, name='btch_msks_aug'),
+                                  dtype=tf.float32, name='btch_msks_aug'),
                                   tf.TensorSpec(shape=[None],
-                                  dtype=tf.float64, name='btch_true_seg_msrs')
+                                  dtype=tf.float32, name='btch_true_seg_msrs')
                                   ])
     def learn(self, btch_imgs_aug, btch_msks_aug, btch_true_seg_msrs) -> dict:
         print(f'Train Tracing')
@@ -258,11 +257,11 @@ class RibCage(keras.Model):
         return {metric.name: metric.result() for metric in self.metrics}
 
     @tf.function(input_signature=[tf.TensorSpec(shape=[None, None, None],
-                                  dtype=tf.float64, name='images'),
+                                  dtype=tf.float32, name='images'),
                                   tf.TensorSpec(shape=[None, None, None],
-                                  dtype=tf.float64, name='masks'),
+                                  dtype=tf.float32, name='masks'),
                                   tf.TensorSpec(shape=[None],
-                                  dtype=tf.float64, name='seg_scores')
+                                  dtype=tf.float32, name='seg_scores')
                                   ])
     def validate(self, btch_imgs_aug, btch_msks_aug, btch_true_seg_msrs) \
             -> dict:
@@ -298,9 +297,9 @@ class RibCage(keras.Model):
         return {metric.name: metric.result() for metric in self.metrics}
 
     @tf.function(input_signature=[tf.TensorSpec(shape=[None, None, None],
-                                  dtype=tf.float64, name='image'),
+                                  dtype=tf.float32, name='image'),
                                   tf.TensorSpec(shape=[None, None, None],
-                                  dtype=tf.float64, name='mask'),
+                                  dtype=tf.float32, name='mask'),
                                   ])
     def get_preds(self, image, mask):
         return self.model([image, mask], training=False)

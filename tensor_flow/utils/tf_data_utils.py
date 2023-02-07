@@ -231,13 +231,16 @@ class DataLoader(tf.keras.utils.Sequence):
             msk_gt = msk_gt[..., -1]
 
             # <2> Get the random augmentation and the corresponding seg measure
-            msk, seg_scr = get_random_mask(masks_root=self.masks_dir,
-                                           image_file=img_fl)
-            msk = msk[..., -1]
+            msk_rnd, seg_scr = get_random_mask(masks_root=self.masks_dir,
+                                               image_file=img_fl)
+            msk_rnd = msk_rnd[..., -1]
 
             # <3> Perform the image transformations
-            aug_res = self.train_augs(image=img, mask=msk)
-            img, msk = aug_res.get('image'), aug_res.get('mask')
+            aug_res = self.train_augs(image=img, mask=msk_rnd, mask0=msk_gt)
+
+            img = aug_res.get('image')
+            msk_rnd = aug_res.get('mask')
+            msk_gt = aug_res.get('mask0')
 
             # <4> Apply image transformations
             img = transform_image(image=img)
@@ -245,27 +248,27 @@ class DataLoader(tf.keras.utils.Sequence):
             # - Add the data to the corresponding lists
             btch_imgs_aug.append(img)
             btch_msks_gt.append(msk_gt)
-            btch_msks_aug.append(msk)
+            btch_msks_aug.append(msk_rnd)
             btch_seg_scrs.append(seg_scr)
 
         # - Convert to tensors
 
         # - Images
         btch_imgs_aug = tf.convert_to_tensor(np.array(btch_imgs_aug),
-                                             dtype=tf.float64)
+                                             dtype=tf.float32)
 
         # - Seg measures
-        btch_seg_scrs = tf.convert_to_tensor(btch_seg_scrs, dtype=tf.float64)
         btch_msks_aug = np.array(btch_msks_aug)
         if self.calc_seg_score:
             btch_seg_scrs = calc_seg_score(gt_masks=np.array(btch_msks_gt),
                                            pred_masks=btch_msks_aug)
+        btch_seg_scrs = tf.convert_to_tensor(btch_seg_scrs, dtype=tf.float32)
 
         # - Masks
         btch_msks_aug = instance_2_categorical(masks=btch_msks_aug)
         try:
             btch_msks_aug = tf.convert_to_tensor(btch_msks_aug,
-                                                 dtype=tf.float64)
+                                                 dtype=tf.float32)
         except Exception as err:
             print(f'''
             =======================================================
@@ -354,8 +357,8 @@ class DataLoader(tf.keras.utils.Sequence):
         img, msk = img[..., -1], msk[..., -1]
 
         # - Convert the image and the mask to  tensor
-        img, msk = tf.convert_to_tensor([img], dtype=tf.float64), \
-            tf.convert_to_tensor([msk], dtype=tf.float64)
+        img, msk = tf.convert_to_tensor([img], dtype=tf.float32), \
+            tf.convert_to_tensor([msk], dtype=tf.float32)
 
         return img, msk, img_key
 
@@ -379,7 +382,7 @@ class DataLoader(tf.keras.utils.Sequence):
         img, msk = img[..., -1], msk[..., -1]
 
         # - Convert the image and the mask to  tensor
-        img, msk = tf.convert_to_tensor([img], dtype=tf.float64), \
-            tf.convert_to_tensor([msk], dtype=tf.float64)
+        img, msk = tf.convert_to_tensor([img], dtype=tf.float32), \
+            tf.convert_to_tensor([msk], dtype=tf.float32)
 
         return img, msk, img_key

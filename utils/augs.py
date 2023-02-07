@@ -114,7 +114,7 @@ def mask_augs(image_width, alpha_factor=ALPHA_FACTOR, sigma_factor=SIGMA_FACTOR,
 def train_augs(crop_height: int, crop_width: int):
     return A.Compose(
         [
-            A.Resize(
+            A.CropNonEmptyMaskIfExists(
                 height=crop_height,
                 width=crop_width,
                 p=1.
@@ -135,14 +135,15 @@ def train_augs(crop_height: int, crop_width: int):
                 p=0.5
             ),
             A.GaussianBlur(p=1),
-        ]
+        ],
+        additional_targets={'mask0': 'mask'}
     )
 
 
 def test_augs(crop_height: int, crop_width: int):
     return A.Compose(
         [
-            A.Resize(
+            A.CropNonEmptyMaskIfExists(
                 height=crop_height,
                 width=crop_width,
                 p=1.
@@ -155,7 +156,7 @@ def test_augs(crop_height: int, crop_width: int):
 def inference_augs(crop_height: int, crop_width: int):
     return A.Compose(
         [
-            A.Resize(
+            A.CropNonEmptyMaskIfExists(
                 height=crop_height,
                 width=crop_width,
                 p=1.

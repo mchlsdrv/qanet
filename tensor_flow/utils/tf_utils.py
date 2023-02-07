@@ -337,10 +337,11 @@ def get_model(mode: str, hyper_parameters: dict,
         cyclical_lr_max_lr=hyper_parameters.get(
             'callbacks')['cyclical_lr_max_lr'],
         cyclical_lr_step_size=hyper_parameters.get(
-            'callbacks')['cyclical_lr_step_size']
+            'training')['train_data_len'] // hyper_parameters.get(
+            'training')['batch_size']
     )
     model.compile(
-        loss=WeightedMSE(weighted=compilation_configs.get('weighted_loss')),
+        loss=tf.keras.losses.MeanSquaredError(),  # tf.losses.MSEWeightedMSE(weighted=compilation_configs.get('weighted_loss')),
         optimizer=get_optimizer(args=compilation_configs),
         run_eagerly=True,
         metrics=hyper_parameters.get('training')['metrics']
@@ -436,7 +437,7 @@ def train_model(hyper_parameters: dict, output_dir: pathlib.Path or str,
     # - Load the data
     data_dict = get_data(mode='training', hyper_parameters=hyper_parameters,
                          logger=logger)
-
+    hyper_parameters.get('training')['train_data_len'] = len(data_dict)
     print_pretty_message(
         message=f'Training on {len(data_dict)} examples',
         delimiter_symbol='='

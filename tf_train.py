@@ -82,6 +82,11 @@ if __name__ == '__main__':
     except Exception as err:
         err_log(logger=logger, message=f'{err}')
 
+    # - Save the updated hyperparameters to the current run directory
+    yaml.dump(
+        hyp_params_dict,
+        (current_run_dir / 'hyper_params.yml').open(mode='w')
+    )
     print(f'''
     ===========================
     == Training on finished! ==

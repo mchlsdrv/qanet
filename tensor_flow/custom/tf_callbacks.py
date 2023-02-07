@@ -325,7 +325,8 @@ class ProgressLogCallback(tf.keras.callbacks.Callback):
                     'val rho': val_rho,
                     'train mse': train_mse,
                     'val mse': val_mse,
-                    'learning rate': self.model.optimizer.learning_rate(epoch)
+                    'learning rate': self.model.optimizer.learning_rate.numpy()
+                    # 'learning rate': self.model.optimizer.learning_rate(epoch)
                 }
                 )
 
