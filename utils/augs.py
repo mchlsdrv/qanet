@@ -6,6 +6,8 @@ from scipy.ndimage import (
     grey_dilation,
     grey_erosion
 )
+from scipy.ndimage.interpolation import map_coordinates
+from scipy.ndimage.filters import gaussian_filter
 
 __author__ = 'sidorov@post.bgu.ac.il'
 
@@ -47,6 +49,27 @@ CLAHE_CLIP_LIMIT = 2
 CLAHE_TILE_GRID_SIZE = 8
 
 
+def elastic_transform(image, alpha, sigma, random_state=None):
+    """Elastic deformation of images as described in [Simard2003]_.
+    .. [Simard2003] Simard, Steinkraus and Platt, "Best Practices for
+       Convolutional Neural Networks applied to Visual Document Analysis", in
+       Proc. of the International Conference on Document Analysis and
+       Recognition, 2003.
+    """
+    if random_state is None:
+        random_state = np.random.RandomState(None)
+
+    shape = image.shape
+    dx = gaussian_filter((random_state.rand(*shape) * 2 - 1), sigma, mode="constant", cval=0) * alpha
+    dy = gaussian_filter((random_state.rand(*shape) * 2 - 1), sigma, mode="constant", cval=0) * alpha
+
+    x, y = np.meshgrid(np.arange(shape[0]), np.arange(shape[1]))
+    indices = np.reshape(y+dy, (-1, 1)), np.reshape(x+dx, (-1, 1))
+
+    distorted_image = map_coordinates(image, indices, order=1, mode='reflect')
+    return distorted_image.reshape(image.shape)
+
+
 def random_erosion(mask, **kwargs):
     # Shrinks the labels
     krnl = np.random.choice(EROSION_SIZES)
@@ -73,8 +96,7 @@ def random_closing(mask, **kwargs):
     return mask
 
 
-def mask_augs(image_width, alpha_factor=ALPHA_FACTOR, sigma_factor=SIGMA_FACTOR,
-              alpha_affine_factor=ALPHA_AFFINE_FACTOR):
+def mask_augs():
     return A.Compose(
         [
             A.OneOf(
@@ -98,15 +120,6 @@ def mask_augs(image_width, alpha_factor=ALPHA_FACTOR, sigma_factor=SIGMA_FACTOR,
                 ],
                 p=P_ONE_OF
             ),
-            A.ElasticTransform(
-                alpha=alpha_factor * image_width,
-                sigma=sigma_factor * image_width,
-                alpha_affine=alpha_affine_factor * image_width,
-                interpolation=cv2.INTER_LANCZOS4,
-                approximate=True,
-                same_dxdy=True,
-                p=P_ELASTIC
-            ),
         ]
     )
 
@@ -123,20 +136,15 @@ def train_augs(crop_height: int, crop_width: int):
                 [
                     A.Flip(p=0.5),
                     A.HorizontalFlip(p=0.5),
-                    A.ShiftScaleRotate(
-                        shift_limit=0.0625,
-                        scale_limit=0.1,
-                        rotate_limit=45,
-                        interpolation=cv2.INTER_LANCZOS4,
-                        p=0.5
-                    ),
-
+                    A.ShiftScaleRotate(shift_limit=0.0625, scale_limit=0.1, rotate_limit=45,
+                                       interpolation=cv2.INTER_LANCZOS4, p=0.5
+                                       ),
+                    A.GaussianBlur(p=.5),
                 ],
                 p=0.5
             ),
-            A.GaussianBlur(p=1),
         ],
-        additional_targets={'mask0': 'mask'}
+        # additional_targets={'mask0': 'mask'}
     )
 
 
@@ -148,7 +156,7 @@ def test_augs(crop_height: int, crop_width: int):
                 width=crop_width,
                 p=1.
             ),
-            A.GaussianBlur(p=1),
+            # A.GaussianBlur(p=1),
         ]
     )
 
@@ -161,6 +169,6 @@ def inference_augs(crop_height: int, crop_width: int):
                 width=crop_width,
                 p=1.
             ),
-            A.GaussianBlur(p=1),
+            # A.GaussianBlur(p=1),
         ]
     )

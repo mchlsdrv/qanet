@@ -12,29 +12,31 @@ from global_configs.general_configs import HR_AET_PERCENTAGE, HR_AET_FIGSIZE
 from utils.aux_funcs import (
     to_numpy,
     err_log,
-    get_image_from_figure,
+)
+from utils.visual_funcs import (
     save_figure,
+    get_rgb_mask_figure,
     get_hit_rate_plot_figure,
     get_scatter_plot_figure,
-    get_image_mask_figure,
+    write_figure_to_tensorboard,
+    get_image_from_figure
 )
 
 
-def write_figure_to_tensorboard(writer, figure, tag: str, step: int):
-    with tf.device('/cpu:0'):
-        with writer.as_default():
-            # -> Write the scatter plot
-            tf.summary.image(
-                tag,
-                get_image_from_figure(figure=figure),
-                step=step
-            )
+# def write_figure_to_tensorboard(writer, figure, tag: str, step: int):
+#     with tf.device('/cpu:0'):
+#         with writer.as_default():
+#             # -> Write the scatter plot
+#             tf.summary.image(
+#                 tag,
+#                 get_image_from_figure(figure=figure),
+#                 step=step
+#             )
 
 
 # - CLASSES
 class ProgressLogCallback(tf.keras.callbacks.Callback):
-    def __init__(self, log_dir: pathlib.Path or str,
-                 tensorboard_logs: bool = False, wandb_logs: bool = False,
+    def __init__(self, log_dir: pathlib.Path or str, tensorboard_logs: bool = False, wandb_logs: bool = False,
                  logger: logging.Logger = None):
         super().__init__()
 
@@ -204,10 +206,9 @@ class ProgressLogCallback(tf.keras.callbacks.Callback):
                 'true_seg_measure').astype(np.float32)
             train_pred_sm = self.model.train_btch_smpl_dict.get(
                 'pred_seg_measure').astype(np.float32)
-            train_img_msk_fig = get_image_mask_figure(
-                image=train_img,
+            train_img_msk_fig = get_rgb_mask_figure(
                 mask=train_msk,
-                suptitle='Image with Corresponding Mask',
+                suptitle='Mask',
                 title=f'Seg measure: true - {train_true_sm:.4f}, '
                       f'pred - {train_pred_sm:.4f}',
                 figsize=(20, 20),
@@ -300,8 +301,7 @@ class ProgressLogCallback(tf.keras.callbacks.Callback):
                 'true_seg_measure').astype(np.float32)
             val_pred_sm = self.model.val_btch_smpl_dict.get(
                 'pred_seg_measure').astype(np.float32)
-            val_img_msk_fig = get_image_mask_figure(
-                image=val_img,
+            val_img_msk_fig = get_rgb_mask_figure(
                 mask=val_msk,
                 suptitle='Image with Corresponding Mask',
                 title=f'Seg measure: true - {val_true_sm:.4f}, '

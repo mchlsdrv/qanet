@@ -2,6 +2,7 @@ import io
 import os
 import pathlib
 import time
+from functools import partial
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -9,6 +10,7 @@ import tensorflow as tf
 import logging
 
 from utils import augs
+from utils.augs import elastic_transform
 
 from utils.aux_funcs import (
     get_train_val_split,
@@ -27,9 +29,7 @@ from utils.aux_funcs import (
 )
 
 
-def get_data_loaders(mode: str, data_dict: dict, hyper_parameters: dict,
-                     logger: logging.Logger = None):
-
+def get_data_loaders(mode: str, data_dict: dict, hyper_parameters: dict, logger: logging.Logger = None):
     train_files, val_files = get_train_val_split(
         data_list=list(data_dict.keys()),
         val_prop=hyper_parameters.get('training')['val_prop'], logger=logger
@@ -86,8 +86,7 @@ def get_image_from_figure(figure):
     return image
 
 
-def get_random_mask(masks_root: pathlib.Path or str,
-                    image_file: pathlib.Path or str):
+def get_random_mask(masks_root: pathlib.Path or str, image_file: pathlib.Path or str):
     # - Assert the mask directory and the image file represent a path
     assert_pathable(argument=masks_root, argument_name='masks_root')
     assert_pathable(argument=image_file, argument_name='image_file')
@@ -121,8 +120,7 @@ def get_random_mask(masks_root: pathlib.Path or str,
 
     # - Strip the '-' character in case it was added due to overlap in
     # generated J values
-    seg_scr = str_2_float(str_val=seg_scr_str if '-' not in seg_scr_str else
-                          seg_scr_str[:seg_scr_str.index('-')])
+    seg_scr = str_2_float(str_val=seg_scr_str if '-' not in seg_scr_str else seg_scr_str[:seg_scr_str.index('-')])
 
     # - Load the mask
     msk = load_image(image_file=str(rnd_msk_fl), add_channels=True)
@@ -157,10 +155,9 @@ class DataLoader(tf.keras.utils.Sequence):
     containing the path to the
     root_dir in the aforementioned format.
     """
-    def __init__(self, mode: str, data_dict: dict, file_keys: list,
-                 crop_height: int, crop_width: int, batch_size: int,
-                 calculate_seg_score: bool = True,
-                 masks_dir: pathlib.Path or str = None, logger: logging = None):
+
+    def __init__(self, mode: str, data_dict: dict, file_keys: list, crop_height: int, crop_width: int, batch_size: int,
+                 calculate_seg_score: bool = True, masks_dir: pathlib.Path or str = None, logger: logging = None):
         self.mode = mode
         self.calc_seg_score = calculate_seg_score
 
@@ -170,11 +167,10 @@ class DataLoader(tf.keras.utils.Sequence):
         # - Ensure the batch_size is positive
         self.batch_size = batch_size if batch_size > 0 else 1
 
-        self.train_augs = augs.train_augs(crop_height=crop_height,
-                                          crop_width=crop_width)
-        self.inf_augs = augs.inference_augs(crop_height=crop_height,
-                                            crop_width=crop_width)
-        self.mask_augs = augs.mask_augs(image_width=crop_width)
+        self.train_augs = augs.train_augs(crop_height=crop_height, crop_width=crop_width)
+        self.train_mask_augs = augs.mask_augs()
+        self.inf_augs = augs.inference_augs(crop_height=crop_height, crop_width=crop_width)
+        self.apply_elastic = partial(elastic_transform, alpha=crop_width * 2, sigma=crop_width * 0.15)
 
         # - In case the masks are made in advance, in which case there is no
         # need for the self.mask_augs
@@ -200,12 +196,11 @@ class DataLoader(tf.keras.utils.Sequence):
             start_idx + self.batch_size < self.n_images else self.n_images - 1
 
         if self.mode == 'training':
-            item = self.get_batch_fast_mode(start_index=start_idx,
-                                            end_index=end_idx)
+            item = self.get_batch_train(start_index=start_idx, end_index=end_idx)
         elif self.mode == 'inference':
-            item = self.get_batch_inference_mode(index=start_idx)
+            item = self.get_batch_inference(index=start_idx)
         elif self.mode == 'test':
-            item = self.get_batch_test_mode(index=start_idx)
+            item = self.get_batch_test(index=start_idx)
         else:
             err_log(logger=self.logger,
                     message=f'\'{self.mode}\' mode requires the masks_dir '
@@ -216,7 +211,58 @@ class DataLoader(tf.keras.utils.Sequence):
 
         return item
 
-    def get_batch_fast_mode(self, start_index, end_index):
+    def get_batch_train(self, start_index, end_index):
+        btch_imgs_aug = []
+        btch_msks_gt = []
+        btch_msks_aug = []
+        btch_seg_scrs = []
+
+        for img_fl in self.file_keys[start_index:end_index]:
+            # <1> Get the image and the mask
+            img, _, msk_gt = self.data_dict.get(img_fl)
+            img = img[..., -1]
+            img = transform_image(image=img)
+
+            msk_gt = msk_gt[..., -1]
+
+            # <2> Perform the general augmentations which are made on both the image and the mask e.g., rotation, flip,
+            # random crop etc.
+            aug_res = self.train_augs(image=img, mask=msk_gt)
+            img = aug_res.get('image')
+            msk_gt = aug_res.get('mask')
+
+            # <3> Change the GT mask to simulate the imperfect segmentation
+            aug_res = self.train_mask_augs(image=img, mask=msk_gt)
+            msk = aug_res.get('mask')
+            p = np.random.rand()
+            if p > 0.1:
+                msk = self.apply_elastic(msk)
+
+            # <4> Calculate the seg score of the corrupt mask with the GT
+            seg_scr = calc_seg_score(msk_gt, msk)
+
+            # <5> Add the data to the corresponding lists
+            btch_imgs_aug.append(img)
+            btch_msks_gt.append(msk_gt)
+            btch_msks_aug.append(msk)
+            btch_seg_scrs.append(seg_scr)
+
+        # - Convert to tensors
+
+        # > Images
+        btch_imgs_aug = tf.convert_to_tensor(np.array(btch_imgs_aug), dtype=tf.float32)
+
+        # > Masks
+        btch_msks_aug = np.array(btch_msks_aug)
+        btch_msks_aug = instance_2_categorical(masks=btch_msks_aug)
+        btch_msks_aug = tf.convert_to_tensor(btch_msks_aug, dtype=tf.float32)
+
+        # > Seg measures
+        btch_seg_scrs = tf.convert_to_tensor(np.array(btch_seg_scrs), dtype=tf.float32)
+
+        return (btch_imgs_aug, btch_msks_aug), btch_seg_scrs
+
+    def get_batch_fast_train(self, start_index, end_index):
         t_strt = time.time()
 
         btch_imgs_aug = []
@@ -266,75 +312,11 @@ class DataLoader(tf.keras.utils.Sequence):
 
         # - Masks
         btch_msks_aug = instance_2_categorical(masks=btch_msks_aug)
-        try:
-            btch_msks_aug = tf.convert_to_tensor(btch_msks_aug,
-                                                 dtype=tf.float32)
-        except Exception as err:
-            print(f'''
-            =======================================================
-            - {err}
-            =======================================================
-            - type(btch_msks_aug): {type(btch_msks_aug)}
-            - btch_msks_aug.shape: {btch_msks_aug.shape}
-            =======================================================
-            ''')
+        btch_msks_aug = tf.convert_to_tensor(btch_msks_aug, dtype=tf.float32)
 
         return (btch_imgs_aug, btch_msks_aug), btch_seg_scrs
 
-    # def get_batch_regular_mode(self, start_index, end_index):
-    #     t_strt = time.time()
-    #     btch_imgs_aug = []
-    #     btch_msks_aug = []
-    #     btch_msks_dfrmd = []
-    #     btch_js = []
-    #
-    #     btch_data = self.image_mask_tuples[start_index:end_index, ...]
-    #     btch_imgs, btch_msks = btch_data[:, 0, ...], btch_data[:, 1, ...]
-    #     for img, msk in zip(btch_imgs, btch_msks):
-    #         # <1> Perform the image transformations
-    #         aug_res = self.transforms(image=img.astype(np.uint8),
-    #                                   mask=msk.astype(np.uint8))
-    #         img_aug, msk_aug = aug_res.get('image'), aug_res.get('mask')
-    #
-    #         # <2> Perform image and mask augmentations
-    #         aug_res = self.image_mask_augs(image=img_aug.astype(np.uint8),
-    #                                        mask=msk_aug.astype(np.uint8))
-    #         img_aug, msk_aug = aug_res.get('image'), aug_res.get('mask')
-    #
-    #         # <3> Perform mask augmentations
-    #         msks_aug_res = self.mask_augs(image=img_aug, mask=msk_aug)
-    #         msk_dfrmd = msks_aug_res.get('mask')
-    #
-    #         # - Add the data to the corresponding lists
-    #         btch_imgs_aug.append(img_aug)
-    #         btch_msks_aug.append(msk_aug)
-    #         btch_msks_dfrmd.append(msk_dfrmd)
-    #
-    #     # - Calculate the seg measure for the batch
-    #     # <1> Convert the btch_msks_aug to numpy to calculate the seg measure
-    #     btch_msks_aug = np.array(btch_msks_aug)
-    #     # <2> Convert the btch_msks_dfrmd to numpy to calculate the seg measure
-    #     btch_msks_dfrmd = np.array(btch_msks_dfrmd)
-    #     # <3> Calculate the seg measure of the aug masks with the GT masks,
-    #     # and convert it to tensor
-    #     btch_js = calc_seg_score(gt_masks=btch_msks_aug,
-    #                              pred_masks=btch_msks_dfrmd)
-    #     # <4> Convert btch_js to tensor
-    #     btch_js = tf.convert_to_tensor(btch_js, dtype=tf.float16)
-    #
-    #     # - Convert the btch_imgs_aug to numpy array and then to tensor
-    #     btch_imgs_aug = tf.convert_to_tensor(np.array(btch_imgs_aug),
-    #                                          dtype=tf.float16)
-    #
-    #     # - Convert the btch_masks_aug to tensor right away, as it was already
-    #     # converted to numpy in <1>
-    #     btch_msks_dfrmd = instance_2_categorical(masks=btch_msks_dfrmd)
-    #     btch_msks_dfrmd = tf.convert_to_tensor(btch_msks_dfrmd,
-    #                                            dtype=tf.float16)
-    #
-    #     return (btch_imgs_aug, btch_msks_dfrmd), btch_js
-
-    def get_batch_test_mode(self, index):
+    def get_batch_test(self, index):
         # - Get the key of the image
         img_key = self.file_keys[index]
 
@@ -362,7 +344,7 @@ class DataLoader(tf.keras.utils.Sequence):
 
         return img, msk, img_key
 
-    def get_batch_inference_mode(self, index):
+    def get_batch_inference(self, index):
         # - Get the key of the image
         img_key = self.file_keys[index]
 

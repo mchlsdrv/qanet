@@ -1,5 +1,4 @@
 import datetime
-import io
 import os
 import pathlib
 import argparse
@@ -14,12 +13,8 @@ import cv2
 import yaml
 
 import logging
-import tensorflow as tf
-import matplotlib as mpl
 import matplotlib.pyplot as plt
-import seaborn as sns
 from scipy.ndimage import grey_erosion
-from scipy.stats import pearsonr
 from tqdm import tqdm
 
 from global_configs.general_configs import (
@@ -31,48 +26,8 @@ from global_configs.general_configs import (
 
 import warnings
 
-mpl.use('Agg')  # <= avoiding the "Tcl_AsyncDelete: async handler deleted by
-# the wrong thread" exception
-plt.style.use('seaborn')  # <= using the seaborn plot style
-
 warnings.simplefilter("ignore", UserWarning)
 warnings.simplefilter("ignore", RuntimeWarning)
-
-sns.set()
-RC = {
-    'font.size': 32,
-    'axes.labelsize': 50,
-    'legend.fontsize': 30.0,
-    'axes.titlesize': 32,
-    'xtick.labelsize': 40,
-    'ytick.labelsize': 40
-}
-sns.set_context(rc=RC)
-
-
-def get_image_from_figure(figure):
-    buffer = io.BytesIO()
-
-    plt.savefig(buffer, format='png')
-
-    # plt.close(figure)
-    buffer.seek(0)
-
-    image = tf.image.decode_png(buffer.getvalue(), channels=4)
-    image = tf.expand_dims(image, 0)
-
-    return image
-
-
-def write_figure_to_tensorboard(writer, figure, tag: str, step: int):
-    with tf.device('/cpu:0'):
-        with writer.as_default():
-            # -> Write the scatter plot
-            tf.summary.image(
-                tag,
-                get_image_from_figure(figure=figure),
-                step=step
-            )
 
 
 def get_range(value, ranges: np.ndarray):
@@ -242,89 +197,6 @@ def get_split_data(data: np.ndarray or list, n_items: int):
     return split_data
 
 
-def show_images(images, labels, suptitle='', figsize=(25, 10),
-                save_file: pathlib.Path or str = None, verbose: bool = False,
-                logger: logging.Logger = None) -> None:
-    fig, ax = plt.subplots(1, len(images), figsize=figsize)
-    for idx, (img, lbl) in enumerate(zip(images, labels)):
-        ax[idx].imshow(img, cmap='gray')
-        ax[idx].set_title(lbl)
-
-    fig.suptitle(suptitle)
-
-    save_figure(figure=fig, save_file=pathlib.Path(save_file),
-                close_figure=True, verbose=verbose, logger=logger)
-
-
-def line_plot(x: list or np.ndarray, ys: list or np.ndarray, suptitle: str,
-              labels: list, colors: tuple = ('r', 'g', 'b'),
-              save_file: pathlib.Path or str = None,
-              logger: logging.Logger = None):
-    fig, ax = plt.subplots()
-    for y, lbl, clr in zip(ys, labels, colors):
-        ax.plot(x, y, color=clr, label=lbl)
-
-    plt.legend()
-
-    try:
-        save_figure(figure=fig, save_file=save_file, close_figure=False,
-                    logger=logger)
-    except Exception as err:
-        err_log(logger=logger, message=f'{err}')
-
-
-def get_hit_rate_plot_figure(true: np.ndarray, pred: np.ndarray,
-                             hit_rate_percent: int = None,
-                             figsize: tuple = (15, 15),
-                             logger: logging.Logger = None):
-    # - Calculate the absolute error of true vs pred
-    abs_err = np.abs(true - pred)
-
-    # - Create a histogram of the absolute errors
-    abs_err_hist, abs_err_tolerance = np.histogram(abs_err, bins=100,
-                                                   range=(0., 1.))
-
-    # - Normalize the histogram
-    abs_err_prob = abs_err_hist / np.sum(abs_err_hist)
-
-    # - Plot the histogram
-    fig, ax = plt.subplots(figsize=figsize)
-
-    # > Calculate the cumulative probability of the density function of the
-    # absolute errors
-    abs_err_cum_sum_prob = np.cumsum(abs_err_prob)
-    ax.plot(abs_err_tolerance[:-1], abs_err_cum_sum_prob, linewidth=2)
-    ax.set(xlabel='Absolute Error Tolerance', xlim=(0, 1),
-           xticks=np.arange(0.0, 1.2, 0.2), ylabel='Hit Rate', ylim=(0, 1),
-           yticks=np.arange(0.2, 1.2, 0.2))
-
-    # - Add a line representing the hit rate percentage with corresponding AET
-    # value
-    if isinstance(hit_rate_percent, int):
-        # > Find the index of the hit_rate_percent
-        abs_err_cum_sum_pct_idx = np.argwhere(
-            abs_err_cum_sum_prob >= hit_rate_percent / 100).flatten().min()
-
-        # > Find the real value of the hit_rate_percent
-        cum_sum_err_pct = abs_err_cum_sum_prob[abs_err_cum_sum_pct_idx]
-
-        # > Find the corresponding Absolute Error Tolerance to the
-        # hit_rate_percent value
-        abs_err_tolerance_pct = abs_err_tolerance[abs_err_cum_sum_pct_idx]
-
-        # > Plot the horizontal line for the hit rate percentage
-        ax.axhline(cum_sum_err_pct, xmax=abs_err_tolerance_pct)
-
-        # > Plot the vertical line for the corresponding AET value
-        ax.axvline(abs_err_tolerance_pct, ymax=cum_sum_err_pct)
-
-        # > Add the corresponding AET value
-        ax.text(x=abs_err_tolerance_pct, y=cum_sum_err_pct,
-                s=f'AET={abs_err_tolerance_pct:.3f}')
-
-    return fig, abs_err_hist, abs_err
-
-
 def print_results(results: pd.DataFrame, rho: float, p: float, mse: float):
     true_seg_scr_mu, pred_seg_scr_mu = results.loc[:, "seg_score"].mean(), \
         results.loc[:, "pred_seg_score"].mean()
@@ -357,79 +229,6 @@ def clear_unnecessary_columns(dataframe: pd.DataFrame):
     return dataframe
 
 
-def get_simple_scatter_plot_figure(x: np.ndarray, y: np.ndarray,
-                                   xlabel: str,
-                                   ylabel: str,
-                                   xticks: tuple or list =
-                                   (0.0, 0.2, 0.4, 0.6, 0.8, 1.0),
-                                   xlim: tuple or list = (0.0, 1.0),
-                                   yticks: tuple or list =
-                                   (0.0, 0.2, 0.4, 0.6, 0.8, 1.0),
-                                   ylim: tuple or list = (0.0, 1.0),
-                                   figsize: tuple = (20, 15),
-                                   save_file: pathlib.Path or str = None):
-    fig, ax = plt.subplots(figsize=figsize)
-    ax.scatter(
-        x=x,
-        y=y,
-        alpha=.3,
-        s=150,
-    )
-    ax.set(
-        xlim=xlim,
-        xlabel=xlabel,
-        xticks=xticks,
-        ylim=ylim,
-        ylabel=ylabel,
-        yticks=yticks
-    )
-
-    if check_pathable(path=save_file):
-        save_file = str_2_path(path=save_file)
-        fig.savefig(save_file)
-
-    return fig, ax
-
-
-def get_scatter_plot_figure(x: np.ndarray, y: np.ndarray, plot_type: str,
-                            logger: logging.Logger = None):
-    D = pd.DataFrame({'GT Quality Value': x, 'Estimated Quality Value': y})
-    g = sns.jointplot(
-        x='GT Quality Value',
-        y='Estimated Quality Value',
-        marker='o',
-        joint_kws={
-            'scatter_kws': {
-                'alpha': 0.3,
-                's': 150
-            }
-        },
-        xlim=(0.0, 1.0),
-        ylim=(0.0, 1.0),
-        data=D,
-        height=15,
-        space=0.02,
-        kind='reg'
-    )
-
-    # - Calculate pearson correlation
-    rho, p = pearsonr(x, y)
-
-    # - Calculate mean squared error
-    mse = np.mean(np.square(x[:10] - y[:10]))
-
-    g.ax_joint.annotate(
-        f'$\\rho = {rho:.3f}, MSE = {mse:.3f}$',
-        xy=(0.1, 0.9),
-        xycoords='axes fraction',
-        ha='left',
-        va='center',
-        bbox={'boxstyle': 'round', 'fc': 'powderblue', 'ec': 'navy'}
-    )
-
-    return g.figure, rho, p, mse
-
-
 def get_files_under_dir(dir_path: pathlib.Path or str):
     fls = []
     for root, dirs, files in os.walk(str(dir_path), topdown=False):
@@ -450,88 +249,6 @@ def str_2_path(path: str):
         os.makedirs(path.parent, exist_ok=True)
 
     return path
-
-
-def save_figure(figure, save_file: pathlib.Path or str,
-                overwrite: bool = False, close_figure: bool = False,
-                verbose: bool = False, logger: logging.Logger = None):
-    # - Convert save_file to path
-    save_file = str_2_path(path=save_file)
-
-    if isinstance(save_file, pathlib.Path):
-        # - If the file does not exist or can be overwritten
-        if not save_file.is_file() or overwrite:
-
-            # - Create sub-path of the save file
-            os.makedirs(save_file.parent, exist_ok=True)
-
-            figure.savefig(str(save_file))
-            if close_figure:
-                plt.close(figure)
-            if verbose:
-                info_log(logger=logger,
-                         message=f'Figure was saved to \'{save_file}\'')
-        elif verbose:
-            info_log(logger=logger,
-                     message=f'Can not save figure - file \'{save_file}\' '
-                             f'already exists and overwrite = {overwrite}!')
-    elif verbose:
-        info_log(logger=logger,
-                 message=f'Can not save figure - save_file argument must be '
-                         f'of type pathlib.Path or str, but {type(save_file)} '
-                         f'was provided!')
-
-
-def plot_seg_measure_histogram(seg_measures: np.ndarray,
-                               bin_width: float = .1,
-                               figsize: tuple = (25, 10),
-                               density: bool = False,
-                               save_file: pathlib.Path = None):
-    vals, bins = np.histogram(seg_measures,
-                              bins=np.arange(0., 1. + bin_width, bin_width))
-    if density:
-        vals = vals / vals.sum()
-    fig, ax = plt.subplots(figsize=figsize)
-    ax.bar(bins[:-1], vals, width=bin_width, align='edge')
-    ax.set(xlim=(0, 1), xticks=np.arange(0., 1.1, .1),
-           xlabel='E[SM] (Mean Seg Measure)', ylabel='P(E[SM])')
-
-    save_figure(figure=fig, save_file=save_file)
-
-
-def plot_image_histogram(images: np.ndarray, labels: list, n_bins: int = 256,
-                         figsize: tuple = (25, 50), density: bool = False,
-                         save_file: pathlib.Path = None):
-    fig, ax = plt.subplots(2, len(images), figsize=figsize)
-    for idx, (img, lbl) in enumerate(zip(images, labels)):
-
-        vals, bins = np.histogram(img, n_bins, density=True)
-        if density:
-            vals = vals / vals.sum()
-        vals, bins = vals[1:], bins[1:][:-1]  # don't include the 0
-
-        # - If there is only a single plot - no second dimension will be
-        # available, and it will result in an error
-        if len(images) > 1:
-            hist_ax = ax[0, idx]
-            img_ax = ax[1, idx]
-        else:
-            hist_ax = ax[0]
-            img_ax = ax[1]
-
-        # - Plot the histogram
-        hist_ax.bar(bins, vals)
-        hist_ax.set_title('Intensity Histogram')
-        max_val = 255 if img.max() > 1 else 1
-        hist_ax.set(xlim=(0, max_val), ylim=(0., 1.),
-                    yticks=np.arange(0., 1.1, .1), xlabel='I (Intensity)',
-                    ylabel='P(I)')
-
-        # - Show the image
-        img_ax.imshow(img, cmap='gray')
-        img_ax.set_title(lbl)
-
-    save_figure(figure=fig, save_file=save_file)
 
 
 def decode_file(file):
@@ -879,16 +596,11 @@ def get_runtime(seconds: float):
     return hrs_str + ':' + min_str + ':' + sec_str + '[H:M:S]'
 
 
-def merge_categorical_masks(masks: np.ndarray):
-    msk = np.zeros(masks.shape[1:], dtype=np.float32)
-    for cat_mks in masks:
-        msk += cat_mks
+def clahe(image: np.ndarray, clip_limit=2.0, tile_grid_size=(8, 8)):
+    clahe_fltr = cv2.createCLAHE(clipLimit=clip_limit, tileGridSize=tile_grid_size)
+    img = clahe_fltr.apply(image)
 
-    # - Fix the boundary if it was added several times from different cells
-    msk[msk > 2.] = 2.
-    msk = msk.astype(np.float32)
-
-    return msk
+    return img
 
 
 def split_instance_mask(instance_mask: np.ndarray,
@@ -909,7 +621,7 @@ def split_instance_mask(instance_mask: np.ndarray,
     lbls = lbls[lbls > 0]
 
     # - Convert the ground truth mask to one-hot class masks
-    bin_masks = [np.zeros_like(inst_msk)]
+    bin_masks = []
     for lbl in lbls:
         bin_class_mask = deepcopy(inst_msk)
         bin_class_mask[bin_class_mask != lbl] = 0
@@ -921,119 +633,63 @@ def split_instance_mask(instance_mask: np.ndarray,
     return bin_masks
 
 
-def get_categorical_mask(binary_mask: np.ndarray):
-    # Shrinks the labels
-    inner_msk = grey_erosion(binary_mask, size=2)
-
-    # Create the contur of the cells
-    contur_msk = binary_mask - inner_msk
-    contur_msk[contur_msk > 0] = 2
-
-    # - Create the inner part of the cell
-    inner_msk[inner_msk > 0] = 1
-
-    # - Combine the inner and the contur masks to create the categorical mask
-    # with three classes, i.e., background 0, inner 1 and contur 2
-    cat_msk = inner_msk + contur_msk
-
-    return cat_msk
-
-
-def enhance_contrast(image: np.ndarray):
-    clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
-    img = clahe.apply(image)
-
-    return img
-
-
-def instance_2_categorical(masks: np.ndarray or list):
-    """
-    Converts an instance masks (i.e., where each cell is represented by a
-    different color, to a mask with 3 classes, i.e.,
-        - 0 for background,
-        - 1 for the inner part of the cell
-        - 2 for cells' boundary
-    """
-    btch_cat_msks = []
-    for msk in masks:
-        # - Split the mask into binary masks of separate cells
-        bin_msks = split_instance_mask(instance_mask=msk)
-
-        # - For each binary cell - get a categorical mask
-        cat_msks = [np.zeros_like(msk)]
-        for bin_msk in bin_msks:
-            cat_msk = get_categorical_mask(binary_mask=bin_msk)
-            cat_msks.append(cat_msk)
-
-        # - Merge the categorical masks for each cell into a single
-        # categorical mask
-        mrgd_cat_msk = merge_categorical_masks(masks=np.array(cat_msks))
-
-        # - Add the categorical mask to the batch masks
-        btch_cat_msks.append(mrgd_cat_msk)
-
-    # - Convert to array
-    btch_cat_msks = np.array(btch_cat_msks, dtype=np.float32)
-
-    return btch_cat_msks
-
-
-def calc_seg_score(gt_masks: np.ndarray, pred_masks: np.ndarray):
+def calc_seg_score(gt_mask: np.ndarray, pred_mask: np.ndarray):
     """
     Converts a multi-class label into a one-hot labels for each object in the
     multi-class label
     :param: multi_class_mask - mask where integers represent different objects
     """
+    dice = 0.0
+
     # - Ensure the multi-class label is populated with int values
-    gt_masks = gt_masks.astype(np.int16)
-    pred_masks = pred_masks.astype(np.int16)
+    gt_mask = gt_mask.astype(np.int16)
+    pred_mask = pred_mask.astype(np.int16)
 
     # - Find the classes
-    lbls = np.unique(gt_masks)
+    lbls = np.unique(gt_mask)
 
     # - Discard the background (0)
     lbls = lbls[lbls > 0]
+    if lbls.any():
+        # - Convert the ground truth mask to one-hot class masks
+        gt_one_hot_masks = split_instance_mask(instance_mask=gt_mask, labels=lbls)
+        gt_one_hot_masks = np.array(gt_one_hot_masks, dtype=np.float32)
+        # print('gt.shape: ', {gt_one_hot_masks.shape})
+        # - Calculate the ground truth object area
+        A_gt = gt_one_hot_masks.sum(axis=(-2, -1))
 
-    # - Convert the ground truth mask to one-hot class masks
-    gt_one_hot_masks = split_instance_mask(instance_mask=gt_masks, labels=lbls)
-    gt_one_hot_masks = np.array(gt_one_hot_masks, dtype=np.float32)
-    if len(gt_one_hot_masks.shape) < 4:
-        gt_one_hot_masks = np.expand_dims(gt_one_hot_masks, axis=0)
+        if len(gt_one_hot_masks.shape) < 4:
+            gt_one_hot_masks = np.expand_dims(gt_one_hot_masks, axis=0)
 
-    # - Calculate the ground truth object area
-    A = gt_one_hot_masks.sum(axis=(-2, -1))
+        # - Convert the predicted mask to one-hot class masks
+        pred_one_hot_masks = split_instance_mask(instance_mask=pred_mask, labels=lbls)
+        pred_one_hot_masks = np.array(pred_one_hot_masks, dtype=np.float32)
 
-    # - Convert the predicted mask to one-hot class masks
-    pred_one_hot_masks = split_instance_mask(instance_mask=pred_masks,
-                                             labels=lbls)
-    pred_one_hot_masks = np.array(pred_one_hot_masks, dtype=np.float32)
-    if len(pred_one_hot_masks.shape) < 4:
-        pred_one_hot_masks = np.expand_dims(pred_one_hot_masks, axis=0)
+        # print('pred.shape: ', {gt_one_hot_masks.shape})
+        # - Calculate the ground truth object area
+        A_pred = pred_one_hot_masks.sum(axis=(-2, -1))
 
-    # - Calculate an intersection for each object with each other object
-    Is = (gt_one_hot_masks[:, np.newaxis, ...] *
-          pred_one_hot_masks[np.newaxis, ...]).sum(axis=(-1, -2))
+        if len(pred_one_hot_masks.shape) < 4:
+            pred_one_hot_masks = np.expand_dims(pred_one_hot_masks, axis=0)
 
-    # - Calculate a union for each object with each other object
-    Us = np.logical_or(
-        gt_one_hot_masks[:, np.newaxis, ...],
-        pred_one_hot_masks[np.newaxis, ...]).sum(axis=(-1, -2))
-    Us[Us == 0] = 1  # to avoid division by 0
+        # - Calculate an intersection for each object with each other object
+        Is = (gt_one_hot_masks[:, np.newaxis, ...] * pred_one_hot_masks[np.newaxis, ...]).sum(axis=(-1, -2))
 
-    # - Calculate the IoUs for each label for each mask
-    IoUs = (Is / Us).max(axis=1)
+        # - Calculate the dice for each label for each mask
+        dice = (2 * Is / (A_gt + A_pred + EPSILON)).max(axis=1)
 
-    # - Leave only the IoUs which are > 0.5 (may introduce np.inf in case all
-    # the IoUs <= 0.5
-    non_zero_iou_sums = (IoUs > 0.5).sum(axis=0)
+        # - Leave only the dice which are > 0.5 (may introduce np.inf in case all
+        non_zero_iou_sums = (dice > 0.5).sum(axis=0)
 
-    # - Calculate the mean IoU for each mask
-    IoUs = IoUs.sum(axis=0) / non_zero_iou_sums
+        # - Calculate the mean IoU for each mask
+        dice = dice.sum(axis=0) / non_zero_iou_sums
 
-    # - Replace all the IoUs which lower than 0.5 with 0
-    IoUs[(IoUs == np.inf) | (np.isnan(IoUs))] = .0
+        # - Replace all the dice which lower than 0.5 with 0
+        dice[(dice == np.inf) | (np.isnan(dice))] = .0
 
-    return IoUs
+        dice = np.nanmean(dice)
+
+    return dice
 
 
 def update_hyper_parameters(hyper_parameters: dict,
@@ -1109,104 +765,6 @@ def update_hyper_parameters(hyper_parameters: dict,
                         hyp_param_cat)[arg_name] = args.get(arg_name)
 
 
-def get_image_mask_figure(image: np.ndarray, mask: np.ndarray,
-                          suptitle: str = '', title: str = '',
-                          figsize: tuple = (20, 20)):
-    # - Prepare the mask overlap image
-    msk = np.zeros((*mask.shape, 3))
-
-    # - Green channel - inner cell
-    inner_msk = deepcopy(mask)
-    inner_msk[inner_msk != 1] = 0
-    msk[..., 1] = inner_msk
-
-    # - Blue channel - contur of the cell
-    contur_msk = deepcopy(mask)
-    contur_msk[contur_msk != 2] = 0
-    msk[..., 2] = contur_msk
-
-    fig, ax = plt.subplots(figsize=figsize)
-    ax.imshow(image, cmap='gray')
-    ax.imshow(msk, alpha=0.3)
-    ax.set(title=title)
-
-    fig.suptitle(suptitle)
-
-    return fig
-
-
-def plot_mask_error(image: np.ndarray, mask: np.ndarray,
-                    pred_mask: np.ndarray = None, suptitle: str = '',
-                    title: str = '', figsize: tuple = (20, 20),
-                    tensorboard_params: dict = None,
-                    save_file: pathlib.Path = None, overwrite: bool = False):
-    # - Prepare the mask overlap image
-    msk_shp = mask.shape
-    msk_dims = len(msk_shp)
-    if msk_dims > 2:
-        msk_shp = msk_shp[:-1]
-    msk = np.zeros((*msk_shp, 3))
-    msk[..., 1] = mask[..., 0] if msk_dims > 2 else mask
-
-    # - If there is a predicted segmentation
-    if isinstance(pred_mask, np.ndarray):
-        msk[..., 0] = \
-            pred_mask[..., 0] if len(pred_mask.shape) > 2 else pred_mask
-
-    # - Convert instance segmentation to binary
-    msk[msk > 0] = 1.
-
-    fig, ax = plt.subplots(figsize=figsize)
-    ax.imshow(image, cmap='gray')
-    ax.imshow(msk, alpha=0.3)
-    ax.set(title=title)
-
-    fig.suptitle(suptitle)
-
-    save_figure(figure=fig, save_file=save_file)
-
-    if isinstance(tensorboard_params, dict):
-        write_figure_to_tensorboard(
-            writer=tensorboard_params.get('writer'),
-            figure=fig,
-            tag=tensorboard_params.get('tag'),
-            step=tensorboard_params.get('step')
-        )
-
-    plt.close(fig)
-
-
-def monitor_seg_error(gt_masks: np.ndarray, pred_masks: np.ndarray,
-                      seg_measures: np.ndarray, images: np.ndarray = None,
-                      n_samples: int = 5, figsize: tuple = (20, 10),
-                      save_dir: str or pathlib.Path = './seg_errors'):
-    save_dir = pathlib.Path(save_dir)
-    os.makedirs(save_dir, exist_ok=True)
-    data = list(zip(gt_masks, pred_masks, seg_measures))
-
-    for idx, (gt, pred, seg_msr) in zip(np.arange(n_samples), data):
-        seg = np.zeros((*gt.shape[:-1], 3))
-        seg[..., 0] = gt[..., 0]
-        seg[..., 2] = pred[..., 0]
-        seg[seg > 0] = 1.
-
-        if isinstance(images, np.ndarray):
-            fig, ax = plt.subplots(1, 2, figsize=figsize)
-            ax[0].imshow(images[idx], cmap='gray')
-            ax[0].set(title='Original Image')
-            ax[1].imshow(seg)
-            ax[1].set(title=f'Seg Measure = {seg_msr:.4f}')
-        else:
-            fig, ax = plt.subplots(figsize=figsize)
-            ax.imshow(seg)
-            ax.set(title=f'Seg Measure = {seg_msr:.4f}')
-
-        fig.suptitle(f'GT (red) vs Pred (blue) ')
-
-        plt.savefig(save_dir / f'item_{idx}.png')
-        plt.close()
-
-
 def normalize(image: np.ndarray):
     return (image - image.mean() * np.max(image)) / \
         (image.std() * np.max(image))
@@ -1222,37 +780,6 @@ def calc_histogram(data: np.ndarray or list, bins: np.ndarray,
         heights = heights / len(data)
 
     return heights, ranges
-
-
-def plot_hist(data: np.ndarray or list, bins: np.ndarray,
-              save_file: pathlib.Path = None, overwrite: bool = False):
-    # - Plot histogram
-    ds = pd.DataFrame(dict(heights=data))
-
-    rc = {
-        'font.size': 12,
-        'axes.labelsize': 20,
-        'legend.fontsize': 20.,
-        'axes.titlesize': 20,
-        'xtick.labelsize': 20,
-        'ytick.labelsize': 20
-    }
-    sns.set_context(rc=rc)
-    dist_plot = sns.displot(ds['heights'], bins=bins, rug=True, kde=True)
-
-    if isinstance(save_file, pathlib.Path) \
-            and (not save_file.is_file() or overwrite):
-        os.makedirs(save_file.parent, exist_ok=True)
-        dist_plot.savefig(save_file)
-    else:
-        print(f'WARNING: could not save plot to \'{save_file}\' as it already '
-              f'exists!')
-
-    plt.close(dist_plot.figure)
-    sns.set_context(rc=RC)
-
-    print_pretty_message(
-        message=f'An histogram was saved to: {save_file}', delimiter_symbol='*')
 
 
 def to_numpy(data: np.ndarray, file_path: str or pathlib.Path,
@@ -1345,37 +872,37 @@ def print_pretty_message(message: str, delimiter_symbol: str = '='):
 def get_data(mode: str, hyper_parameters: dict, logger: logging.Logger = None):
     data_dict = dict()
 
-    # dt_fl = str_2_path(path=hyper_parameters.get(mode)['temp_data_file'])
-    # if not hyper_parameters.get('data')['reload_data'] and dt_fl.is_file():
-    #     data_dict = from_pickle(data_file=dt_fl, logger=logger)
-    # else:
-    dt_dir = str_2_path(path=hyper_parameters.get(mode)['data_dir'])
-    fl_tupls = scan_files(
-        root_dir=dt_dir,
-        seg_dir_postfix=hyper_parameters.get(mode)['seg_dir_postfix'],
-        image_prefix=hyper_parameters.get(mode)['image_prefix'],
-        seg_prefix=hyper_parameters.get(mode)['seg_prefix'],
-        seg_sub_dir=hyper_parameters.get(mode)['seg_sub_dir']
-    )
+    dt_fl = str_2_path(path=hyper_parameters.get(mode)['temp_data_file'])
+    if not hyper_parameters.get('data')['reload_data'] and dt_fl.is_file():
+        data_dict = from_pickle(data_file=dt_fl, logger=logger)
+    else:
+        dt_dir = str_2_path(path=hyper_parameters.get(mode)['data_dir'])
+        fl_tupls = scan_files(
+            root_dir=dt_dir,
+            seg_dir_postfix=hyper_parameters.get(mode)['seg_dir_postfix'],
+            image_prefix=hyper_parameters.get(mode)['image_prefix'],
+            seg_prefix=hyper_parameters.get(mode)['seg_prefix'],
+            seg_sub_dir=hyper_parameters.get(mode)['seg_sub_dir']
+        )
 
-    data_dict = get_data_dict(data_file_tuples=fl_tupls)
+        # - Load images and their masks
+        if mode == 'training':
+            np.random.shuffle(fl_tupls)
+            data_dict = get_data_dict(data_file_tuples=fl_tupls)
 
-    # - Load images and their masks
-    if mode == 'training':
-        np.random.shuffle(fl_tupls)
-        data_dict = get_data_dict(data_file_tuples=fl_tupls)
+            # - Clean data items with no objects in them
+            data_dict = clean_items_with_empty_masks(
+                data_dict=data_dict,
+                save_file=hyper_parameters.get(mode)['temp_data_file'])
 
-        # - Clean data items with no objects in them
-        data_dict = clean_items_with_empty_masks(
-            data_dict=data_dict,
-            save_file=hyper_parameters.get(mode)['temp_data_file'])
-
-        data_dict = get_relevant_data(
-            data_dict=data_dict,
-            relevant_files=os.listdir(
-                hyper_parameters.get(mode)['mask_dir']),
-            save_file=hyper_parameters.get(mode)['temp_data_file'],
-            logger=logger)
+            data_dict = get_relevant_data(
+                data_dict=data_dict,
+                relevant_files=os.listdir(
+                    hyper_parameters.get(mode)['mask_dir']),
+                save_file=hyper_parameters.get(mode)['temp_data_file'],
+                logger=logger)
+        else:
+            data_dict = get_data_dict(data_file_tuples=fl_tupls)
 
     return data_dict
 
@@ -1436,30 +963,19 @@ def get_arg_parser():
           drop_rate: 0.2
                         ''')
     parser.add_argument('--test_data', type=str,
-                        choices=['sim+', 'gowt1', 'hela'],
-                        default='sim+',
-                        help=f'The data to run test on')
+                        choices=['sim+', 'gowt1', 'hela'], default='sim+', help=f'The data to run test on')
     parser.add_argument('--inference_data', type=str,
-                        choices=['sim+', 'gowt1', 'hela'],
-                        default='gowt1',
-                        help=f'The data to run test on')
-    parser.add_argument('--debug', default=False, action='store_true',
-                        help=f'If the run is a debugging run')
-    parser.add_argument('--gpu_id', type=int,
-                        default=0 if torch.cuda.device_count() > 0 else -1,
+                        choices=['sim+', 'gowt1', 'hela'], default='gowt1', help=f'The data to run test on')
+    parser.add_argument('--debug', default=False, action='store_true', help=f'If the run is a debugging run')
+    parser.add_argument('--gpu_id', type=int, default=0 if torch.cuda.device_count() > 0 else -1,
                         help='The ID of the GPU (if there is any) to run the '
-                             'network on (e.g., --gpu_id 1 will run the '
-                             'network on GPU #1 etc.)')
-    parser.add_argument('--hyper_params_file', type=str,
-                        default=HYPER_PARAMS_FILE,
+                             'network on (e.g., --gpu_id 1 will run the network on GPU #1 etc.)')
+    parser.add_argument('--hyper_params_file', type=str, default=HYPER_PARAMS_FILE,
                         help='The path to the file with the hyper-parameters')
-    parser.add_argument('--reload_data', default=False, action='store_true',
-                        help=f'If to reload the data')
+    parser.add_argument('--reload_data', default=False, action='store_true', help=f'If to reload the data')
 
-    parser.add_argument('--in_train_augmentation', default=False,
-                        action='store_true',
-                        help=f'Regular mode where the augmentation is performed'
-                             f' on-the-fly')
+    parser.add_argument('--in_train_augmentation', default=False, action='store_true',
+                        help=f'Regular mode where the augmentation is performed on-the-fly')
     parser.add_argument('--wandb', default=False, action='store_true',
                         help=f'If to use the wandb callback')
     parser.add_argument('--tensorboard', default=False, action='store_true',
@@ -1467,66 +983,44 @@ def get_arg_parser():
     parser.add_argument('--load_checkpoint', default=False, action='store_true',
                         help=f'If to continue the training from the checkpoint '
                              f'saved at the checkpoint file')
-    parser.add_argument('--train_data_dir', type=str,
-                        help='The path to the train data file')
-    parser.add_argument('--train_image_dir', type=str,
-                        help='The path to the train images directory')
-    parser.add_argument('--train_mask_dir', type=str,
-                        help='The path to the train masks directory')
-    parser.add_argument('--train_temp_data_file', type=str,
-                        help='The path to the train data file')
-    parser.add_argument('--test_data_dir', type=str,
-                        help='The path to the custom test file')
-    parser.add_argument('--inference_data_dir', type=str,
-                        help='The path to the inference data dir')
+    parser.add_argument('--train_data_dir', type=str, help='The path to the train data file')
+    parser.add_argument('--train_image_dir', type=str, help='The path to the train images directory')
+    parser.add_argument('--train_mask_dir', type=str, help='The path to the train masks directory')
+    parser.add_argument('--train_temp_data_file', type=str, help='The path to the train data file')
+    parser.add_argument('--test_data_dir', type=str, help='The path to the custom test file')
+    parser.add_argument('--inference_data_dir', type=str, help='The path to the inference data dir')
 
-    parser.add_argument('--output_dir', type=str,
-                        help='The path to the directory where the outputs will'
-                             ' be placed')
+    parser.add_argument('--output_dir', type=str, help='The path to the directory where the outputs will be placed')
 
     parser.add_argument('--crop_height', type=int,
-                        help='The height of the images that will be used for'
-                             ' network training and inference. '
-                             'If not specified, will be set to IMAGE_HEIGHT as'
-                             ' in general_configs.py file.')
+                        help='The height of the images that will be used for network training and inference. '
+                             'If not specified, will be set to IMAGE_HEIGHT as in general_configs.py file.')
     parser.add_argument('--crop_width', type=int,
-                        help='The width of the images that will be used for'
-                             ' network training and inference. '
-                             'If not specified, will be set to IMAGE_WIDTH as '
-                             'in general_configs.py file.')
+                        help='The width of the images that will be used for network training and inference. '
+                             'If not specified, will be set to IMAGE_WIDTH as in general_configs.py file.')
 
     parser.add_argument('--in_channels', type=int,
-                        help='The number of channels in an input image '
-                             '(e.g., 3 for RGB, 1 for Grayscale etc)')
+                        help='The number of channels in an input image (e.g., 3 for RGB, 1 for Grayscale etc)')
     parser.add_argument('--out_channels', type=int,
-                        help='The number of channels in the output image '
-                             '(e.g., 3 for RGB, 1 for Grayscale etc)')
+                        help='The number of channels in the output image (e.g., 3 for RGB, 1 for Grayscale etc)')
 
     # - TRAINING
-    parser.add_argument('--epochs', type=int,
-                        help='Number of epochs to train the model')
-    parser.add_argument('--batch_size', type=int,
-                        help='The number of samples in each batch')
-    parser.add_argument('--val_prop', type=float,
-                        help=f'The proportion of the data which will be set '
-                             f'aside, and be used in the process of validation')
-    parser.add_argument('--tr_checkpoint_file', type=str,
-                        help=f'The path to the file which contains the '
-                             f'checkpoints of the model')
-    parser.add_argument('--tf_checkpoint_dir', type=str,
-                        help=f'The path to the directory which contains the '
-                             f'checkpoints of the model')
+    parser.add_argument('--epochs', type=int, help='Number of epochs to train the model')
+    parser.add_argument('--batch_size', type=int, help='The number of samples in each batch')
+    parser.add_argument('--val_prop', type=float, help=f"The proportion of the data which will be set "
+                                                       f"aside, and be used in the process of validation")
+    parser.add_argument('--tr_checkpoint_file', type=str, help=f"The path to the file which contains the "
+                                                               f"checkpoints of the model")
+    parser.add_argument('--tf_checkpoint_dir', type=str, help=f"The path to the directory which contains the "
+                                                              f"checkpoints of the model")
     parser.add_argument('--tf_checkpoint_file', type=str,
-                        help=f'The path to the file which contains the '
-                             f'checkpoints of the model')
+                        help=f'The path to the file which contains the checkpoints of the model')
 
     # - DROP BLOCK
     parser.add_argument('--drop_block', default=False, action='store_true',
                         help=f'If to use the drop_block in the network')
-    parser.add_argument('--drop_block_keep_prob', type=float,
-                        help=f'The probability to keep the block')
-    parser.add_argument('--drop_block_block_size', type=int,
-                        help=f'The size of the block to drop')
+    parser.add_argument('--drop_block_keep_prob', type=float, help=f'The probability to keep the block')
+    parser.add_argument('--drop_block_block_size', type=int, help=f'The size of the block to drop')
 
     # - OPTIMIZERS
     # optimizer
@@ -1619,3 +1113,108 @@ def get_arg_parser():
                              f' function for values < 0')
 
     return parser
+
+
+def instance_2_categorical(masks: np.ndarray or list):
+    """
+    Converts an instance masks (i.e., where each cell is represented by a
+    different color, to a mask with 3 classes, i.e.,
+        - 0 for background,
+        - 1 for the inner part of the cell
+        - 2 for cells' boundary
+    """
+
+    def _merge_categorical_masks(masks: np.ndarray):
+        msk = np.zeros(masks.shape[1:], dtype=np.float32)
+        for cat_mks in masks:
+            msk += cat_mks
+
+        # - Fix the boundary if it was added several times from different cells
+        msk[msk > 2.] = 2.
+        msk = msk.astype(np.float32)
+
+        return msk
+
+    def _get_categorical_mask(binary_mask: np.ndarray):
+        # Shrinks the labels
+        inner_msk = grey_erosion(binary_mask, size=5)
+
+        # Create the contur of the cells
+        contur_msk = binary_mask - inner_msk
+        contur_msk[contur_msk > 0] = 2
+
+        # - Create the inner part of the cell
+        inner_msk[inner_msk > 0] = 1
+
+        # - Combine the inner and the contur masks to create the categorical mask
+        # with three classes, i.e., background 0, inner 1 and contur 2
+        cat_msk = inner_msk + contur_msk
+
+        return cat_msk
+
+    btch_cat_msks = []
+    for msk in masks:
+        # - Split the mask into binary masks of separate cells
+        bin_msks = split_instance_mask(instance_mask=msk)
+
+        # - For each binary cell - get a categorical mask
+        cat_msks = [np.zeros_like(msk)]
+        for bin_msk in bin_msks:
+            cat_msk = _get_categorical_mask(binary_mask=bin_msk)
+            cat_msks.append(cat_msk)
+
+        # - Merge the categorical masks for each cell into a single
+        # categorical mask
+        mrgd_cat_msk = _merge_categorical_masks(masks=np.array(cat_msks))
+
+        # - Add the categorical mask to the batch masks
+        btch_cat_msks.append(mrgd_cat_msk)
+
+    # - Convert to array
+    btch_cat_msks = np.array(btch_cat_msks, dtype=np.float32)
+
+    return btch_cat_msks
+
+
+def test_instance_2_categorical_single():
+
+    msk_57_fl = '/media/rrtammyfs/labDatabase/CellTrackingChallenge/Test/Fluo-N2DH-SIM+/01_RES/mask057.tif'
+
+    msk_57_inst = load_image(msk_57_fl)
+
+    msk_57_cat = instance_2_categorical(masks=[msk_57_inst])[0]
+    msk_57_cat = categorical_2_rgb(msk_57_cat)
+
+    plt.imshow(msk_57_inst)
+    plt.show()
+    plt.imshow(msk_57_cat)
+    plt.show()
+
+
+def test_instance_2_categorical_batch():
+
+    msk_57_fl = '/media/rrtammyfs/labDatabase/CellTrackingChallenge/Test/Fluo-N2DH-SIM+/01_RES/mask057.tif'
+    msk_77_fl = '/media/rrtammyfs/labDatabase/CellTrackingChallenge/Test/Fluo-N2DH-SIM+/01_RES/mask077.tif'
+    msk_91_fl = '/media/rrtammyfs/labDatabase/CellTrackingChallenge/Test/Fluo-N2DH-SIM+/01_RES/mask091.tif'
+
+    msk_57_inst = load_image(msk_57_fl)
+    msk_77_inst = load_image(msk_77_fl)
+    msk_91_inst = load_image(msk_91_fl)
+
+    msk_57_cat, msk_77_cat, msk_91_cat = instance_2_categorical(masks=[msk_57_inst, msk_77_inst, msk_91_inst])
+
+    fig, ax = plt.subplots(2, 3, figsize=(60, 20))
+    ax[0, 0].imshow(msk_57_inst)
+    ax[1, 0].imshow(msk_57_cat)
+
+    ax[0, 1].imshow(msk_77_inst)
+    ax[1, 1].imshow(msk_77_cat)
+
+    ax[0, 2].imshow(msk_91_inst)
+    ax[1, 2].imshow(msk_91_cat)
+
+    plt.show()
+
+
+if __name__ == '__main__':
+    test_instance_2_categorical_single()
