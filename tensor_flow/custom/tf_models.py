@@ -18,8 +18,7 @@ DEBUG = False
 
 
 class RibCage(keras.Model):
-    def __init__(self, model_configs: dict, output_dir: pathlib.Path or str,
-                 logger: logging.Logger = None):
+    def __init__(self, model_configs: dict, output_dir: pathlib.Path or str, logger: logging.Logger = None):
         super().__init__()
         self.input_image_dims = model_configs.get('input_image_dims')
         self.logger = logger
@@ -102,16 +101,24 @@ class RibCage(keras.Model):
             ]
         )
 
-    def _build_fully_connected_block(self, units: int, drop_rate: float):
-        return keras.Sequential(
-            [
-                keras.layers.Dense(units=units,
-                                   kernel_regularizer=self.kernel_regularizer),
-                keras.layers.BatchNormalization(),
-                self.activation_layer,
-                keras.layers.Dropout(rate=drop_rate)
-            ]
-        )
+    def _build_fully_connected_block(self, units: int, drop_rate: float, last: bool = False):
+        if not last:
+            blck = keras.Sequential(
+                [
+                    keras.layers.Dense(units=units, kernel_regularizer=self.kernel_regularizer),
+                    # tf.keras.layers.ReLU()
+                    # keras.layers.BatchNormalization(),
+                    self.activation_layer,
+                    # keras.layers.Dropout(rate=drop_rate)
+                ]
+            )
+        else:
+            blck = keras.Sequential(
+                [
+                    keras.layers.Dense(units=units, kernel_regularizer=self.kernel_regularizer, activation=None)
+                ]
+            )
+        return blck
 
     def build_model(self):
         block_filters, block_kernel_sizes = \
@@ -145,14 +152,13 @@ class RibCage(keras.Model):
 
         fc_layer = keras.layers.Flatten()(input_spine)
         sub_model = None
-        for units in layer_units:
+        for idx, units in enumerate(layer_units):
             sub_model = self._build_fully_connected_block(
-                units=units, drop_rate=drop_rate)
+                units=units, drop_rate=drop_rate, last=idx == len(layer_units) - 1)
             fc_layer = sub_model(fc_layer)
         output_layer = fc_layer
 
-        return keras.Model(
-            inputs=[input_left_rib, input_right_rib], outputs=[output_layer])
+        return keras.Model(inputs=[input_left_rib, input_right_rib], outputs=[output_layer])
 
     def call(self, inputs, training: bool = False):
         return self.model(inputs)
@@ -163,8 +169,7 @@ class RibCage(keras.Model):
     def summary(self):
         return self.model.summary()
 
-    def _log(self, images, masks, true_seg_measures, pred_seg_measures,
-             training: bool = True):
+    def _log(self, images, masks, true_seg_measures, pred_seg_measures, training: bool = True):
         with tf.device('CPU:0'):
             # --------------------------------------------------------------
             # - ADD THE HISTORY OF THE TRUE AND THE PREDICTED SEG MEASURES -
@@ -263,8 +268,7 @@ class RibCage(keras.Model):
                                   tf.TensorSpec(shape=[None],
                                   dtype=tf.float32, name='seg_scores')
                                   ])
-    def validate(self, btch_imgs_aug, btch_msks_aug, btch_true_seg_msrs) \
-            -> dict:
+    def validate(self, btch_imgs_aug, btch_msks_aug, btch_true_seg_msrs) -> dict:
         print(f'Test Tracing')
         # - Get the data of the current epoch
         # (btch_imgs_aug, btch_msks_aug), btch_true_seg_msrs = data

@@ -234,8 +234,7 @@ class DataLoader(tf.keras.utils.Sequence):
             # <3> Change the GT mask to simulate the imperfect segmentation
             aug_res = self.train_mask_augs(image=img, mask=msk_gt)
             msk = aug_res.get('mask')
-            p = np.random.rand()
-            if p > 0.1:
+            if np.random.rand() > 0.1:
                 msk = self.apply_elastic(msk)
 
             # <4> Calculate the seg score of the corrupt mask with the GT

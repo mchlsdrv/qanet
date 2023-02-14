@@ -161,15 +161,35 @@ def image_2_float(image: np.ndarray, max_val: int = 255):
     return image / max_val if max_val != 0 else image
 
 
+def adjust_brightness_(image, delta):
+    out_img = image + delta
+    return out_img
+
+
+def adjust_contrast_(image, factor):
+    img_mean = image.mean()
+    out_img = (image - img_mean) * factor + img_mean
+    return out_img
+
+
 def transform_image(image: np.ndarray):
     # - Make sure the image is in the right range
-    img = image_clip_values(image=image, max_val=255)
+    # img = image_clip_values(image=image, max_val=255)
 
     # - Convert the image to float dividing by it by 255
-    img = image_2_float(image=img, max_val=255)
+    img = image / image.max()
+    # img = image_2_float(image=img, max_val=255)
 
     # - Standardize the image by (I - E[I]) / std(I)
-    img = standardize_image(image=img)
+    # img = standardize_image(image=img)
+
+    # - Random contrast plus/minus 50%
+    random_contrast_factor = np.random.rand() + 0.5
+    img = adjust_contrast_(img, random_contrast_factor)
+
+    # - Random brightness delta plus/minus 10% of maximum value
+    random_brightness_delta = (np.random.rand() - 0.5) * 0.2 * img.max()
+    img = adjust_brightness_(img, random_brightness_delta)
 
     return img
 
@@ -403,9 +423,7 @@ def build_metadata(data_dir: str or pathlib.Path, shape: tuple,
                      f'{data_dir}/metadata_{dir_name}.pkl').open(mode='wb'))
 
 
-def get_files_from_metadata(root_dir: str or pathlib.Path,
-                            metadata_files_regex,
-                            logger: logging.Logger = None):
+def get_files_from_metadata(root_dir: str or pathlib.Path, metadata_files_regex, logger: logging.Logger = None):
     img_seg_fls = []
     for root, dirs, files in os.walk(root_dir):
         for file in files:
@@ -512,8 +530,7 @@ def get_data_dict(data_file_tuples: list):
     return data_dict
 
 
-def get_relevant_data(data_dict: dict, relevant_files: list,
-                      save_file: pathlib.Path = None,
+def get_relevant_data(data_dict: dict, relevant_files: list, save_file: pathlib.Path = None,
                       logger: logging.Logger = None):
     print('''
     ==================================
@@ -543,9 +560,7 @@ def get_relevant_data(data_dict: dict, relevant_files: list,
     return relevant_data_dict
 
 
-def clean_items_with_empty_masks(data_dict: dict,
-                                 save_file: pathlib.Path = None,
-                                 logger: logging.Logger = None):
+def clean_items_with_empty_masks(data_dict: dict, save_file: pathlib.Path = None, logger: logging.Logger = None):
     print('''
     ==========================================
     == Cleaning data items with empty masks ==
@@ -603,8 +618,7 @@ def clahe(image: np.ndarray, clip_limit=2.0, tile_grid_size=(8, 8)):
     return img
 
 
-def split_instance_mask(instance_mask: np.ndarray,
-                        labels: np.ndarray or list = None):
+def split_instance_mask(instance_mask: np.ndarray, labels: np.ndarray or list = None):
     """
     Splits an instance mask into N binary masks
     :param: instance_mask - mask where integers represent different objects
@@ -692,8 +706,7 @@ def calc_seg_score(gt_mask: np.ndarray, pred_mask: np.ndarray):
     return dice
 
 
-def update_hyper_parameters(hyper_parameters: dict,
-                            arguments: argparse.Namespace):
+def update_hyper_parameters(hyper_parameters: dict, arguments: argparse.Namespace):
     # - Get hyper-parameter names
     hyp_param_categories = list(hyper_parameters.keys())
 
@@ -770,8 +783,7 @@ def normalize(image: np.ndarray):
         (image.std() * np.max(image))
 
 
-def calc_histogram(data: np.ndarray or list, bins: np.ndarray,
-                   normalize: bool = False):
+def calc_histogram(data: np.ndarray or list, bins: np.ndarray, normalize: bool = False):
     # - Plot histogram
     heights, ranges = np.histogram(data, range=(bins[0], bins[-1]),
                                    bins=len(bins), density=False)
@@ -782,8 +794,7 @@ def calc_histogram(data: np.ndarray or list, bins: np.ndarray,
     return heights, ranges
 
 
-def to_numpy(data: np.ndarray, file_path: str or pathlib.Path,
-             overwrite: bool = False, logger: logging.Logger = None):
+def to_numpy(data: np.ndarray, file_path: str or pathlib.Path, overwrite: bool = False, logger: logging.Logger = None):
     if isinstance(file_path, str):
         file_path = pathlib.Path(file_path)
 
@@ -841,8 +852,7 @@ def from_pickle(data_file: pathlib.Path or str, logger: logging.Logger = None):
     return data
 
 
-def to_pickle(data, save_file: str or pathlib.Path,
-              logger: logging.Logger = None):
+def to_pickle(data, save_file: str or pathlib.Path, logger: logging.Logger = None):
     if check_pathable(path=save_file):
         save_file = str_2_path(path=save_file)
 
@@ -1137,7 +1147,7 @@ def instance_2_categorical(masks: np.ndarray or list):
 
     def _get_categorical_mask(binary_mask: np.ndarray):
         # Shrinks the labels
-        inner_msk = grey_erosion(binary_mask, size=5)
+        inner_msk = grey_erosion(binary_mask, size=3)
 
         # Create the contur of the cells
         contur_msk = binary_mask - inner_msk

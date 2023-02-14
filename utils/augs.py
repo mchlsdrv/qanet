@@ -4,8 +4,12 @@ import cv2
 import numpy as np
 from scipy.ndimage import (
     grey_dilation,
-    grey_erosion
+    grey_erosion,
+    grey_closing,
+    grey_opening,
+    affine_transform
 )
+
 from scipy.ndimage.interpolation import map_coordinates
 from scipy.ndimage.filters import gaussian_filter
 
@@ -70,6 +74,25 @@ def elastic_transform(image, alpha, sigma, random_state=None):
     return distorted_image.reshape(image.shape)
 
 
+def erode_dilate_merge(labled_seg, kernel_size):
+    ed = np.random.rand(1) < 0.5
+    strel = generate_binary_structure(2, 1)
+    strel = iterate_structure(strel, kernel_size[0])
+
+    if kernel_size > 0:
+        if ed:
+            labled_seg_out = grey_dilation(labled_seg, footprint=strel)
+        else:
+            labled_seg_out = grey_opening(labled_seg, footprint=strel)
+    else:
+        if ed:
+            labled_seg_out = grey_erosion(labled_seg, footprint=strel)
+        else:
+            labled_seg_out = grey_closing(labled_seg, footprint=strel)
+
+    return labled_seg_out
+
+
 def random_erosion(mask, **kwargs):
     # Shrinks the labels
     krnl = np.random.choice(EROSION_SIZES)
@@ -86,13 +109,15 @@ def random_dilation(mask, **kwargs):
 
 def random_opening(mask, **kwargs):
     # Disconnects labels
-    mask = random_dilation(random_erosion(mask))
+    krnl = np.random.choice(EROSION_SIZES)
+    mask = grey_opening(mask, size=krnl)
     return mask
 
 
 def random_closing(mask, **kwargs):
     # Disconnected labels are brought together
-    mask = random_erosion(random_dilation(mask))
+    krnl = np.random.choice(DILATION_SIZES)
+    mask = grey_closing(mask, size=krnl)
     return mask
 
 
@@ -103,22 +128,22 @@ def mask_augs():
                 [
                     tr.Lambda(
                         mask=random_erosion,
-                        p=P_EROSION
+                        p=0.5
                     ),
                     tr.Lambda(
                         mask=random_dilation,
-                        p=P_DILATION
+                        p=0.5
                     ),
                     tr.Lambda(
                         mask=random_opening,
-                        p=P_OPENING
+                        p=0.5
                     ),
                     tr.Lambda(
                         mask=random_closing,
-                        p=P_CLOSING
+                        p=0.5
                     ),
                 ],
-                p=P_ONE_OF
+                p=0.8
             ),
         ]
     )
@@ -134,12 +159,13 @@ def train_augs(crop_height: int, crop_width: int):
             ),
             A.OneOf(
                 [
-                    A.Flip(p=0.5),
+                    A.VerticalFlip(p=0.5),
                     A.HorizontalFlip(p=0.5),
                     A.ShiftScaleRotate(shift_limit=0.0625, scale_limit=0.1, rotate_limit=45,
                                        interpolation=cv2.INTER_LANCZOS4, p=0.5
                                        ),
-                    A.GaussianBlur(p=.5),
+                    # A.GaussianBlur(p=.5),
+                    tr.GaussNoise(p=.5),
                 ],
                 p=0.5
             ),

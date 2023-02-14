@@ -19,7 +19,7 @@ from utils.visual_funcs import (
     get_hit_rate_plot_figure,
     get_scatter_plot_figure,
     write_figure_to_tensorboard,
-    get_image_from_figure
+    get_image_from_figure, get_image_figure
 )
 
 
@@ -206,7 +206,23 @@ class ProgressLogCallback(tf.keras.callbacks.Callback):
                 'true_seg_measure').astype(np.float32)
             train_pred_sm = self.model.train_btch_smpl_dict.get(
                 'pred_seg_measure').astype(np.float32)
-            train_img_msk_fig = get_rgb_mask_figure(
+            # - Image
+            train_img_fig = get_image_figure(
+                image=train_img,
+                suptitle='Image',
+                title='',
+                figsize=(20, 20),
+            )
+            self.log_figure(
+                figure=train_img_fig,
+                file_writer=self.train_file_writer,
+                step=epoch,
+                tag='3 - Image',
+                procedure='train',
+                save_file=self.train_sample_dir / f'step_{epoch}.png'
+            )
+            # - Mask
+            train_msk_fig = get_rgb_mask_figure(
                 mask=train_msk,
                 suptitle='Mask',
                 title=f'Seg measure: true - {train_true_sm:.4f}, '
@@ -214,10 +230,10 @@ class ProgressLogCallback(tf.keras.callbacks.Callback):
                 figsize=(20, 20),
             )
             self.log_figure(
-                figure=train_img_msk_fig,
+                figure=train_msk_fig,
                 file_writer=self.train_file_writer,
                 step=epoch,
-                tag='3 - Sample',
+                tag='4 - Mask',
                 procedure='train',
                 save_file=self.train_sample_dir / f'step_{epoch}.png'
             )
@@ -301,18 +317,35 @@ class ProgressLogCallback(tf.keras.callbacks.Callback):
                 'true_seg_measure').astype(np.float32)
             val_pred_sm = self.model.val_btch_smpl_dict.get(
                 'pred_seg_measure').astype(np.float32)
-            val_img_msk_fig = get_rgb_mask_figure(
+
+            # - Image
+            val_img_fig = get_image_figure(
+                image=val_img,
+                suptitle='Image',
+                title='',
+                figsize=(20, 20),
+            )
+            self.log_figure(
+                figure=val_img_fig,
+                file_writer=self.val_file_writer,
+                step=epoch,
+                tag='3 - Image',
+                procedure='val',
+                save_file=self.val_sample_dir / f'step_{epoch}.png'
+            )
+            # - Mask
+            val_msk_fig = get_rgb_mask_figure(
                 mask=val_msk,
-                suptitle='Image with Corresponding Mask',
+                suptitle='Mask',
                 title=f'Seg measure: true - {val_true_sm:.4f}, '
                       f'pred - {val_pred_sm:.4f}',
                 figsize=(20, 20),
             )
             self.log_figure(
-                figure=train_img_msk_fig,
+                figure=val_msk_fig,
                 file_writer=self.val_file_writer,
                 step=epoch,
-                tag='3 - Sample',
+                tag='4 - Mask',
                 procedure='val',
                 save_file=self.val_sample_dir / f'step_{epoch}.png'
             )

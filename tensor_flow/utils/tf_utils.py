@@ -142,8 +142,7 @@ def weighted_mse(true, pred):
     return K.mean(K.sum(btch_weights * K.square(true - pred)))
 
 
-def get_callbacks(callback_type: str, hyper_parameters: dict,
-                  output_dir: pathlib.Path, logger: logging.Logger = None):
+def get_callbacks(callback_type: str, hyper_parameters: dict, output_dir: pathlib.Path, logger: logging.Logger = None):
     callbacks = []
     # -------------------
     # Built-in  callbacks
@@ -205,22 +204,14 @@ def get_callbacks(callback_type: str, hyper_parameters: dict,
     if hyper_parameters.get('callbacks')['reduce_lr_on_plateau']:
         callbacks.append(
             tf.keras.callbacks.ReduceLROnPlateau(
-                monitor=hyper_parameters.get('callbacks')[
-                    'reduce_lr_on_plateau_monitor'],
-                factor=hyper_parameters.get('callbacks')[
-                    'reduce_lr_on_plateau_factor'],
-                patience=hyper_parameters.get('callbacks')[
-                    'reduce_lr_on_plateau_patience'],
-                min_delta=hyper_parameters.get('callbacks')[
-                    'reduce_lr_on_plateau_min_delta'],
-                cooldown=hyper_parameters.get('callbacks')[
-                    'reduce_lr_on_plateau_cooldown'],
-                min_lr=hyper_parameters.get('callbacks')[
-                    'reduce_lr_on_plateau_min_lr'],
-                mode=hyper_parameters.get('callbacks')[
-                    'reduce_lr_on_plateau_mode'],
-                verbose=hyper_parameters.get('callbacks')[
-                    'reduce_lr_on_plateau_verbose'],
+                monitor=hyper_parameters.get('callbacks')['reduce_lr_on_plateau_monitor'],
+                factor=hyper_parameters.get('callbacks')['reduce_lr_on_plateau_factor'],
+                patience=hyper_parameters.get('callbacks')['reduce_lr_on_plateau_patience'],
+                min_delta=hyper_parameters.get('callbacks')['reduce_lr_on_plateau_min_delta'],
+                cooldown=hyper_parameters.get('callbacks')['reduce_lr_on_plateau_cooldown'],
+                min_lr=hyper_parameters.get('callbacks')['reduce_lr_on_plateau_min_lr'],
+                mode=hyper_parameters.get('callbacks')['reduce_lr_on_plateau_mode'],
+                verbose=hyper_parameters.get('callbacks')['reduce_lr_on_plateau_verbose'],
             )
         )
 
@@ -253,8 +244,7 @@ def launch_tensorboard(logdir):
     return tensorboard_th
 
 
-def get_model(mode: str, hyper_parameters: dict,
-              output_dir: pathlib.Path or str, logger: logging.Logger = None):
+def get_model(mode: str, hyper_parameters: dict, output_dir: pathlib.Path or str, logger: logging.Logger = None):
     weights_loaded = False
 
     model_configs = dict(
@@ -332,21 +322,45 @@ def get_model(mode: str, hyper_parameters: dict,
         nesterov=hyper_parameters.get('training')['optimizer_nesterov'],
         centered=hyper_parameters.get('training')['optimizer_centered'],
         cyclical_lr=hyper_parameters.get('callbacks')['cyclical_lr'],
-        cyclical_lr_init_lr=hyper_parameters.get(
-            'callbacks')['cyclical_lr_init_lr'],
-        cyclical_lr_max_lr=hyper_parameters.get(
-            'callbacks')['cyclical_lr_max_lr'],
-        cyclical_lr_step_size=hyper_parameters.get(
-            'training')['train_data_len'] // hyper_parameters.get(
-            'training')['batch_size']
+        cyclical_lr_init_lr=hyper_parameters.get('callbacks')['cyclical_lr_init_lr'],
+        cyclical_lr_max_lr=hyper_parameters.get('callbacks')['cyclical_lr_max_lr'],
+        cyclical_lr_step_size=hyper_parameters.get('training')['train_data_len'] // hyper_parameters.get(
+            'training')['batch_size'],
+        lr_reduction_scheduler=hyper_parameters.get('callbacks')['lr_reduction_scheduler'],
+        lr_reduction_scheduler_factor=hyper_parameters.get('callbacks')['lr_reduction_scheduler_factor'],
+        lr_reduction_scheduler_decay_steps=hyper_parameters.get('callbacks')['lr_reduction_scheduler_decay_steps'],
     )
     model.compile(
-        loss=tf.keras.losses.MeanSquaredError(),  # tf.losses.MSEWeightedMSE(weighted=compilation_configs.get('weighted_loss')),
+        loss=tf.keras.losses.MeanSquaredError(),
         optimizer=get_optimizer(args=compilation_configs),
         run_eagerly=True,
         metrics=hyper_parameters.get('training')['metrics']
     )
     return model, weights_loaded
+
+
+class LRScheduler(tf.keras.optimizers.schedules.LearningRateSchedule):
+
+    def __init__(self, initial_learning_rate, lr_reduction_points: list, lr_reduction_factor: float = 0.3):
+        self.lr = initial_learning_rate
+        self.lr_rdctn_pts = np.array(lr_reduction_points, dtype=np.int16)
+        self.lr_rdctn_fctr = lr_reduction_factor
+
+    def __call__(self, step):
+        # - If there are points at which we want to reduce the learning rate, and the current step is greater than the
+        # next number of epochs
+        if self.lr_rdctn_pts.any() and step > self.lr_rdctn_pts[0]:
+
+            # - Reduce the learning rate by the factor
+            self.lr = self.lr_rdctn_fctr * self.lr
+
+            # - Update the reduction point array by discarding the last reduction point
+            if len(self.lr_rdctn_pts) > 1:
+                self.lr_rdctn_pts = self.lr_rdctn_pts[1:]
+            else:
+                self.lr_rdctn_pts = np.array([])
+
+        return self.lr
 
 
 def get_optimizer(args: dict):
@@ -393,15 +407,20 @@ def get_optimizer(args: dict):
         )
 
     if args.get('cyclical_lr'):
-        learning_rate = tfa.optimizers.CyclicalLearningRate(
+        lr = tfa.optimizers.CyclicalLearningRate(
             initial_learning_rate=args.get('cyclical_lr_init_lr'),
             maximal_learning_rate=args.get('cyclical_lr_max_lr'),
             scale_fn=lambda x: 1 / (2. ** (x - 1)),
             step_size=args.get('cyclical_lr_step_size')
         )
+    elif args.get('lr_reduction_scheduler') == 'cosine':
+        lr = tf.keras.optimizers.schedules.CosineDecay(
+            args.get('learning_rate'),
+            decay_steps=args.get('lr_reduction_scheduler_decay_steps')
+        )
     else:
-        learning_rate = args.get('learning_rate')
-    return optimizer(learning_rate=learning_rate)
+        lr = args.get('learning_rate')
+    return optimizer(learning_rate=lr)
 
 
 def choose_gpu(gpu_id: int = 0, logger: logging.Logger = None):
@@ -432,8 +451,7 @@ def choose_gpu(gpu_id: int = 0, logger: logging.Logger = None):
                 logger.exception(err)
 
 
-def train_model(hyper_parameters: dict, output_dir: pathlib.Path or str,
-                logger: logging.Logger = None):
+def train_model(hyper_parameters: dict, output_dir: pathlib.Path or str, logger: logging.Logger = None):
     # - Load the data
     data_dict = get_data(mode='training', hyper_parameters=hyper_parameters,
                          logger=logger)
@@ -480,8 +498,7 @@ def train_model(hyper_parameters: dict, output_dir: pathlib.Path or str,
         tb_prc.join()
 
 
-def infer_data(hyper_parameters: dict, output_dir: pathlib.Path or str,
-               logger: logging.Logger = None):
+def infer_data(hyper_parameters: dict, output_dir: pathlib.Path or str, logger: logging.Logger = None):
     # - Load the data
     data_dict = get_data(mode='inference', hyper_parameters=hyper_parameters,
                          logger=logger)
@@ -529,8 +546,7 @@ def infer_data(hyper_parameters: dict, output_dir: pathlib.Path or str,
     return preds_dict
 
 
-def test_model(hyper_parameters: dict, output_dir: pathlib.Path or str,
-               logger: logging.Logger = None):
+def test_model(hyper_parameters: dict, output_dir: pathlib.Path or str, logger: logging.Logger = None):
     test_res_df = None
     df_fl = pathlib.Path(hyper_parameters.get('test')['dataframe_file'])
     if df_fl.is_file():

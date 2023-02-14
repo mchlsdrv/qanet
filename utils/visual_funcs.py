@@ -33,6 +33,16 @@ RC = {
 sns.set_context(rc=RC)
 
 
+def get_image_figure(image: np.ndarray, suptitle: str = '', title: str = '', figsize: tuple = (20, 20)):
+    fig, ax = plt.subplots(figsize=figsize)
+    ax.imshow(image, cmap='gray')
+    ax.set(title=title)
+
+    fig.suptitle(suptitle)
+
+    return fig
+
+
 def get_rgb_mask_figure(mask: np.ndarray, suptitle: str = '', title: str = '', figsize: tuple = (20, 20)):
     msk = categorical_2_rgb(mask)
 

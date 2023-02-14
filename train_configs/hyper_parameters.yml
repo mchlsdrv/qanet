@@ -10,8 +10,10 @@ data:
   image_width: 419
 
 augmentations:
-  crop_height: 128
-  crop_width: 128
+  crop_height: 256
+  crop_width: 256
+#  crop_height: 128
+#  crop_width: 128
 
 model:
   in_channels: 1
@@ -107,9 +109,11 @@ callbacks:
   early_stopping_verbose: 1
 
   # - LR Reduction Scheduler
-  lr_reduction_scheduler: False
+  lr_reduction_scheduler: 'None'
+#  lr_reduction_scheduler: 'cosine'
+  lr_reduction_scheduler_decay_steps: 10
   lr_reduction_scheduler_patience: [150, 300]
-  lr_reduction_scheduler_factor: 0.5
+  lr_reduction_scheduler_factor: 0.3
   lr_reduction_scheduler_min: 1e-9
 
   # - Cyclical LR
@@ -119,7 +123,7 @@ callbacks:
   cyclical_lr_step_size: 784
 
   # - LR Reduce on Plateau
-  reduce_lr_on_plateau: True
+  reduce_lr_on_plateau: False
   reduce_lr_on_plateau_patience: 10
   reduce_lr_on_plateau_factor: 0.7
   reduce_lr_on_plateau_monitor: 'val_loss'
@@ -159,8 +163,11 @@ training:
 
   optimizer_maximize: False
   optimizer_foreach: None
+#  optimizer: 'sgd'
   optimizer: 'adam'
-  optimizer_lr: 0.001
+  optimizer_lr: 0.0001
+  optimizer_lr_scheduler_reduction_points: [50, 100, 150, 250]
+  optimizer_lr_scheduler_reduction_factor: 0.3
   optimizer_lr_decay: 0.001
   optimizer_beta_1: 0.9
   optimizer_beta_2: 0.999
@@ -170,7 +177,7 @@ training:
   optimizer_momentum: 0.1
   optimizer_dampening: 0.01
   optimizer_momentum_decay: 0.01
-  optimizer_nesterov: False
+  optimizer_nesterov: True
   optimizer_centered: False
 
 test:
