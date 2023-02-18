@@ -36,17 +36,6 @@ from ..custom.tf_callbacks import (
 tf.config.run_functions_eagerly(False)
 
 
-class DropBlock(tf.keras.layers.Layer):
-    def __init__(self):
-        super().__init__()
-
-    def build(self, input_shape):
-        pass
-
-    def call(self, inputs):
-        pass
-
-
 class WeightedMSE:
     def __init__(self, weighted=False):
         self.weighted = weighted

@@ -407,3 +407,9 @@ def write_figure_to_tensorboard(writer, figure, tag: str, step: int):
                 get_image_from_figure(figure=figure),
                 step=step
             )
+
+
+def write_scalar_to_tensorboard(writer, value, tag: str, step: int):
+    with tf.device('/cpu:0'):
+        with writer.as_default():
+            tf.summary.scalar(tag, data=value, step=step)

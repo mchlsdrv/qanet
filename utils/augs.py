@@ -1,13 +1,11 @@
 import albumentations as A
 import albumentations.augmentations.transforms as tr
-import cv2
 import numpy as np
 from scipy.ndimage import (
     grey_dilation,
     grey_erosion,
     grey_closing,
     grey_opening,
-    affine_transform
 )
 
 from scipy.ndimage.interpolation import map_coordinates
@@ -33,25 +31,6 @@ __author__ = 'sidorov@post.bgu.ac.il'
 EROSION_SIZES = np.arange(4, 8)
 DILATION_SIZES = np.arange(4, 8)
 
-# - Elastic transform parameters
-ALPHA_FACTOR = 0.1
-
-SIGMA_FACTOR = 0.1
-
-ALPHA_AFFINE_FACTOR = 0.1
-
-# - Application probabilities
-P_EROSION = 0.5
-P_DILATION = 0.5
-P_OPENING = 0.5
-P_CLOSING = 0.5
-P_ONE_OF = 1.0
-P_ELASTIC = 0.7
-
-# - CLAHE parameters
-CLAHE_CLIP_LIMIT = 2
-CLAHE_TILE_GRID_SIZE = 8
-
 
 def elastic_transform(image, alpha, sigma, random_state=None):
     """Elastic deformation of images as described in [Simard2003]_.
@@ -72,25 +51,6 @@ def elastic_transform(image, alpha, sigma, random_state=None):
 
     distorted_image = map_coordinates(image, indices, order=1, mode='reflect')
     return distorted_image.reshape(image.shape)
-
-
-def erode_dilate_merge(labled_seg, kernel_size):
-    ed = np.random.rand(1) < 0.5
-    strel = generate_binary_structure(2, 1)
-    strel = iterate_structure(strel, kernel_size[0])
-
-    if kernel_size > 0:
-        if ed:
-            labled_seg_out = grey_dilation(labled_seg, footprint=strel)
-        else:
-            labled_seg_out = grey_opening(labled_seg, footprint=strel)
-    else:
-        if ed:
-            labled_seg_out = grey_erosion(labled_seg, footprint=strel)
-        else:
-            labled_seg_out = grey_closing(labled_seg, footprint=strel)
-
-    return labled_seg_out
 
 
 def random_erosion(mask, **kwargs):
@@ -128,19 +88,19 @@ def mask_augs():
                 [
                     tr.Lambda(
                         mask=random_erosion,
-                        p=0.5
+                        p=1.0
                     ),
                     tr.Lambda(
                         mask=random_dilation,
-                        p=0.5
+                        p=1.0
                     ),
                     tr.Lambda(
                         mask=random_opening,
-                        p=0.5
+                        p=1.0
                     ),
                     tr.Lambda(
                         mask=random_closing,
-                        p=0.5
+                        p=1.0
                     ),
                 ],
                 p=0.8
@@ -161,16 +121,10 @@ def train_augs(crop_height: int, crop_width: int):
                 [
                     A.VerticalFlip(p=0.5),
                     A.HorizontalFlip(p=0.5),
-                    A.ShiftScaleRotate(shift_limit=0.0625, scale_limit=0.1, rotate_limit=45,
-                                       interpolation=cv2.INTER_LANCZOS4, p=0.5
-                                       ),
-                    # A.GaussianBlur(p=.5),
-                    tr.GaussNoise(p=.5),
                 ],
                 p=0.5
             ),
         ],
-        # additional_targets={'mask0': 'mask'}
     )
 
 
@@ -182,7 +136,6 @@ def test_augs(crop_height: int, crop_width: int):
                 width=crop_width,
                 p=1.
             ),
-            # A.GaussianBlur(p=1),
         ]
     )
 
@@ -195,6 +148,5 @@ def inference_augs(crop_height: int, crop_width: int):
                 width=crop_width,
                 p=1.
             ),
-            # A.GaussianBlur(p=1),
         ]
     )

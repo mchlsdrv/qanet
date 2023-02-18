@@ -1,7 +1,6 @@
 import io
 import os
 import pathlib
-import time
 from functools import partial
 
 import matplotlib.pyplot as plt
@@ -54,7 +53,7 @@ def get_data_loaders(mode: str, data_dict: dict, hyper_parameters: dict, logger:
 
     if len(val_files) > 0:
         val_dl = DataLoader(
-            mode=mode,
+            mode='validation',
             data_dict=data_dict,
             file_keys=val_files,
             crop_height=hyper_parameters.get('augmentations')['crop_height'],
@@ -195,7 +194,7 @@ class DataLoader(tf.keras.utils.Sequence):
         end_idx = start_idx + self.batch_size if \
             start_idx + self.batch_size < self.n_images else self.n_images - 1
 
-        if self.mode == 'training':
+        if self.mode == 'training' or 'validation':
             item = self.get_batch_train(start_index=start_idx, end_index=end_idx)
         elif self.mode == 'inference':
             item = self.get_batch_inference(index=start_idx)
@@ -208,6 +207,10 @@ class DataLoader(tf.keras.utils.Sequence):
                             f'({self.masks_dir}) and be of type '
                             f'\'pathlib.Path\', but is of type '
                             f'\'{type(self.masks_dir)}\' ')
+
+        # - Shuffle the train file list on the last batch
+        if self.mode == 'training' and end_idx == self.n_images - 1:
+            np.random.shuffle(self.file_keys)
 
         return item
 
@@ -261,67 +264,15 @@ class DataLoader(tf.keras.utils.Sequence):
 
         return (btch_imgs_aug, btch_msks_aug), btch_seg_scrs
 
-    def get_batch_fast_train(self, start_index, end_index):
-        t_strt = time.time()
-
-        btch_imgs_aug = []
-        btch_msks_gt = []
-        btch_msks_aug = []
-        btch_seg_scrs = []
-
-        for img_fl in self.file_keys[start_index:end_index]:
-            # <1> Get the image and the mask
-            img, _, msk_gt = self.data_dict.get(img_fl)
-            img = img[..., -1]
-            msk_gt = msk_gt[..., -1]
-
-            # <2> Get the random augmentation and the corresponding seg measure
-            msk_rnd, seg_scr = get_random_mask(masks_root=self.masks_dir,
-                                               image_file=img_fl)
-            msk_rnd = msk_rnd[..., -1]
-
-            # <3> Perform the image transformations
-            aug_res = self.train_augs(image=img, mask=msk_rnd, mask0=msk_gt)
-
-            img = aug_res.get('image')
-            msk_rnd = aug_res.get('mask')
-            msk_gt = aug_res.get('mask0')
-
-            # <4> Apply image transformations
-            img = transform_image(image=img)
-
-            # - Add the data to the corresponding lists
-            btch_imgs_aug.append(img)
-            btch_msks_gt.append(msk_gt)
-            btch_msks_aug.append(msk_rnd)
-            btch_seg_scrs.append(seg_scr)
-
-        # - Convert to tensors
-
-        # - Images
-        btch_imgs_aug = tf.convert_to_tensor(np.array(btch_imgs_aug),
-                                             dtype=tf.float32)
-
-        # - Seg measures
-        btch_msks_aug = np.array(btch_msks_aug)
-        if self.calc_seg_score:
-            btch_seg_scrs = calc_seg_score(gt_masks=np.array(btch_msks_gt),
-                                           pred_masks=btch_msks_aug)
-        btch_seg_scrs = tf.convert_to_tensor(btch_seg_scrs, dtype=tf.float32)
-
-        # - Masks
-        btch_msks_aug = instance_2_categorical(masks=btch_msks_aug)
-        btch_msks_aug = tf.convert_to_tensor(btch_msks_aug, dtype=tf.float32)
-
-        return (btch_imgs_aug, btch_msks_aug), btch_seg_scrs
-
     def get_batch_test(self, index):
         # - Get the key of the image
         img_key = self.file_keys[index]
 
         # - Get the image and the mask
         img, _, msk = self.data_dict.get(img_key)
-        # img, msk = img.astype(np.uint8), msk.astype(np.uint8)
+
+        # - Discard the last channel as it is a gray scale image
+        img, msk = img[..., -1], msk[..., -1]
 
         # - Apply image transformations
         img = transform_image(image=img)
@@ -334,12 +285,8 @@ class DataLoader(tf.keras.utils.Sequence):
         # categorical, i.e., 3 classes - background, inner part and the boundary
         msk = instance_2_categorical(masks=msk)
 
-        # - Discard the last channel as it is a gray scale image
-        img, msk = img[..., -1], msk[..., -1]
-
         # - Convert the image and the mask to  tensor
-        img, msk = tf.convert_to_tensor([img], dtype=tf.float32), \
-            tf.convert_to_tensor([msk], dtype=tf.float32)
+        img, msk = tf.convert_to_tensor([img], dtype=tf.float32), tf.convert_to_tensor([msk], dtype=tf.float32)
 
         return img, msk, img_key
 
