@@ -210,34 +210,34 @@ class ProgressLogCallback(tf.keras.callbacks.Callback):
             # -----------------
             # - Hit rate plot -
             # -----------------
-            train_hit_rate_fig, train_hit_rate_hist, train_hit_rate_bins = \
-                get_hit_rate_plot_figure(
-                    true=np.array(self.model.train_epch_gt_seg_msrs).flatten(),
-                    pred=np.array(
-                        self.model.train_epch_pred_seg_msrs).flatten(),
-                    hit_rate_percent=HR_AET_PERCENTAGE,
-                    figsize=HR_AET_FIGSIZE,
-                    logger=self.logger
-                )
-
-            self.log_figure(
-                figure=train_hit_rate_fig,
-                file_writer=self.train_file_writer,
-                step=epoch,
-                tag='4 - Hit Rate',
-                procedure='train',
-                save_file=self.train_hit_rate_plots_dir / f'step_{epoch}.png'
-            )
-
-            # * Save metadata
-            to_numpy(
-                data=train_hit_rate_hist,
-                file_path=self.train_hit_rate_plots_dir / f'metadata/hit_rate_hist_epoch_{epoch}.npy',
-                overwrite=False, logger=self.logger)
-            to_numpy(
-                data=train_hit_rate_bins,
-                file_path=self.train_hit_rate_plots_dir / f'metadata/hit_rate_bins_epoch_{epoch}.npy',
-                overwrite=False, logger=self.logger)
+            # train_hit_rate_fig, train_hit_rate_hist, train_hit_rate_bins = \
+            #     get_hit_rate_plot_figure(
+            #         true=np.array(self.model.train_epch_gt_seg_msrs).flatten(),
+            #         pred=np.array(
+            #             self.model.train_epch_pred_seg_msrs).flatten(),
+            #         hit_rate_percent=HR_AET_PERCENTAGE,
+            #         figsize=HR_AET_FIGSIZE,
+            #         logger=self.logger
+            #     )
+            #
+            # self.log_figure(
+            #     figure=train_hit_rate_fig,
+            #     file_writer=self.train_file_writer,
+            #     step=epoch,
+            #     tag='4 - Hit Rate',
+            #     procedure='train',
+            #     save_file=self.train_hit_rate_plots_dir / f'step_{epoch}.png'
+            # )
+            #
+            # # * Save metadata
+            # to_numpy(
+            #     data=train_hit_rate_hist,
+            #     file_path=self.train_hit_rate_plots_dir / f'metadata/hit_rate_hist_epoch_{epoch}.npy',
+            #     overwrite=False, logger=self.logger)
+            # to_numpy(
+            #     data=train_hit_rate_bins,
+            #     file_path=self.train_hit_rate_plots_dir / f'metadata/hit_rate_bins_epoch_{epoch}.npy',
+            #     overwrite=False, logger=self.logger)
 
             # -----------------
             # - Learning Rate -
@@ -346,32 +346,32 @@ class ProgressLogCallback(tf.keras.callbacks.Callback):
             # -----------------
             # - Hit rate plot -
             # -----------------
-            val_hit_rate_fig, val_hit_rate_hist, val_hit_rate_bins = \
-                get_hit_rate_plot_figure(
-                    true=np.array(self.model.val_epch_gt_seg_msrs).flatten(),
-                    pred=np.array(self.model.val_epch_pred_seg_msrs).flatten(),
-                    hit_rate_percent=HR_AET_PERCENTAGE,
-                    figsize=HR_AET_FIGSIZE,
-                    logger=self.logger
-                )
-            self.log_figure(
-                figure=val_hit_rate_fig,
-                file_writer=self.val_file_writer,
-                step=epoch,
-                tag='4 - Hit Rate',
-                procedure='val',
-                save_file=self.val_hit_rate_plots_dir / f'step_{epoch}.png'
-            )
-
-            # * Save metadata
-            to_numpy(
-                data=val_hit_rate_hist,
-                file_path=self.val_hit_rate_plots_dir / f'metadata/hit_rate_hist_epoch_{epoch}.npy',
-                overwrite=False, logger=self.logger)
-            to_numpy(
-                data=val_hit_rate_bins,
-                file_path=self.val_hit_rate_plots_dir / f'metadata/hit_rate_bins_epoch_{epoch}.npy',
-                overwrite=False, logger=self.logger)
+            # val_hit_rate_fig, val_hit_rate_hist, val_hit_rate_bins = \
+            #     get_hit_rate_plot_figure(
+            #         true=np.array(self.model.val_epch_gt_seg_msrs).flatten(),
+            #         pred=np.array(self.model.val_epch_pred_seg_msrs).flatten(),
+            #         hit_rate_percent=HR_AET_PERCENTAGE,
+            #         figsize=HR_AET_FIGSIZE,
+            #         logger=self.logger
+            #     )
+            # self.log_figure(
+            #     figure=val_hit_rate_fig,
+            #     file_writer=self.val_file_writer,
+            #     step=epoch,
+            #     tag='4 - Hit Rate',
+            #     procedure='val',
+            #     save_file=self.val_hit_rate_plots_dir / f'step_{epoch}.png'
+            # )
+            #
+            # # * Save metadata
+            # to_numpy(
+            #     data=val_hit_rate_hist,
+            #     file_path=self.val_hit_rate_plots_dir / f'metadata/hit_rate_hist_epoch_{epoch}.npy',
+            #     overwrite=False, logger=self.logger)
+            # to_numpy(
+            #     data=val_hit_rate_bins,
+            #     file_path=self.val_hit_rate_plots_dir / f'metadata/hit_rate_bins_epoch_{epoch}.npy',
+            #     overwrite=False, logger=self.logger)
 
             # ----------------------
             # - Weights and Biases -

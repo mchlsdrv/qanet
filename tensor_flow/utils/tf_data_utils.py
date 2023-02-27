@@ -163,6 +163,9 @@ class DataLoader(tf.keras.utils.Sequence):
         self.data_dict = data_dict
         self.file_keys = np.array(file_keys, dtype=object)
 
+        self.crop_height = crop_height
+        self.crop_width = crop_width
+
         # - Ensure the batch_size is positive
         self.batch_size = batch_size if batch_size > 0 else 1
 
@@ -194,7 +197,7 @@ class DataLoader(tf.keras.utils.Sequence):
         end_idx = start_idx + self.batch_size if \
             start_idx + self.batch_size < self.n_images else self.n_images - 1
 
-        if self.mode == 'training' or 'validation':
+        if self.mode in ['training', 'validation']:
             item = self.get_batch_train(start_index=start_idx, end_index=end_idx)
         elif self.mode == 'inference':
             item = self.get_batch_inference(index=start_idx)
@@ -275,18 +278,14 @@ class DataLoader(tf.keras.utils.Sequence):
         img, msk = img[..., -1], msk[..., -1]
 
         # - Apply image transformations
-        img = transform_image(image=img)
-
-        # - Augment the image and the mask
-        aug_res = self.inf_augs(image=img, mask=msk)
-        img, msk = aug_res.get('image'), aug_res.get('mask')
+        img = img / img.max()
 
         # - Transform the mask from instance segmentation representation to
         # categorical, i.e., 3 classes - background, inner part and the boundary
         msk = instance_2_categorical(masks=msk)
 
         # - Convert the image and the mask to  tensor
-        img, msk = tf.convert_to_tensor([img], dtype=tf.float32), tf.convert_to_tensor([msk], dtype=tf.float32)
+        # img, msk = tf.convert_to_tensor([img], dtype=tf.float32), tf.convert_to_tensor([msk], dtype=tf.float32)
 
         return img, msk, img_key
 

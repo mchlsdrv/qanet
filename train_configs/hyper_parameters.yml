@@ -1,5 +1,6 @@
 general:
-  name: 'new run'
+  project_name: 'QANetV2'
+  experiment_name: 'new run'
   debug: False
   configs_dir: './global_configs'
   output_dir: './output'
@@ -21,12 +22,18 @@ model:
 
   architecture:
     conv2d_blocks:
-      out_channels: [32, 64, 128, 256]
-      kernel_sizes: [5, 5, 5, 5]
-
+      out_channels: [64, 128, 256, 256]
+      kernel_sizes: [3, 3, 3, 3]
     fc_blocks:
-      out_features: [512, 1024, 1]
+      out_features: [128, 128, 1]
       drop_rate: 0.2
+#    conv2d_blocks:
+#      out_channels: [32, 64, 128, 256]
+#      kernel_sizes: [5, 5, 5, 5]
+#
+#    fc_blocks:
+#      out_features: [512, 1024, 1]
+#      drop_rate: 0.2
 
   architecture2:
     conv2d_blocks:
@@ -78,6 +85,7 @@ callbacks:
   tensorboard_scalars_log_interval: 1
   tensorboard_images_log_interval: 1
 
+#  progress_log: False
   progress_log: True
   progress_log_interval: 1
   scatter_plot_figsize: (25, 15)
@@ -111,15 +119,15 @@ callbacks:
   # - LR Reduction Scheduler
   lr_reduction_scheduler: 'None'
 #  lr_reduction_scheduler: 'cosine'
-  lr_reduction_scheduler_decay_steps: 10
+  lr_reduction_scheduler_decay_steps: 30
   lr_reduction_scheduler_patience: [150, 300]
   lr_reduction_scheduler_factor: 0.3
   lr_reduction_scheduler_min: 1e-9
 
   # - Cyclical LR
-  cyclical_lr: True
+  cyclical_lr: False
   cyclical_lr_init_lr: 0.0001
-  cyclical_lr_max_lr: 0.001
+  cyclical_lr_max_lr: 0.0005
   cyclical_lr_step_size: 2 * 10  # 2 * IMAGES / BATCH_SIZE
 
   # - LR Reduce on Plateau
@@ -153,10 +161,10 @@ training:
   loss: 'mse'
   metrics: []
   epochs: 300
-  batch_size: 32
+  batch_size: 64
   num_train_workers: 8
   val_prop: 0.05
-  val_batch_size: 4
+  val_batch_size: 32
   num_val_workers: 4
   pin_memory: True
   weighted_loss: False
@@ -185,15 +193,16 @@ test:
 
   # - SIM+
   dataframe_file_sim+: '/home/sidorov/Projects/QANetV2/RefModels/Results/Fluo-N2DH-SIM+/seg_scores.csv'
-  checkpoint_dir_sim+: '/home/sidorov/Projects/QANetV2/qanet/output/train/tensor_flow_arch_1_float64_SIM+_3_3_pct/checkpoints'
+  checkpoint_dir_sim+: '/home/sidorov/Projects/QANetV2/qanet/output/train/tensor_flow_dropblock_arch_2_256x256_2023-02-18_19-13-16/checkpoints'
+#  checkpoint_dir_sim+: '/home/sidorov/Projects/QANetV2/qanet/output/train/tensor_flow_drop_block_last_cyclical_256x256_arch_2_2023-02-18_01-35-12/checkpoints'
 
   # - GOWT1
   dataframe_file_gowt1:  '/home/sidorov/Projects/QANetV2/RefModels/Results/Fluo-N2DH-GOWT1/seg_scores.csv'
-  checkpoint_dir_gowt1: '/home/sidorov/Projects/QANetV2/qanet/output/train/tensor_flow_arch1_float64_GOWT1_5_7_pct/checkpoints'
+  checkpoint_dir_gowt1: '/home/sidorov/Projects/QANetV2/qanet/output/train/tensor_flow_drop_block_last_cyclical_256x256_arch_2_2023-02-18_01-35-12/checkpoints'
 
   # - HeLa
   dataframe_file_hela: '/home/sidorov/Projects/QANetV2/RefModels/Results/Fluo-N2DL-HeLa/seg_scores.csv'
-  checkpoint_dir_hela: '/home/sidorov/Projects/QANetV2/qanet/output/train/tensor_flow_arch_1_float64_cyclic_HeLa_3.5_pct/checkpoints'
+  checkpoint_dir_hela: '/home/sidorov/Projects/QANetV2/qanet/output/train/tensor_flow_drop_block_last_cyclical_256x256_arch_2_2023-02-18_01-35-12/checkpoints'
 
 
 inference:

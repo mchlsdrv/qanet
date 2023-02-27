@@ -241,10 +241,8 @@ def get_model(mode: str, hyper_parameters: dict, output_dir: pathlib.Path or str
                           hyper_parameters.get('augmentations')['crop_width']),
         drop_block=dict(
             use=hyper_parameters.get('regularization')['drop_block'],
-            keep_prob=hyper_parameters.get('regularization')[
-                'drop_block_keep_prob'],
-            block_size=hyper_parameters.get('regularization')[
-                'drop_block_block_size']
+            keep_prob=hyper_parameters.get('regularization')['drop_block_keep_prob'],
+            block_size=hyper_parameters.get('regularization')['drop_block_block_size']
         ),
         architecture=hyper_parameters.get('model')['architecture'],
         kernel_regularizer=dict(
@@ -271,8 +269,7 @@ def get_model(mode: str, hyper_parameters: dict, output_dir: pathlib.Path or str
     model = RibCage(model_configs=model_configs, output_dir=output_dir,
                     logger=logger)
 
-    checkpoint_dir = str_2_path(
-        path=hyper_parameters.get(mode)['checkpoint_dir'])
+    checkpoint_dir = str_2_path(path=hyper_parameters.get(mode)['checkpoint_dir'])
     if checkpoint_dir.is_dir():
         try:
             latest_cpt = tf.train.latest_checkpoint(checkpoint_dir)
@@ -313,8 +310,7 @@ def get_model(mode: str, hyper_parameters: dict, output_dir: pathlib.Path or str
         cyclical_lr=hyper_parameters.get('callbacks')['cyclical_lr'],
         cyclical_lr_init_lr=hyper_parameters.get('callbacks')['cyclical_lr_init_lr'],
         cyclical_lr_max_lr=hyper_parameters.get('callbacks')['cyclical_lr_max_lr'],
-        cyclical_lr_step_size=hyper_parameters.get('training')['train_data_len'] // hyper_parameters.get(
-            'training')['batch_size'],
+        cyclical_lr_step_size=hyper_parameters.get('callbacks')['cyclical_lr_step_size'],
         lr_reduction_scheduler=hyper_parameters.get('callbacks')['lr_reduction_scheduler'],
         lr_reduction_scheduler_factor=hyper_parameters.get('callbacks')['lr_reduction_scheduler_factor'],
         lr_reduction_scheduler_decay_steps=hyper_parameters.get('callbacks')['lr_reduction_scheduler_decay_steps'],
@@ -576,14 +572,12 @@ def test_model(hyper_parameters: dict, output_dir: pathlib.Path or str, logger: 
             output_dir=output_dir, logger=logger)
 
         chkpt_dir = hyper_parameters.get("test")["checkpoint_dir"]
-        assert weights_loaded, \
-            f'Could not load weights from {pathlib.Path(chkpt_dir)}!'
+        assert weights_loaded, f'Could not load weights from {pathlib.Path(chkpt_dir)}!'
 
         # - Infer
         pred_df = trained_model.test(data_loader=test_dl)
 
-        test_res_df.loc[test_res_df.loc[:, 'image_file'].isin(
-            pred_df.loc[:, 'image_file']), 'pred_seg_score'] = \
+        test_res_df.loc[test_res_df.loc[:, 'image_file'].isin(pred_df.loc[:, 'image_file']), 'pred_seg_score'] = \
             pred_df.loc[:, 'seg_score']
 
         print_pretty_message(

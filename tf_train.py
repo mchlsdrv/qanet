@@ -2,10 +2,10 @@ import os
 import pathlib
 import time
 import datetime
-
 import yaml
 
 from tensor_flow.utils.tf_utils import train_model, choose_gpu
+from clearml import Task
 from utils.aux_funcs import (
     get_arg_parser,
     get_runtime,
@@ -14,7 +14,6 @@ from utils.aux_funcs import (
     update_hyper_parameters
 )
 import wandb
-
 
 os.environ['TF_FORCE_GPU_ALLOW_GROWTH'] = 'true'
 
@@ -37,12 +36,18 @@ if __name__ == '__main__':
 
     # - Create the directory for the current run
     if hyp_params_dict.get('training')['load_checkpoint']:
-        current_run_dir = pathlib.Path(hyp_params_dict.get(
-            'training')['tf_checkpoint_dir']).parent
+        current_run_dir = pathlib.Path(hyp_params_dict.get('training')['tf_checkpoint_dir']).parent
+        dir_name = current_run_dir.name
     else:
+        dir_name = f'tensor_flow_{args.experiment_name}_{ts}'
         current_run_dir = pathlib.Path(hyp_params_dict.get(
-            'general')['output_dir']) / f'train/tensor_flow_{args.name}_{ts}'
+            'general')['output_dir']) / f'train/{dir_name}'
         os.makedirs(current_run_dir)
+
+    # - ClearML
+    task = Task.init(project_name=args.project_name, task_name=dir_name)
+    if not args.local_execution:
+        task.execute_remotely(args.queue_name)
 
     # - Save the updated hyperparameters to the current run directory
     yaml.dump(

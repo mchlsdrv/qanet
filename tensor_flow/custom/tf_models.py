@@ -1,5 +1,6 @@
 import os
 import pandas as pd
+from patchify import patchify
 
 from tqdm import tqdm
 import logging
@@ -98,6 +99,7 @@ class RibCage(keras.Model):
                 tf.keras.layers.BatchNormalization(),
                 self.activation_layer,
                 tf.keras.layers.MaxPool2D(padding='same'),
+                # tf.keras.layers.SpatialDropout2D(rate=0.1)
                 DropBlock2D(rate=0.1, block_size=7),
             ]
         )
@@ -117,6 +119,7 @@ class RibCage(keras.Model):
                 [
                     tf.keras.layers.Dense(units=units, kernel_regularizer=self.kernel_regularizer, activation=None),
                     tf.keras.layers.BatchNormalization(),
+                    tf.keras.layers.Dropout(rate=drop_rate)
                 ]
             )
         return blck
@@ -318,12 +321,24 @@ class RibCage(keras.Model):
         t_strt = time.time()
 
         results_df = pd.DataFrame(columns=COLUMN_NAMES)
-
+        crp_h, crp_w = data_loader.crop_height, data_loader.crop_width
         # - Get the data of the current epoch
         pbar = tqdm(data_loader)
+        ptch_pred_mean_seg_scrs = np.array([])
         for idx, (img, msk, img_fl) in enumerate(pbar):
             # - Get the predictions
-            pred_seg_scr = self.get_preds(img, msk).numpy().flatten()[0]
+            img_ptchs, msk_ptchs = \
+                patchify(img, (crp_h, crp_w), step=crp_w).reshape(-1, crp_h, crp_w), \
+                patchify(msk, (crp_h, crp_w), step=crp_w).reshape(-1, crp_h, crp_w)
+
+            img_ptchs, msk_ptchs = \
+                tf.convert_to_tensor(img_ptchs, dtype=tf.float32), \
+                tf.convert_to_tensor(msk_ptchs, dtype=tf.float32)
+
+            ptch_pred_mean_seg_scr = self.get_preds(img_ptchs, msk_ptchs).numpy().flatten().mean()
+            ptch_pred_mean_seg_scrs = np.append(ptch_pred_mean_seg_scrs, ptch_pred_mean_seg_scr)
+
+            pred_mean_seg_scr = ptch_pred_mean_seg_scrs.mean()
 
             # - Append the predicted seg measures to the results
             results_df = results_df.append(
@@ -331,9 +346,9 @@ class RibCage(keras.Model):
                     image_file=str(img_fl),
                     gt_mask_file=None,
                     pred_mask_file=str(msk),
-                    seg_score=pred_seg_scr
+                    seg_score=pred_mean_seg_scr
                 ), ignore_index=True)
 
-            pbar.set_postfix(seg=f'{pred_seg_scr:.3f}')
+            pbar.set_postfix(seg=f'{pred_mean_seg_scr:.3f}')
 
         return results_df

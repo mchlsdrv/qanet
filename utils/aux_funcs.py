@@ -117,22 +117,6 @@ def get_ts():
     return datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
 
 
-def get_contours(image: np.ndarray):
-    # - Find the contours
-    contours, hierarchies = cv2.findContours(image, cv2.RETR_LIST,
-                                             cv2.CHAIN_APPROX_SIMPLE)
-
-    # - Find the centroids of the contours
-    centroids = []
-    for contour in contours:
-        M = cv2.moments(contour)
-        if M['m00'] != 0:
-            cx = int(M['m10'] / M['m00'])
-            cy = int(M['m01'] / M['m00'])
-            centroids.append((cx, cy))
-    return contours, centroids
-
-
 def get_crop(image: np.ndarray, x: int, y: int, crop_shape: tuple):
     return image[x:x + crop_shape[0], y:y + crop_shape[1]]
 
@@ -611,13 +595,6 @@ def get_runtime(seconds: float):
     return hrs_str + ':' + min_str + ':' + sec_str + '[H:M:S]'
 
 
-def clahe(image: np.ndarray, clip_limit=2.0, tile_grid_size=(8, 8)):
-    clahe_fltr = cv2.createCLAHE(clipLimit=clip_limit, tileGridSize=tile_grid_size)
-    img = clahe_fltr.apply(image)
-
-    return img
-
-
 def split_instance_mask(instance_mask: np.ndarray, labels: np.ndarray or list = None):
     """
     Splits an instance mask into N binary masks
@@ -943,8 +920,10 @@ def get_arg_parser():
     parser = argparse.ArgumentParser()
 
     # - GENERAL PARAMETERS
-    parser.add_argument('--name', type=str, default='',
-                        help='The name of the experiment')
+    parser.add_argument('--project_name', type=str, default='', help='The name of the project')
+    parser.add_argument('--experiment_name', type=str, default='', help='The name of the experiment')
+    parser.add_argument('--queue_name', type=str, default=None, help='The name of the queue to assign the tas to')
+    parser.add_argument('--local_execution', default=False, action='store_true', help=f'If to execute the task locally')
     parser.add_argument('--architecture', type=str,
                         choices=['arch1', 'arch2', 'arch3'],
                         help=f'''
@@ -986,8 +965,7 @@ def get_arg_parser():
 
     parser.add_argument('--in_train_augmentation', default=False, action='store_true',
                         help=f'Regular mode where the augmentation is performed on-the-fly')
-    parser.add_argument('--wandb', default=False, action='store_true',
-                        help=f'If to use the wandb callback')
+    parser.add_argument('--wandb', default=False, action='store_true', help=f'If to use the wandb callback')
     parser.add_argument('--tensorboard', default=False, action='store_true',
                         help=f'If to use the tensorboard callback')
     parser.add_argument('--load_checkpoint', default=False, action='store_true',

@@ -14,10 +14,14 @@ from utils.aux_funcs import (
     get_arg_parser,
     get_runtime,
     get_logger,
-    update_hyper_parameters, print_pretty_message, get_scatter_plot_figure,
-    print_results, get_simple_scatter_plot_figure,
+    update_hyper_parameters, print_pretty_message,
+    print_results,
 )
 
+from utils.visual_funcs import (
+    get_scatter_plot_figure,
+    get_simple_scatter_plot_figure,
+)
 
 if __name__ == '__main__':
     t_start = time.time()
