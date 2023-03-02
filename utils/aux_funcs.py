@@ -161,19 +161,20 @@ def transform_image(image: np.ndarray):
     # img = image_clip_values(image=image, max_val=255)
 
     # - Convert the image to float dividing by it by 255
-    img = image / image.max()
+    img = image.astype(np.float32)
+    # img = image / image.max()
     # img = image_2_float(image=img, max_val=255)
 
     # - Standardize the image by (I - E[I]) / std(I)
-    # img = standardize_image(image=img)
+    img = standardize_image(image=img)
 
-    # - Random contrast plus/minus 50%
-    random_contrast_factor = np.random.rand() + 0.5
-    img = adjust_contrast_(img, random_contrast_factor)
-
-    # - Random brightness delta plus/minus 10% of maximum value
-    random_brightness_delta = (np.random.rand() - 0.5) * 0.2 * img.max()
-    img = adjust_brightness_(img, random_brightness_delta)
+    # # - Random contrast plus/minus 50%
+    # random_contrast_factor = np.random.rand() + 0.5
+    # img = adjust_contrast_(img, random_contrast_factor)
+    #
+    # # - Random brightness delta plus/minus 10% of maximum value
+    # random_brightness_delta = (np.random.rand() - 0.5) * 0.2 * img.max()
+    # img = adjust_brightness_(img, random_brightness_delta)
 
     return img
 

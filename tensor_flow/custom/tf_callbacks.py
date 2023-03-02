@@ -207,6 +207,53 @@ class ProgressLogCallback(tf.keras.callbacks.Callback):
                 save_file=self.train_sample_dir / f'step_{epoch}.png'
             )
 
+            # -----------
+            # - Outlier -
+            # -----------
+            train_img = self.model.train_btch_outlier_smpl_dict.get('image')
+            train_msk = self.model.train_btch_outlier_smpl_dict.get('mask')
+            train_true_sm = self.model.train_btch_outlier_smpl_dict.get('true_seg_measure')
+            train_pred_sm = self.model.train_btch_outlier_smpl_dict.get('pred_seg_measure')
+
+            if train_img is not None and train_msk is not None and \
+                    train_true_sm is not None and train_pred_sm is not None:
+                train_img = train_img.astype(np.float32)
+                train_msk = train_msk.astype(np.float32)
+                train_true_sm = train_true_sm.astype(np.float32)
+                train_pred_sm = train_pred_sm.astype(np.float32)
+                # - Mask
+                train_msk_fig = get_rgb_mask_figure(
+                    mask=train_msk,
+                    suptitle='Outlier Mask',
+                    title=f'Seg measure: true - {train_true_sm:.4f}, '
+                          f'pred - {train_pred_sm:.4f}',
+                    figsize=(20, 20),
+                )
+                self.log_figure(
+                    figure=train_msk_fig,
+                    file_writer=self.train_file_writer,
+                    step=epoch,
+                    tag='4 - Outlier Mask',
+                    procedure='train',
+                    save_file=self.train_sample_dir / f'step_{epoch}.png'
+                )
+
+                # - Image
+                train_img_fig = get_image_figure(
+                    image=train_img,
+                    suptitle='Outlier Image',
+                    title='',
+                    figsize=(20, 20),
+                )
+                self.log_figure(
+                    figure=train_img_fig,
+                    file_writer=self.train_file_writer,
+                    step=epoch,
+                    tag='5 - Outlier Image',
+                    procedure='train',
+                    save_file=self.train_sample_dir / f'step_{epoch}.png'
+                )
+
             # -----------------
             # - Hit rate plot -
             # -----------------
@@ -342,6 +389,53 @@ class ProgressLogCallback(tf.keras.callbacks.Callback):
                 procedure='val',
                 save_file=self.val_sample_dir / f'step_{epoch}.png'
             )
+
+            # -----------
+            # - Outlier -
+            # -----------
+            val_img = self.model.val_btch_outlier_smpl_dict.get('image')
+            val_msk = self.model.val_btch_outlier_smpl_dict.get('mask')
+            val_true_sm = self.model.val_btch_outlier_smpl_dict.get('true_seg_measure')
+            val_pred_sm = self.model.val_btch_outlier_smpl_dict.get('pred_seg_measure')
+            if val_img is not None and val_msk is not None and \
+                    val_true_sm is not None and val_pred_sm is not None:
+                val_img = val_img.astype(np.float32)
+                val_msk = val_msk.astype(np.float32)
+                val_true_sm = val_true_sm.astype(np.float32)
+                val_pred_sm = val_pred_sm.astype(np.float32)
+
+                # - Mask
+                val_msk_fig = get_rgb_mask_figure(
+                    mask=val_msk,
+                    suptitle='Outlier Mask',
+                    title=f'Seg measure: true - {val_true_sm:.4f}, '
+                          f'pred - {val_pred_sm:.4f}',
+                    figsize=(20, 20),
+                )
+                self.log_figure(
+                    figure=val_msk_fig,
+                    file_writer=self.val_file_writer,
+                    step=epoch,
+                    tag='4 - Outlier Mask',
+                    procedure='val',
+                    save_file=self.val_sample_dir / f'step_{epoch}.png'
+                )
+
+                # - Image
+                val_img_fig = get_image_figure(
+                    image=val_img,
+                    suptitle='Outlier Image',
+                    title='',
+                    figsize=(20, 20),
+                )
+                self.log_figure(
+                    figure=val_img_fig,
+                    file_writer=self.val_file_writer,
+                    step=epoch,
+                    tag='5 - Outlier Image',
+                    procedure='val',
+                    save_file=self.val_sample_dir / f'step_{epoch}.png'
+                )
 
             # -----------------
             # - Hit rate plot -

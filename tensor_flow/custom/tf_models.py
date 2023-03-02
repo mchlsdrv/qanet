@@ -51,6 +51,7 @@ class RibCage(keras.Model):
         self.train_pearson_rs = np.array([])
         self.train_mses = np.array([])
         self.train_btch_smpl_dict = dict()
+        self.train_btch_outlier_smpl_dict = dict()
 
         # - Validation epoch history
         self.val_epch_losses = np.array([])
@@ -59,6 +60,7 @@ class RibCage(keras.Model):
         self.val_pearson_rs = np.array([])
         self.val_mses = np.array([])
         self.val_btch_smpl_dict = dict()
+        self.val_btch_outlier_smpl_dict = dict()
 
     @staticmethod
     def _get_activation(configs: dict):
@@ -91,18 +93,20 @@ class RibCage(keras.Model):
         return kernel_regularizer
 
     # @staticmethod
-    def _build_conv2d_block(self, filters: int, kernel_size: int):
-        return keras.Sequential(
-            [
+    def _build_conv2d_block(self, filters: int, kernel_size: int, last: bool = False):
+        blk = [
                 tf.keras.layers.Conv2D(filters=filters, kernel_size=kernel_size, padding='same',
                                        kernel_regularizer=self.kernel_regularizer),
                 tf.keras.layers.BatchNormalization(),
                 self.activation_layer,
                 tf.keras.layers.MaxPool2D(padding='same'),
                 # tf.keras.layers.SpatialDropout2D(rate=0.1)
-                DropBlock2D(rate=0.1, block_size=7),
             ]
-        )
+        if last:
+            # pass
+            blk.append(DropBlock2D(rate=0.1, block_size=7))
+
+        return keras.Sequential(blk)
 
     def _build_fully_connected_block(self, units: int, drop_rate: float, last: bool = False):
         if not last:
@@ -135,18 +139,18 @@ class RibCage(keras.Model):
             self.input_image_dims + (1,), name='input_right_rib')
         input_spine = keras.layers.Concatenate()([
             input_left_rib, input_right_rib])
-
-        for filters, kernel_size in zip(block_filters, block_kernel_sizes):
+        fltrs_krnls_lst = list(zip(block_filters, block_kernel_sizes))
+        for idx, (filters, kernel_size) in enumerate(fltrs_krnls_lst):
             tmp_input_left_rib = self._build_conv2d_block(
-                filters=filters, kernel_size=kernel_size)(tmp_input_left_rib)
+                filters=filters, kernel_size=kernel_size, last=idx == len(fltrs_krnls_lst) - 1)(tmp_input_left_rib)
             tmp_input_right_rib = self._build_conv2d_block(
-                filters=filters, kernel_size=kernel_size)(tmp_input_right_rib)
+                filters=filters, kernel_size=kernel_size, last=idx == len(fltrs_krnls_lst) - 1)(tmp_input_right_rib)
             input_spine = keras.layers.Concatenate()(
                 [
                     tmp_input_left_rib,
                     tmp_input_right_rib,
                     self._build_conv2d_block(
-                        filters=filters, kernel_size=kernel_size)(input_spine)
+                        filters=filters, kernel_size=kernel_size, last=idx == len(fltrs_krnls_lst) - 1)(input_spine)
                 ]
             )
 
@@ -193,6 +197,10 @@ class RibCage(keras.Model):
                 msk = masks[rnd_smpl_idx]
                 true_sm = true_seg_measures[rnd_smpl_idx]
                 pred_sm = pred_seg_measures[rnd_smpl_idx]
+                if true_sm - pred_sm > 0.5:
+                    self.train_btch_outlier_smpl_dict = dict(
+                        image=img, mask=msk,
+                        true_seg_measure=true_sm, pred_seg_measure=pred_sm)
                 self.train_btch_smpl_dict = dict(
                     image=img, mask=msk,
                     true_seg_measure=true_sm, pred_seg_measure=pred_sm)
@@ -212,9 +220,13 @@ class RibCage(keras.Model):
                 msk = masks[rnd_smpl_idx]
                 true_sm = true_seg_measures[rnd_smpl_idx]
                 pred_sm = pred_seg_measures[rnd_smpl_idx]
+                if true_sm - pred_sm > 0.5:
+                    self.val_btch_outlier_smpl_dict = dict(
+                        image=img, mask=msk,
+                        true_seg_measure=true_sm, pred_seg_measure=pred_sm)
                 self.val_btch_smpl_dict = dict(
-                    image=img, mask=msk, true_seg_measure=true_sm,
-                    pred_seg_measure=pred_sm)
+                    image=img, mask=msk,
+                    true_seg_measure=true_sm, pred_seg_measure=pred_sm)
 
     @tf.function(input_signature=[tf.TensorSpec(shape=[None, None, None],
                                                 dtype=tf.float32, name='btch_imgs_aug'),
@@ -274,6 +286,7 @@ class RibCage(keras.Model):
         return dict(loss=loss, batch_seg_mesures=btch_pred_seg_msrs)
 
     def test_step(self, data) -> dict:
+        # print('len(data): ', len(data))
         (btch_imgs_aug, btch_msks_aug), btch_true_seg_msrs = data
         val_res = self.validate(btch_imgs_aug, btch_msks_aug, btch_true_seg_msrs)
 

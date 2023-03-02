@@ -161,10 +161,10 @@ training:
   loss: 'mse'
   metrics: []
   epochs: 300
-  batch_size: 64
+  batch_size: 16
+  val_batch_size: 16
   num_train_workers: 8
   val_prop: 0.05
-  val_batch_size: 32
   num_val_workers: 4
   pin_memory: True
   weighted_loss: False
