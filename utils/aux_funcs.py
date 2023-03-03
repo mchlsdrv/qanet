@@ -973,8 +973,6 @@ def get_arg_parser():
                         help=f'If to continue the training from the checkpoint '
                              f'saved at the checkpoint file')
     parser.add_argument('--train_data_dir', type=str, help='The path to the train data file')
-    parser.add_argument('--train_image_dir', type=str, help='The path to the train images directory')
-    parser.add_argument('--train_mask_dir', type=str, help='The path to the train masks directory')
     parser.add_argument('--train_temp_data_file', type=str, help='The path to the train data file')
     parser.add_argument('--test_data_dir', type=str, help='The path to the custom test file')
     parser.add_argument('--inference_data_dir', type=str, help='The path to the inference data dir')
@@ -995,7 +993,8 @@ def get_arg_parser():
 
     # - TRAINING
     parser.add_argument('--epochs', type=int, help='Number of epochs to train the model')
-    parser.add_argument('--batch_size', type=int, help='The number of samples in each batch')
+    parser.add_argument('--batch_size', type=int, help='The number of samples in each train batch')
+    parser.add_argument('--val_batch_size', type=int, help='The number of samples in each validation batch')
     parser.add_argument('--val_prop', type=float, help=f"The proportion of the data which will be set "
                                                        f"aside, and be used in the process of validation")
     parser.add_argument('--tr_checkpoint_file', type=str, help=f"The path to the file which contains the "

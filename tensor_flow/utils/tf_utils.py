@@ -438,8 +438,7 @@ def choose_gpu(gpu_id: int = 0, logger: logging.Logger = None):
 
 def train_model(hyper_parameters: dict, output_dir: pathlib.Path or str, logger: logging.Logger = None):
     # - Load the data
-    data_dict = get_data(mode='training', hyper_parameters=hyper_parameters,
-                         logger=logger)
+    data_dict = get_data(mode='training', hyper_parameters=hyper_parameters, logger=logger)
     hyper_parameters.get('training')['train_data_len'] = len(data_dict)
     print_pretty_message(
         message=f'Training on {len(data_dict)} examples',
@@ -494,7 +493,6 @@ def infer_data(hyper_parameters: dict, output_dir: pathlib.Path or str, logger: 
         file_keys=list(data_dict.keys()),
         crop_height=hyper_parameters.get('augmentations')['crop_height'],
         crop_width=hyper_parameters.get('augmentations')['crop_width'],
-        masks_dir='',
         batch_size=1,
         logger=logger
     )
@@ -549,8 +547,7 @@ def test_model(hyper_parameters: dict, output_dir: pathlib.Path or str, logger: 
         data_file_tuples = [(img_fl, pred_msk_fl) for
                             img_fl, _, pred_msk_fl, _ in test_res_df.values]
 
-        # - Construct the data dictionary containing the image files, images,
-        # mask files and masks
+        # - Construct the data dictionary containing the image files, images, mask files and masks
         data_dict = get_data_dict(data_file_tuples=data_file_tuples)
 
         test_dl = DataLoader(
@@ -559,7 +556,6 @@ def test_model(hyper_parameters: dict, output_dir: pathlib.Path or str, logger: 
             file_keys=list(data_dict.keys()),
             crop_height=hyper_parameters.get('augmentations')['crop_height'],
             crop_width=hyper_parameters.get('augmentations')['crop_width'],
-            masks_dir='',
             batch_size=1,
             logger=logger
         )

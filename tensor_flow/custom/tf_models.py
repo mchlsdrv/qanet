@@ -100,10 +100,10 @@ class RibCage(keras.Model):
                 tf.keras.layers.BatchNormalization(),
                 self.activation_layer,
                 tf.keras.layers.MaxPool2D(padding='same'),
-                # tf.keras.layers.SpatialDropout2D(rate=0.1)
             ]
         if last:
-            # pass
+            pass
+            # blk.append(tf.keras.layers.SpatialDropout2D(rate=0.1))
             blk.append(DropBlock2D(rate=0.1, block_size=7))
 
         return keras.Sequential(blk)
@@ -115,7 +115,7 @@ class RibCage(keras.Model):
                     tf.keras.layers.Dense(units=units, kernel_regularizer=self.kernel_regularizer),
                     tf.keras.layers.BatchNormalization(),
                     self.activation_layer,
-                    tf.keras.layers.Dropout(rate=drop_rate)
+                    # tf.keras.layers.Dropout(rate=drop_rate)
                 ]
             )
         else:
@@ -123,7 +123,7 @@ class RibCage(keras.Model):
                 [
                     tf.keras.layers.Dense(units=units, kernel_regularizer=self.kernel_regularizer, activation=None),
                     tf.keras.layers.BatchNormalization(),
-                    tf.keras.layers.Dropout(rate=drop_rate)
+                    # tf.keras.layers.Dropout(rate=drop_rate)
                 ]
             )
         return blck

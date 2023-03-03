@@ -19,8 +19,6 @@ from utils.aux_funcs import (
     load_image,
     assert_pathable,
     str_2_path,
-    check_pathable,
-    get_files_under_dir,
     instance_2_categorical,
     err_log,
     calc_seg_score,
@@ -47,7 +45,6 @@ def get_data_loaders(mode: str, data_dict: dict, hyper_parameters: dict, logger:
             'augmentations')['crop_height'] or hyper_parameters.get(
             'data')['image_width'] > hyper_parameters.get(
             'augmentations')['crop_width'],
-        masks_dir=hyper_parameters.get('training')['mask_dir'],
         logger=logger
     )
 
@@ -64,7 +61,6 @@ def get_data_loaders(mode: str, data_dict: dict, hyper_parameters: dict, logger:
                 'augmentations')['crop_height'] or hyper_parameters.get(
                 'data')['image_width'] > hyper_parameters.get(
                 'augmentations')['crop_width'],
-            masks_dir=hyper_parameters.get('training')['mask_dir'],
             logger=logger
         )
 
@@ -156,7 +152,7 @@ class DataLoader(tf.keras.utils.Sequence):
     """
 
     def __init__(self, mode: str, data_dict: dict, file_keys: list, crop_height: int, crop_width: int, batch_size: int,
-                 calculate_seg_score: bool = True, masks_dir: pathlib.Path or str = None, logger: logging = None):
+                 calculate_seg_score: bool = True, logger: logging = None):
         self.mode = mode
         self.calc_seg_score = calculate_seg_score
 
@@ -173,12 +169,6 @@ class DataLoader(tf.keras.utils.Sequence):
         self.train_mask_augs = augs.mask_augs()
         self.inf_augs = augs.inference_augs(crop_height=crop_height, crop_width=crop_width)
         self.apply_elastic = partial(elastic_transform, alpha=crop_width * 2, sigma=crop_width * 0.15)
-
-        # - In case the masks are made in advance, in which case there is no
-        # need for the self.mask_augs
-        self.masks_dir = str_2_path(path=masks_dir)
-        self.n_masks = 0 if not check_pathable(path=self.masks_dir) else \
-            len(get_files_under_dir(dir_path=self.masks_dir))
 
         self.n_images = len(self.file_keys)
 
@@ -204,12 +194,7 @@ class DataLoader(tf.keras.utils.Sequence):
         elif self.mode == 'test':
             item = self.get_batch_test(index=start_idx)
         else:
-            err_log(logger=self.logger,
-                    message=f'\'{self.mode}\' mode requires the masks_dir '
-                            f'argument to point to a valid location '
-                            f'({self.masks_dir}) and be of type '
-                            f'\'pathlib.Path\', but is of type '
-                            f'\'{type(self.masks_dir)}\' ')
+            err_log(logger=self.logger, message=f'Error in \'{self.mode}\' mode')
 
         # - Shuffle the train file list on the last batch
         if self.mode == 'training' and end_idx == self.n_images - 1:

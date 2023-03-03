@@ -11,10 +11,10 @@ data:
   image_width: 419
 
 augmentations:
-  crop_height: 256
-  crop_width: 256
-#  crop_height: 128
-#  crop_width: 128
+#  crop_height: 256
+#  crop_width: 256
+  crop_height: 128
+  crop_width: 128
 
 model:
   in_channels: 1
@@ -151,7 +151,7 @@ training:
   seg_sub_dir: 'SEG'
 
   data_dir: '../data/train/CytoPack'
-  mask_dir: '/home/sidorov/Projects/QANetV2/data/generated/masks'
+#  mask_dir: '/home/sidorov/Projects/QANetV2/data/generated/masks'
   temp_data_file: '../data/train/temp/CytoPack/clean_data.pkl'
 
   tr_checkpoint_file: '/home/sidorov/Projects/QANetV2/qanet/output/train/pytorch_2022-08-08_17-28-30/checkpoints/best_val_loss_chkpt.pth.tar'
@@ -161,10 +161,10 @@ training:
   loss: 'mse'
   metrics: []
   epochs: 300
-  batch_size: 16
-  val_batch_size: 16
+  batch_size: 64
+  val_batch_size: 64
   num_train_workers: 8
-  val_prop: 0.05
+  val_prop: 0.2
   num_val_workers: 4
   pin_memory: True
   weighted_loss: False
