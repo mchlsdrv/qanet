@@ -1,4 +1,5 @@
 import os
+import io
 import pathlib
 
 import tensorflow as tf
@@ -18,9 +19,39 @@ from utils.visual_funcs import (
     get_rgb_mask_figure,
     get_hit_rate_plot_figure,
     get_scatter_plot_figure,
-    write_figure_to_tensorboard,
-    get_image_from_figure, get_image_figure, write_scalar_to_tensorboard
+    get_image_figure,
 )
+
+
+def get_image_from_figure(figure):
+    buffer = io.BytesIO()
+
+    plt.savefig(buffer, format='png')
+
+    # plt.close(figure)
+    buffer.seek(0)
+
+    image = tf.image.decode_png(buffer.getvalue(), channels=4)
+    image = tf.expand_dims(image, 0)
+
+    return image
+
+
+def write_figure_to_tensorboard(writer, figure, tag: str, step: int):
+    with tf.device('/cpu:0'):
+        with writer.as_default():
+            # -> Write the scatter plot
+            tf.summary.image(
+                tag,
+                get_image_from_figure(figure=figure),
+                step=step
+            )
+
+
+def write_scalar_to_tensorboard(writer, value, tag: str, step: int):
+    with tf.device('/cpu:0'):
+        with writer.as_default():
+            tf.summary.scalar(tag, data=value, step=step)
 
 
 # - CLASSES

@@ -92,7 +92,6 @@ class RibCage(keras.Model):
                 factor=configs.get('factor'), l2=configs.get('mode'))
         return kernel_regularizer
 
-    # @staticmethod
     def _build_conv2d_block(self, filters: int, kernel_size: int, last: bool = False):
         blk = [
                 tf.keras.layers.Conv2D(filters=filters, kernel_size=kernel_size, padding='same',
@@ -102,8 +101,6 @@ class RibCage(keras.Model):
                 tf.keras.layers.MaxPool2D(padding='same'),
             ]
         if last:
-            pass
-            # blk.append(tf.keras.layers.SpatialDropout2D(rate=0.1))
             blk.append(DropBlock2D(rate=0.1, block_size=7))
 
         return keras.Sequential(blk)
@@ -115,7 +112,6 @@ class RibCage(keras.Model):
                     tf.keras.layers.Dense(units=units, kernel_regularizer=self.kernel_regularizer),
                     tf.keras.layers.BatchNormalization(),
                     self.activation_layer,
-                    # tf.keras.layers.Dropout(rate=drop_rate)
                 ]
             )
         else:
@@ -123,7 +119,7 @@ class RibCage(keras.Model):
                 [
                     tf.keras.layers.Dense(units=units, kernel_regularizer=self.kernel_regularizer, activation=None),
                     tf.keras.layers.BatchNormalization(),
-                    # tf.keras.layers.Dropout(rate=drop_rate)
+                    tf.keras.layers.Dropout(rate=drop_rate)
                 ]
             )
         return blck

@@ -45,9 +45,9 @@ if __name__ == '__main__':
         os.makedirs(current_run_dir)
 
     # - ClearML
-    task = Task.init(project_name=args.project_name, task_name=dir_name)
-    if not args.local_execution:
-        task.execute_remotely(args.queue_name)
+    # task = Task.init(project_name=args.project_name, task_name=dir_name)
+    # if not args.local_execution:
+    #     task.execute_remotely(args.queue_name)
 
     # - Save the updated hyperparameters to the current run directory
     yaml.dump(

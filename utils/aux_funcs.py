@@ -117,10 +117,6 @@ def get_ts():
     return datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
 
 
-def get_crop(image: np.ndarray, x: int, y: int, crop_shape: tuple):
-    return image[x:x + crop_shape[0], y:y + crop_shape[1]]
-
-
 def add_channels_dim(image: np.ndarray):
     # - If the image is 2D - add the channel dimension
     if len(image.shape) < 3:
@@ -298,8 +294,7 @@ def read_yaml(data_file: pathlib.Path):
     return data
 
 
-def get_train_val_split(data_list: list or np.ndarray, val_prop: float = .2,
-                        logger: logging.Logger = None):
+def get_train_val_split(data_list: list or np.ndarray, val_prop: float = .2, logger: logging.Logger = None):
     n_items = len(data_list)
     item_idxs = np.arange(n_items)
     n_val_items = int(n_items * val_prop)
@@ -423,8 +418,7 @@ def get_files_from_metadata(root_dir: str or pathlib.Path, metadata_files_regex,
     return img_seg_fls
 
 
-def get_data_files(data_dir: str, metadata_configs: dict, val_prop: float = .2,
-                   logger: logging.Logger = None):
+def get_data_files(data_dir: str, metadata_configs: dict, val_prop: float = .2, logger: logging.Logger = None):
     build_metadata(data_dir=data_dir, shape=metadata_configs.get('shape'),
                    min_val=metadata_configs.get('min_val'),
                    max_val=metadata_configs.get('max_val'))
@@ -594,6 +588,75 @@ def get_runtime(seconds: float):
         sec_str = '0' + sec_str
 
     return hrs_str + ':' + min_str + ':' + sec_str + '[H:M:S]'
+
+
+def repaint_instance_segmentation(mask: np.ndarray):
+    # - Get the initial labels excluding the background
+    lbls, lbl_px = np.unique(mask.astype(np.int8), return_counts=True)
+
+    # - Clear low pixeled labels
+    lbl_obj_idx = np.argwhere(lbl_px > 1000)
+    lbls = lbls[lbl_obj_idx]
+
+    # - Clear the background label
+    lbls = lbls[lbls > 0]
+
+    # - Clean the mask from noise
+    msk = np.zeros_like(mask, dtype=np.int8)
+    for lbl in lbls:
+        lbl_coords = np.argwhere(mask == lbl)
+        lbl_x, lbl_y = lbl_coords[:, 0], lbl_coords[:, 1]
+        msk[lbl_x, lbl_y] = lbl
+
+    # Apply the Component analysis function
+    (_, msk_cntd, stats, centroids) = cv2.connectedComponentsWithStats(msk.astype(np.uint8), cv2.CV_16U)
+
+    # - For preserve the old labels
+    msk_rpntd = np.zeros_like(msk_cntd, dtype=np.float32)
+    # - Saves the labels to know if the labels was present
+    lbl_cntd_roi_history = dict()
+    for idx, lbl in enumerate(lbls):
+        # TURN THE INSTANCE LABEL TO BINARY
+
+        # - Copy the mask
+        msk_bin = deepcopy(mask)
+
+        # - Turn all the non-label pixels to 0
+        msk_bin[msk_bin != lbl] = 0
+
+        # - Turn all the label pixels to 1
+        msk_bin[msk_bin > 0] = 1
+
+        # - FIND THE CORRESPONDING CONNECTED COMPONENT IN THE CONNECTED
+        # COMPONENT LABEL
+        msk_cntd_roi = msk_bin * msk_cntd
+        lbls_cntd_roi, n_pxs = np.unique(msk_cntd_roi, return_counts=True)
+        lbls_cntd_roi, n_pxs = lbls_cntd_roi[lbls_cntd_roi > 0], n_pxs[1:]
+
+        # REMOVE THE BACKGROUND LABEL
+        # - Find the label with the maximum number of pixels in the ROI
+        max_lbl_idx = np.argmax(n_pxs)
+
+        # - Filter the labels with lower number of pixels in the ROI
+        lbl_cntd_roi = lbls_cntd_roi[max_lbl_idx]
+
+        # PAINT THE ROI
+        msk_cntd_roi_bin = msk_cntd_roi / lbl_cntd_roi
+
+        if lbl_cntd_roi not in lbl_cntd_roi_history.keys():
+            # - If the color is new - paint it in this color and add it to the
+            # history
+            msk_rpntd += msk_cntd_roi_bin * lbl
+
+            # - Add the ROI label to history
+            lbl_cntd_roi_history[lbl_cntd_roi] = lbl
+        else:
+            # - If the color was previously used - the cells were connected,
+            # so paint the ROI in the color previously used
+            msk_rpntd += msk_cntd_roi_bin * lbl_cntd_roi_history.get(
+                lbl_cntd_roi)
+
+    return msk_rpntd
 
 
 def split_instance_mask(instance_mask: np.ndarray, labels: np.ndarray or list = None):

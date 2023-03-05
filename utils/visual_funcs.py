@@ -14,8 +14,7 @@ import warnings
 
 from utils.aux_funcs import categorical_2_rgb, err_log, check_pathable, str_2_path, info_log, print_pretty_message
 
-mpl.use('Agg')  # <= avoiding the "Tcl_AsyncDelete: async handler deleted by
-# the wrong thread" exception
+mpl.use('Agg')  # <= avoiding the "Tcl_AsyncDelete: async handler deleted by the wrong thread" exception
 plt.style.use('seaborn')  # <= using the seaborn plot style
 
 warnings.simplefilter("ignore", UserWarning)
@@ -68,22 +67,22 @@ def show_images(images, labels, suptitle='', figsize=(25, 10), save_file: pathli
                 close_figure=True, verbose=verbose, logger=logger)
 
 
-def line_plot(x: list or np.ndarray, ys: list or np.ndarray, suptitle: str,
-              labels: list, colors: tuple = ('r', 'g', 'b'),
-              save_file: pathlib.Path or str = None,
-              logger: logging.Logger = None):
-    fig, ax = plt.subplots()
-    for y, lbl, clr in zip(ys, labels, colors):
-        ax.plot(x, y, color=clr, label=lbl)
-
-    plt.legend()
-
-    try:
-        save_figure(figure=fig, save_file=save_file, close_figure=False,
-                    logger=logger)
-    except Exception as err:
-        err_log(logger=logger, message=f'{err}')
-
+# def line_plot(x: list or np.ndarray, ys: list or np.ndarray, suptitle: str,
+#               labels: list, colors: tuple = ('r', 'g', 'b'),
+#               save_file: pathlib.Path or str = None,
+#               logger: logging.Logger = None):
+#     fig, ax = plt.subplots()
+#     for y, lbl, clr in zip(ys, labels, colors):
+#         ax.plot(x, y, color=clr, label=lbl)
+#
+#     plt.legend()
+#
+#     try:
+#         save_figure(figure=fig, save_file=save_file, close_figure=False,
+#                     logger=logger)
+#     except Exception as err:
+#         err_log(logger=logger, message=f'{err}')
+#
 
 def get_hit_rate_plot_figure(true: np.ndarray, pred: np.ndarray,
                              hit_rate_percent: int = None,
@@ -234,128 +233,7 @@ def save_figure(figure, save_file: pathlib.Path or str, overwrite: bool = False,
                          f'was provided!')
 
 
-def plot_seg_measure_histogram(seg_measures: np.ndarray, bin_width: float = .1, figsize: tuple = (25, 10),
-                               density: bool = False, save_file: pathlib.Path = None):
-    vals, bins = np.histogram(seg_measures,
-                              bins=np.arange(0., 1. + bin_width, bin_width))
-    if density:
-        vals = vals / vals.sum()
-    fig, ax = plt.subplots(figsize=figsize)
-    ax.bar(bins[:-1], vals, width=bin_width, align='edge')
-    ax.set(xlim=(0, 1), xticks=np.arange(0., 1.1, .1),
-           xlabel='E[SM] (Mean Seg Measure)', ylabel='P(E[SM])')
-
-    save_figure(figure=fig, save_file=save_file)
-
-
-def plot_image_histogram(images: np.ndarray, labels: list, n_bins: int = 256, figsize: tuple = (25, 50),
-                         density: bool = False, save_file: pathlib.Path = None):
-    fig, ax = plt.subplots(2, len(images), figsize=figsize)
-    for idx, (img, lbl) in enumerate(zip(images, labels)):
-
-        vals, bins = np.histogram(img, n_bins, density=True)
-        if density:
-            vals = vals / vals.sum()
-        vals, bins = vals[1:], bins[1:][:-1]  # don't include the 0
-
-        # - If there is only a single plot - no second dimension will be
-        # available, and it will result in an error
-        if len(images) > 1:
-            hist_ax = ax[0, idx]
-            img_ax = ax[1, idx]
-        else:
-            hist_ax = ax[0]
-            img_ax = ax[1]
-
-        # - Plot the histogram
-        hist_ax.bar(bins, vals)
-        hist_ax.set_title('Intensity Histogram')
-        max_val = 255 if img.max() > 1 else 1
-        hist_ax.set(xlim=(0, max_val), ylim=(0., 1.),
-                    yticks=np.arange(0., 1.1, .1), xlabel='I (Intensity)',
-                    ylabel='P(I)')
-
-        # - Show the image
-        img_ax.imshow(img, cmap='gray')
-        img_ax.set_title(lbl)
-
-    save_figure(figure=fig, save_file=save_file)
-
-
-def plot_mask_error(image: np.ndarray, mask: np.ndarray,
-                    pred_mask: np.ndarray = None, suptitle: str = '',
-                    title: str = '', figsize: tuple = (20, 20),
-                    tensorboard_params: dict = None,
-                    save_file: pathlib.Path = None, overwrite: bool = False):
-    # - Prepare the mask overlap image
-    msk_shp = mask.shape
-    msk_dims = len(msk_shp)
-    if msk_dims > 2:
-        msk_shp = msk_shp[:-1]
-    msk = np.zeros((*msk_shp, 3))
-    msk[..., 1] = mask[..., 0] if msk_dims > 2 else mask
-
-    # - If there is a predicted segmentation
-    if isinstance(pred_mask, np.ndarray):
-        msk[..., 0] = \
-            pred_mask[..., 0] if len(pred_mask.shape) > 2 else pred_mask
-
-    # - Convert instance segmentation to binary
-    msk[msk > 0] = 1.
-
-    fig, ax = plt.subplots(figsize=figsize)
-    ax.imshow(image, cmap='gray')
-    ax.imshow(msk, alpha=0.3)
-    ax.set(title=title)
-
-    fig.suptitle(suptitle)
-
-    save_figure(figure=fig, save_file=save_file)
-
-    if isinstance(tensorboard_params, dict):
-        write_figure_to_tensorboard(
-            writer=tensorboard_params.get('writer'),
-            figure=fig,
-            tag=tensorboard_params.get('tag'),
-            step=tensorboard_params.get('step')
-        )
-
-    plt.close(fig)
-
-
-def monitor_seg_error(gt_masks: np.ndarray, pred_masks: np.ndarray,
-                      seg_measures: np.ndarray, images: np.ndarray = None,
-                      n_samples: int = 5, figsize: tuple = (20, 10),
-                      save_dir: str or pathlib.Path = './seg_errors'):
-    save_dir = pathlib.Path(save_dir)
-    os.makedirs(save_dir, exist_ok=True)
-    data = list(zip(gt_masks, pred_masks, seg_measures))
-
-    for idx, (gt, pred, seg_msr) in zip(np.arange(n_samples), data):
-        seg = np.zeros((*gt.shape[:-1], 3))
-        seg[..., 0] = gt[..., 0]
-        seg[..., 2] = pred[..., 0]
-        seg[seg > 0] = 1.
-
-        if isinstance(images, np.ndarray):
-            fig, ax = plt.subplots(1, 2, figsize=figsize)
-            ax[0].imshow(images[idx], cmap='gray')
-            ax[0].set(title='Original Image')
-            ax[1].imshow(seg)
-            ax[1].set(title=f'Seg Measure = {seg_msr:.4f}')
-        else:
-            fig, ax = plt.subplots(figsize=figsize)
-            ax.imshow(seg)
-            ax.set(title=f'Seg Measure = {seg_msr:.4f}')
-
-        fig.suptitle(f'GT (red) vs Pred (blue) ')
-
-        plt.savefig(save_dir / f'item_{idx}.png')
-        plt.close()
-
-
-def plot_hist(data: np.ndarray or list, bins: np.ndarray,
-              save_file: pathlib.Path = None, overwrite: bool = False):
+def plot_hist(data: np.ndarray or list, bins: np.ndarray, save_file: pathlib.Path = None, overwrite: bool = False):
     # - Plot histogram
     ds = pd.DataFrame(dict(heights=data))
 
@@ -382,34 +260,3 @@ def plot_hist(data: np.ndarray or list, bins: np.ndarray,
     sns.set_context(rc=RC)
 
     print_pretty_message(message=f'An histogram was saved to: {save_file}', delimiter_symbol='*')
-
-
-def get_image_from_figure(figure):
-    buffer = io.BytesIO()
-
-    plt.savefig(buffer, format='png')
-
-    # plt.close(figure)
-    buffer.seek(0)
-
-    image = tf.image.decode_png(buffer.getvalue(), channels=4)
-    image = tf.expand_dims(image, 0)
-
-    return image
-
-
-def write_figure_to_tensorboard(writer, figure, tag: str, step: int):
-    with tf.device('/cpu:0'):
-        with writer.as_default():
-            # -> Write the scatter plot
-            tf.summary.image(
-                tag,
-                get_image_from_figure(figure=figure),
-                step=step
-            )
-
-
-def write_scalar_to_tensorboard(writer, value, tag: str, step: int):
-    with tf.device('/cpu:0'):
-        with writer.as_default():
-            tf.summary.scalar(tag, data=value, step=step)

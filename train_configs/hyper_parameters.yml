@@ -65,10 +65,10 @@ regularization:
   drop_block_keep_prob: 0.1
   drop_block_block_size: 10
 
-  kernel_regularizer_type: None
-#  kernel_regularizer_type: 'l2'
+#  kernel_regularizer_type: None
+  kernel_regularizer_type: 'l2'
   kernel_regularizer_l1: 0.01
-  kernel_regularizer_l2: 1.1
+  kernel_regularizer_l2: 0.01
   kernel_regularizer_factor: 0.01
   kernel_regularizer_mode: 'rows'
 
@@ -151,11 +151,11 @@ training:
   seg_sub_dir: 'SEG'
 
   data_dir: '../data/train/CytoPack'
-#  mask_dir: '/home/sidorov/Projects/QANetV2/data/generated/masks'
+#  mask_dir: '/home/sidorov/projects/QANetV2/data/generated/masks'
   temp_data_file: '../data/train/temp/CytoPack/clean_data.pkl'
 
-  tr_checkpoint_file: '/home/sidorov/Projects/QANetV2/qanet/output/train/pytorch_2022-08-08_17-28-30/checkpoints/best_val_loss_chkpt.pth.tar'
-  checkpoint_dir: '/home/sidorov/Projects/QANetV2/qanet/output/train/tensor_flow_2022-11-24_13-15-16/checkpoints'
+  tr_checkpoint_file: '/home/sidorov/projects/QANetV2/qanet/output/train/pytorch_2022-08-08_17-28-30/checkpoints/best_val_loss_chkpt.pth.tar'
+  checkpoint_dir: '/home/sidorov/projects/QANetV2/qanet/output/train/tensor_flow_2022-11-24_13-15-16/checkpoints'
   tf_checkpoint_file: 'checkpoints/best_model.ckpt'
 
   loss: 'mse'
@@ -192,17 +192,17 @@ test:
   test_data: 'sim+'
 
   # - SIM+
-  dataframe_file_sim+: '/home/sidorov/Projects/QANetV2/RefModels/Results/Fluo-N2DH-SIM+/seg_scores.csv'
-  checkpoint_dir_sim+: '/home/sidorov/Projects/QANetV2/qanet/output/train/tensor_flow_dropblock_arch_2_256x256_2023-02-18_19-13-16/checkpoints'
-#  checkpoint_dir_sim+: '/home/sidorov/Projects/QANetV2/qanet/output/train/tensor_flow_drop_block_last_cyclical_256x256_arch_2_2023-02-18_01-35-12/checkpoints'
+  dataframe_file_sim+: '/home/sidorov/projects/QANetV2/RefModels/Results/Fluo-N2DH-SIM+/seg_scores.csv'
+  checkpoint_dir_sim+: '/home/sidorov/projects/QANetV2/qanet/output/train/tensor_flow_dropblock_arch_2_256x256_2023-02-18_19-13-16/checkpoints'
+#  checkpoint_dir_sim+: '/home/sidorov/projects/QANetV2/qanet/output/train/tensor_flow_drop_block_last_cyclical_256x256_arch_2_2023-02-18_01-35-12/checkpoints'
 
   # - GOWT1
-  dataframe_file_gowt1:  '/home/sidorov/Projects/QANetV2/RefModels/Results/Fluo-N2DH-GOWT1/seg_scores.csv'
-  checkpoint_dir_gowt1: '/home/sidorov/Projects/QANetV2/qanet/output/train/tensor_flow_drop_block_last_cyclical_256x256_arch_2_2023-02-18_01-35-12/checkpoints'
+  dataframe_file_gowt1:  '/home/sidorov/projects/QANetV2/RefModels/Results/Fluo-N2DH-GOWT1/seg_scores.csv'
+  checkpoint_dir_gowt1: '/home/sidorov/projects/QANetV2/qanet/output/train/tensor_flow_drop_block_last_cyclical_256x256_arch_2_2023-02-18_01-35-12/checkpoints'
 
   # - HeLa
-  dataframe_file_hela: '/home/sidorov/Projects/QANetV2/RefModels/Results/Fluo-N2DL-HeLa/seg_scores.csv'
-  checkpoint_dir_hela: '/home/sidorov/Projects/QANetV2/qanet/output/train/tensor_flow_drop_block_last_cyclical_256x256_arch_2_2023-02-18_01-35-12/checkpoints'
+  dataframe_file_hela: '/home/sidorov/projects/QANetV2/RefModels/Results/Fluo-N2DL-HeLa/seg_scores.csv'
+  checkpoint_dir_hela: '/home/sidorov/projects/QANetV2/qanet/output/train/tensor_flow_drop_block_last_cyclical_256x256_arch_2_2023-02-18_01-35-12/checkpoints'
 
 
 inference:
@@ -217,14 +217,14 @@ inference:
 
   # - SIM+
 #  data_dir: '../data/inference/UNSW-AU-Fluo-N2DH-SIM+'
-#  data_dir: '/home/sidorov/Projects/QANetV2/data/inference/BGU-IL-Fluo-N2DH-GOWT1(4)'
-  data_dir: '/home/sidorov/Projects/QANetV2/data/inference/DKFZ-GE-Fluo-N2DH-SIM+'
-  checkpoint_dir_sim+: '/home/sidorov/Projects/QANetV2/qanet/output/train/tensor_flow_arch_1_float64_SIM+_3_3_pct/checkpoints'
+#  data_dir: '/home/sidorov/projects/QANetV2/data/inference/BGU-IL-Fluo-N2DH-GOWT1(4)'
+  data_dir: '/home/sidorov/projects/QANetV2/data/inference/DKFZ-GE-Fluo-N2DH-SIM+'
+  checkpoint_dir_sim+: '/home/sidorov/projects/QANetV2/qanet/output/train/tensor_flow_arch_1_float64_SIM+_3_3_pct/checkpoints'
 
   # - GOWT1
-  checkpoint_dir_gowt1: '/home/sidorov/Projects/QANetV2/qanet/output/train/tensor_flow_arch1_float64_GOWT1_5_7_pct/checkpoints'
+  checkpoint_dir_gowt1: '/home/sidorov/projects/QANetV2/qanet/output/train/tensor_flow_arch1_float64_GOWT1_5_7_pct/checkpoints'
 
   # - HeLa
-  checkpoint_dir_hela: '/home/sidorov/Projects/QANetV2/qanet/output/train/tensor_flow_arch_1_float64_cyclic_HeLa_3.5_pct/checkpoints'
-#  checkpoint_dir: '/home/sidorov/Projects/QANetV2/qanet/output/train/tensor_flow_gauss_blur_2023-01-17_01-10-32/checkpoints'
+  checkpoint_dir_hela: '/home/sidorov/projects/QANetV2/qanet/output/train/tensor_flow_arch_1_float64_cyclic_HeLa_3.5_pct/checkpoints'
+#  checkpoint_dir: '/home/sidorov/projects/QANetV2/qanet/output/train/tensor_flow_gauss_blur_2023-01-17_01-10-32/checkpoints'
 
