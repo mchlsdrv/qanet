@@ -40,7 +40,7 @@ if __name__ == '__main__':
     update_hyper_parameters(hyper_parameters=hyp_params_dict, arguments=args)
 
     # - Create the directory for the current run
-    dir_name = args.name
+    dir_name = args.experiment_name
     if args.test_data == 'sim+' and dir_name == '':
         dir_name = 'SIM+'
     if args.test_data == 'gowt1' and dir_name == '':

@@ -240,11 +240,11 @@ def get_model(mode: str, hyper_parameters: dict, output_dir: pathlib.Path or str
     model_configs = dict(
         input_image_dims=(hyper_parameters.get('augmentations')['crop_height'],
                           hyper_parameters.get('augmentations')['crop_width']),
-        drop_block=dict(
-            use=hyper_parameters.get('regularization')['drop_block'],
-            keep_prob=hyper_parameters.get('regularization')['drop_block_keep_prob'],
-            block_size=hyper_parameters.get('regularization')['drop_block_block_size']
-        ),
+        # drop_block=dict(
+        #     use=hyper_parameters.get('regularization')['drop_block'],
+        #     keep_prob=hyper_parameters.get('regularization')['drop_block_keep_prob'],
+        #     block_size=hyper_parameters.get('regularization')['drop_block_block_size']
+        # ),
         architecture=hyper_parameters.get('model')['architecture'],
         kernel_regularizer=dict(
             type=hyper_parameters.get('regularization')[
@@ -308,11 +308,17 @@ def get_model(mode: str, hyper_parameters: dict, output_dir: pathlib.Path or str
         momentum=hyper_parameters.get('training')['optimizer_momentum'],
         nesterov=hyper_parameters.get('training')['optimizer_nesterov'],
         centered=hyper_parameters.get('training')['optimizer_centered'],
-        cyclical_lr=hyper_parameters.get('callbacks')['cyclical_lr'],
-        cyclical_lr_init_lr=hyper_parameters.get('callbacks')['cyclical_lr_init_lr'],
-        cyclical_lr_max_lr=hyper_parameters.get('callbacks')['cyclical_lr_max_lr'],
-        cyclical_lr_step_size=hyper_parameters.get('callbacks')['cyclical_lr_step_size'],
+        # cyclical_lr=hyper_parameters.get('callbacks')['lr_reduction_scheduler_cyclical_lr'],
+        # cyclical_lr_init_lr=hyper_parameters.get('callbacks')['cyclical_lr_init_lr'],
+        # cyclical_lr_max_lr=hyper_parameters.get('callbacks')['cyclical_lr_max_lr'],
+        # cyclical_lr_step_size=hyper_parameters.get('callbacks')['cyclical_lr_step_size'],
         lr_reduction_scheduler=hyper_parameters.get('callbacks')['lr_reduction_scheduler'],
+        lr_reduction_scheduler_cyclical_init_lr=hyper_parameters.get(
+            'callbacks')['lr_reduction_scheduler_cyclical_init_lr'],
+        lr_reduction_scheduler_cyclical_max_lr=hyper_parameters.get(
+            'callbacks')['lr_reduction_scheduler_cyclical_max_lr'],
+        lr_reduction_scheduler_cyclical_step_size=hyper_parameters.get(
+            'callbacks')['lr_reduction_scheduler_cyclical_step_size'],
         lr_reduction_scheduler_factor=hyper_parameters.get('callbacks')['lr_reduction_scheduler_factor'],
         lr_reduction_scheduler_decay_steps=hyper_parameters.get('callbacks')['lr_reduction_scheduler_decay_steps'],
     )
@@ -392,12 +398,12 @@ def get_optimizer(args: dict):
             centered=args.get('centered'),
         )
 
-    if args.get('cyclical_lr'):
+    if args.get('lr_reduction_scheduler') == 'cyclical':
         lr = tfa.optimizers.CyclicalLearningRate(
-            initial_learning_rate=args.get('cyclical_lr_init_lr'),
-            maximal_learning_rate=args.get('cyclical_lr_max_lr'),
+            initial_learning_rate=args.get('lr_reduction_scheduler_cyclical_init_lr'),
+            maximal_learning_rate=args.get('lr_reduction_scheduler_cyclical_max_lr'),
             scale_fn=lambda x: 1 / (2. ** (x - 1)),
-            step_size=args.get('cyclical_lr_step_size')
+            step_size=args.get('lr_reduction_scheduler_cyclical_step_size')
         )
     elif args.get('lr_reduction_scheduler') == 'cosine':
         lr = tf.keras.optimizers.schedules.CosineDecay(

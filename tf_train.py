@@ -39,9 +39,9 @@ if __name__ == '__main__':
         current_run_dir = pathlib.Path(hyp_params_dict.get('training')['tf_checkpoint_dir']).parent
         dir_name = current_run_dir.name
     else:
-        dir_name = f'tensor_flow_{args.experiment_name}_{ts}'
+        dir_name = f'{args.experiment_name}_{ts}'
         current_run_dir = pathlib.Path(hyp_params_dict.get(
-            'general')['output_dir']) / f'train/{dir_name}'
+            'general')['output_dir']) / f'train/tensorflow/{dir_name}'
         os.makedirs(current_run_dir)
 
     # - ClearML

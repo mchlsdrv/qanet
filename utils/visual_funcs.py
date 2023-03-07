@@ -14,7 +14,7 @@ import warnings
 
 from utils.aux_funcs import categorical_2_rgb, err_log, check_pathable, str_2_path, info_log, print_pretty_message
 
-mpl.use('Agg')  # <= avoiding the "Tcl_AsyncDelete: async handler deleted by the wrong thread" exception
+# mpl.use('Agg')  # <= avoiding the "Tcl_AsyncDelete: async handler deleted by the wrong thread" exception
 plt.style.use('seaborn')  # <= using the seaborn plot style
 
 warnings.simplefilter("ignore", UserWarning)
@@ -190,7 +190,7 @@ def get_scatter_plot_figure(x: np.ndarray, y: np.ndarray, plot_type: str, logger
     rho, p = pearsonr(x, y)
 
     # - Calculate mean squared error
-    mse = np.mean(np.square(x[:10] - y[:10]))
+    mse = np.mean(np.square(x - y))
 
     g.ax_joint.annotate(
         f'$\\rho = {rho:.3f}, MSE = {mse:.3f}$',

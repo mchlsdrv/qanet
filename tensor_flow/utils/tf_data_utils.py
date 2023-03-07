@@ -68,63 +68,6 @@ def get_data_loaders(mode: str, data_dict: dict, hyper_parameters: dict, logger:
     return train_dl, val_dl
 
 
-# def get_image_from_figure(figure):
-#     buffer = io.BytesIO()
-#
-#     plt.savefig(buffer, format='png')
-#
-#     plt.close(figure)
-#     buffer.seek(0)
-#
-#     image = tf.image.decode_png(buffer.getvalue(), channels=4)
-#     image = tf.expand_dims(image, 0)
-#
-#     return image
-
-
-# def get_random_mask(masks_root: pathlib.Path or str, image_file: pathlib.Path or str):
-#     # - Assert the mask directory and the image file represent a path
-#     assert_pathable(argument=masks_root, argument_name='masks_root')
-#     assert_pathable(argument=image_file, argument_name='image_file')
-#
-#     # - Make sure the mask directory and the image file are in the pathlib.Path
-#     # format
-#     masks_root = str_2_path(path=masks_root)
-#     image_file = str_2_path(path=image_file)
-#
-#     # - Get file name
-#     fl_name = get_file_name(path=image_file)
-#
-#     # - Load the gt mask
-#     fl_msk_dir = masks_root / f'{get_parent_dir_name(path=image_file)}' \
-#                               f'_{fl_name}'
-#
-#     # - Get the masks which correspond to the current file
-#     msk_names = np.array(os.listdir(fl_msk_dir), dtype=object)
-#     n_msks = len(msk_names)
-#
-#     # - Choose randomly n_samples masks
-#     rnd_idx = np.random.randint(0, n_msks)
-#     rnd_msk_name = msk_names[rnd_idx]
-#
-#     # - Get the name of the mask
-#     rnd_msk_fl = fl_msk_dir / rnd_msk_name
-#
-#     # - Get the seg measure of the chosen mask, which should be the name of the
-#     # file with '_' instead of '.'
-#     seg_scr_str = get_file_name(path=rnd_msk_fl)
-#
-#     # - Strip the '-' character in case it was added due to overlap in
-#     # generated J values
-#     seg_scr = str_2_float(str_val=seg_scr_str if '-' not in seg_scr_str else seg_scr_str[:seg_scr_str.index('-')])
-#
-#     # - Load the mask
-#     msk = load_image(image_file=str(rnd_msk_fl), add_channels=True)
-#
-#     # - Return the random mask and the corresponding seg measure
-#     return msk, seg_scr
-
-
 class DataLoader(tf.keras.utils.Sequence):
     """
     This object operates in two modes:
@@ -226,7 +169,7 @@ class DataLoader(tf.keras.utils.Sequence):
             # <3> Change the GT mask to simulate the imperfect segmentation
             aug_res = self.train_mask_augs(image=img, mask=msk_gt)
             msk = aug_res.get('mask')
-            if np.random.rand() > 0.1:
+            if np.random.rand() > 0.2:
                 msk = self.apply_elastic(msk)
             msk = repaint_instance_segmentation(mask=msk)
 

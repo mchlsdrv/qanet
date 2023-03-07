@@ -165,12 +165,12 @@ def transform_image(image: np.ndarray):
     img = standardize_image(image=img)
 
     # # - Random contrast plus/minus 50%
-    # random_contrast_factor = np.random.rand() + 0.5
-    # img = adjust_contrast_(img, random_contrast_factor)
+    random_contrast_factor = np.random.rand() + 0.5
+    img = adjust_contrast_(img, random_contrast_factor)
     #
     # # - Random brightness delta plus/minus 10% of maximum value
-    # random_brightness_delta = (np.random.rand() - 0.5) * 0.2 * img.max()
-    # img = adjust_brightness_(img, random_brightness_delta)
+    random_brightness_delta = (np.random.rand() - 0.5) * 0.2 * img.max()
+    img = adjust_brightness_(img, random_brightness_delta)
 
     return img
 
@@ -595,7 +595,7 @@ def repaint_instance_segmentation(mask: np.ndarray):
     lbls, lbl_px = np.unique(mask.astype(np.int8), return_counts=True)
 
     # - Clear low pixeled labels
-    lbl_obj_idx = np.argwhere(lbl_px > 1000)
+    lbl_obj_idx = np.argwhere(lbl_px > 500)
     lbls = lbls[lbl_obj_idx]
 
     # - Clear the background label
@@ -613,6 +613,7 @@ def repaint_instance_segmentation(mask: np.ndarray):
 
     # - For preserve the old labels
     msk_rpntd = np.zeros_like(msk_cntd, dtype=np.float32)
+
     # - Saves the labels to know if the labels was present
     lbl_cntd_roi_history = dict()
     for idx, lbl in enumerate(lbls):
@@ -1132,7 +1133,7 @@ def get_arg_parser():
                         help=f'The maximal value of the cyclical learning rate'
                              f' scheduler')
     # - KERNEL REGULARIZER
-    parser.add_argument('--kernel_regularizer_type', type=str,
+    parser.add_argument('--kernel_regularizer_type', type=str, default='l2',
                         choices=['l1', 'l2', 'l1l2'],
                         help=f'The type of the regularization')
     parser.add_argument('--kernel_regularizer_l1', type=float,
