@@ -24,40 +24,33 @@ from utils.visual_funcs import (
 )
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 
-if __name__ == '__main__':
-    t_start = time.time()
 
+def run_test(model, hyper_parameters: dict):
+    t_start = time.time()
     ts = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
 
-    # - Get the argument parser
-    parser = get_arg_parser()
-    args = parser.parse_args()
-
-    # - Get hyperparameters
-    hyp_params_fl = pathlib.Path(args.hyper_params_file)
-    hyp_params_dict = yaml.safe_load(hyp_params_fl.open(mode='r').read())
-
-    # - Update the hyperparameters with the parsed arguments
-    update_hyper_parameters(hyper_parameters=hyp_params_dict, arguments=args)
-
     data_name = ''
-    if args.test_sim:
-        data_name = 'SIM'
-        hyp_params_dict.get('test')['dataframe_file'] = hyp_params_dict.get('test')['dataframe_file_sim+']
-    if args.test_gowt1:
-        data_name = 'GOWT1'
-        hyp_params_dict.get('test')['dataframe_file'] = hyp_params_dict.get('test')['dataframe_file_gowt1']
-    elif args.test_hela:
-        data_name = 'HeLa'
-        hyp_params_dict.get('test')['dataframe_file'] = hyp_params_dict.get('test')['dataframe_file_hela']
+    if hyper_parameters.get('test')['test_sim']:
+        hyper_parameters.get('test')['data_name'] = 'SIM'
+        hyper_parameters.get('test')['dataframe_file'] = hyper_parameters.get('test')['dataframe_file_sim+']
+    elif hyper_parameters.get('test')['test_gowt1']:
+        hyper_parameters.get('test')['data_name'] = 'GOWT1'
+        hyper_parameters.get('test')['dataframe_file'] = hyper_parameters.get('test')['dataframe_file_gowt1']
+    elif hyper_parameters.get('test')['test_hela']:
+        hyper_parameters.get('test')['data_name'] = 'HeLa'
+        hyper_parameters.get('test')['dataframe_file'] = hyper_parameters.get('test')['dataframe_file_hela']
 
+    # hyper_parameters.get('test')['data_name'] += hyper_parameters.get('test')['type']
+
+    data_name = hyper_parameters.get('test')['data_name']
     if data_name:
-        current_run_dir = args.output_dir
-        if current_run_dir is None:
+        current_run_dir = hyper_parameters.get('test')['output_dir']
+        if not current_run_dir:
             # - Create the directory for the current run
-            exp_name = args.experiment_name
-            current_run_dir = pathlib.Path(hyp_params_dict.get(
-                'general')['output_dir']) / f'test/tensor_flow/{data_name}_{exp_name}_{ts}'
+            exp_name = hyper_parameters.get('test')['experiment_name']
+            current_run_dir = pathlib.Path(
+                pathlib.Path(hyper_parameters.get('general')['output_dir']) /
+                f'test/tensor_flow/{data_name}_{exp_name}_{ts}')
             os.makedirs(current_run_dir)
 
         print_pretty_message(
@@ -67,30 +60,30 @@ if __name__ == '__main__':
 
         # - Save the updated hyperparameters to the current run directory
         yaml.dump(
-            hyp_params_dict,
+            hyper_parameters,
             (current_run_dir / 'test_hyper_params.yml').open(mode='w')
         )
 
         # - Configure the logger
         logger = get_logger(
-            configs_file=pathlib.Path(hyp_params_dict.get('general')['configs_dir']) / 'logger_configs.yml',
+            configs_file=pathlib.Path(hyper_parameters.get('general')['configs_dir']) / 'logger_configs.yml',
             save_file=current_run_dir / f'logs.log'
         )
 
-        if args.checkpoint_dir is not None:
-            hyp_params_dict.get("test")["checkpoint_dir"] = args.checkpoint_dir
+        # assert hyper_parameters.get('test')['checkpoint_dir'] is not None, 'Have no checkpoint to test!'
 
         print_pretty_message(
-            message=f'Running test with TensorFlow model from {hyp_params_dict.get("test")["checkpoint_dir"]}',
+            message=f'Running test with TensorFlow model from {hyper_parameters.get("test")["checkpoint_dir"]}',
             delimiter_symbol='='
         )
 
         # - Configure the GPU to run on
-        choose_gpu(gpu_id=args.gpu_id, logger=logger)
+        choose_gpu(gpu_id=hyper_parameters.get('test')['gpu_id'], logger=logger)
 
         # - Run the test
         test_res_df = test_model(
-            hyper_parameters=hyp_params_dict,
+            model=model,
+            hyper_parameters=hyper_parameters,
             output_dir=current_run_dir,
             logger=logger
         )
@@ -106,23 +99,16 @@ if __name__ == '__main__':
             logger=logger)
 
         # - Create the train file writer
-        file_writer = tf.summary.create_file_writer(str(current_run_dir / 'test'))
+        file_writer = tf.summary.create_file_writer(
+            str(current_run_dir / f"test - {hyper_parameters.get('test')['type']}"))
 
         write_figure_to_tensorboard(writer=file_writer, figure=fig, tag=f'{data_name}_test', step=0)
 
-        fig.savefig(current_run_dir / 'test_scatter.png')
+        fig.savefig(current_run_dir / f"{hyper_parameters.get('test')['data_name']}_scatter.png")
         plt.close(fig)
 
-        # fig, ax = get_simple_scatter_plot_figure(
-        #     x=x,
-        #     y=y,
-        #     xlabel='GT Quality Value',
-        #     ylabel='Estimated Quality Value',
-        #     save_file=current_run_dir / 'gt vs estimated scatter plot.png'
-        # )
-
         # - Save the results
-        test_res_df.to_csv(current_run_dir / f'{data_name}_test_results.csv')
+        test_res_df.to_csv(current_run_dir / f'{data_name}_test_results.csv', index=False)
 
         print_pretty_message(
             message=f'Test Results on {data_name} Data',
@@ -136,3 +122,21 @@ if __name__ == '__main__':
             message=f'Total runtime: {get_runtime(seconds=time.time() - t_start)}',
             delimiter_symbol='='
         )
+
+
+if __name__ == '__main__':
+
+    # - Get the argument parser
+    parser = get_arg_parser()
+    args = parser.parse_args()
+
+    # - Get hyperparameters
+    hyp_params_fl = pathlib.Path(args.hyper_params_file)
+    hyp_params_dict = yaml.safe_load(hyp_params_fl.open(mode='r').read())
+
+    # - Update the hyperparameters with the parsed arguments
+    update_hyper_parameters(hyper_parameters=hyp_params_dict, arguments=args)
+
+    hyp_params_dict.get('test')['type'] = 'custom'
+
+    run_test(model=None, hyper_parameters=hyp_params_dict)

@@ -9,7 +9,6 @@ import logging
 import wandb
 from matplotlib import pyplot as plt
 
-from global_configs.general_configs import HR_AET_PERCENTAGE, HR_AET_FIGSIZE
 from utils.aux_funcs import (
     to_numpy,
     err_log,
@@ -17,7 +16,7 @@ from utils.aux_funcs import (
 from utils.visual_funcs import (
     save_figure,
     get_rgb_mask_figure,
-    get_hit_rate_plot_figure,
+    # get_hit_rate_plot_figure,
     get_scatter_plot_figure,
     get_image_figure,
 )
@@ -65,12 +64,10 @@ class ProgressLogCallback(tf.keras.callbacks.Callback):
         os.makedirs(self.log_dir, exist_ok=True)
 
         # - Create the train file writer
-        self.train_file_writer = tf.summary.create_file_writer(
-            str(self.log_dir / 'train'))
+        self.train_file_writer = tf.summary.create_file_writer(str(self.log_dir / 'train'))
 
         # - Create the train file writer
-        self.val_file_writer = tf.summary.create_file_writer(
-            str(self.log_dir / 'validation'))
+        self.val_file_writer = tf.summary.create_file_writer(str(self.log_dir / 'validation'))
 
         # - Create the train scatter plots directory
         self.train_scatter_plots_dir = self.log_dir / f'train/plots/scatter'
@@ -89,8 +86,7 @@ class ProgressLogCallback(tf.keras.callbacks.Callback):
         os.makedirs(self.val_scatter_plots_dir, exist_ok=True)
 
         # - Create the train hit rate plots directory
-        self.val_hit_rate_plots_dir = \
-            self.log_dir / f'validation/plots/hit_rate'
+        self.val_hit_rate_plots_dir = self.log_dir / f'validation/plots/hit_rate'
         os.makedirs(self.val_hit_rate_plots_dir, exist_ok=True)
 
         # - Create the train samples directory
@@ -134,8 +130,7 @@ class ProgressLogCallback(tf.keras.callbacks.Callback):
         if self.wandb_logs:
             wandb.log(
                 {
-                    f'{tag}-{procedure}': wandb.Image(
-                        get_image_from_figure(figure=figure))
+                    f'{tag}-{procedure}': wandb.Image(get_image_from_figure(figure=figure))
                 }
             )
 
@@ -197,14 +192,10 @@ class ProgressLogCallback(tf.keras.callbacks.Callback):
             # -----------
             # - Samples -
             # -----------
-            train_img = self.model.train_btch_smpl_dict.get(
-                'image').astype(np.float32)
-            train_msk = self.model.train_btch_smpl_dict.get(
-                'mask').astype(np.float32)
-            train_true_sm = self.model.train_btch_smpl_dict.get(
-                'true_seg_measure').astype(np.float32)
-            train_pred_sm = self.model.train_btch_smpl_dict.get(
-                'pred_seg_measure').astype(np.float32)
+            train_img = self.model.train_btch_smpl_dict.get('image').astype(np.float32)
+            train_msk = self.model.train_btch_smpl_dict.get('mask').astype(np.float32)
+            train_true_sm = self.model.train_btch_smpl_dict.get('true_seg_measure').astype(np.float32)
+            train_pred_sm = self.model.train_btch_smpl_dict.get('pred_seg_measure').astype(np.float32)
             # - Mask
             train_msk_fig = get_rgb_mask_figure(
                 mask=train_msk,
@@ -379,14 +370,10 @@ class ProgressLogCallback(tf.keras.callbacks.Callback):
             # ----------
             # - Sample -
             # ----------
-            val_img = self.model.val_btch_smpl_dict.get(
-                'image').astype(np.float32)
-            val_msk = self.model.val_btch_smpl_dict.get(
-                'mask').astype(np.float32)
-            val_true_sm = self.model.val_btch_smpl_dict.get(
-                'true_seg_measure').astype(np.float32)
-            val_pred_sm = self.model.val_btch_smpl_dict.get(
-                'pred_seg_measure').astype(np.float32)
+            val_img = self.model.val_btch_smpl_dict.get('image').astype(np.float32)
+            val_msk = self.model.val_btch_smpl_dict.get('mask').astype(np.float32)
+            val_true_sm = self.model.val_btch_smpl_dict.get('true_seg_measure').astype(np.float32)
+            val_pred_sm = self.model.val_btch_smpl_dict.get('pred_seg_measure').astype(np.float32)
 
             # - Mask
             val_msk_fig = get_rgb_mask_figure(
@@ -515,6 +502,8 @@ class ProgressLogCallback(tf.keras.callbacks.Callback):
 
         except RuntimeError as err:
             err_log(logger=self.logger, message=f'{err}')
+
+        # self.model.save_weights(self.log_dir / 'checkpoints/last_model', overwrite=True)
 
         # - Clean the data for the next epoch
         self.model.train_epch_gt_seg_msrs = np.array([])

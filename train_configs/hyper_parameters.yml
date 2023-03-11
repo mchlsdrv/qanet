@@ -1,6 +1,6 @@
 general:
   project_name: 'QANetV2'
-  experiment_name: 'new run'
+  experiment_name: ''
   debug: False
   configs_dir: './global_configs'
   output_dir: './output'
@@ -181,8 +181,20 @@ training:
   optimizer_centered: False
 
 test:
-  test_data: 'sim+'
+  output_dir: ''
+  experiment_name: ''
+  data_name: ''
+  gpu_id: -1
 
+  test_sim: False
+  test_gowt1: False
+  test_hela: False
+
+#  test_data: 'sim+'
+
+  checkpoint_file: '/home/sidorov/projects/QANetV2/qanet/output/train/tensorflow/128x128/DEBUG_2023-03-11_18-42-34/checkpoints/last_model.ckpt'  # <= error of -4.7%
+
+  checkpoint_dir: ''
   # - SIM+
   dataframe_file_sim+: '/home/sidorov/projects/QANetV2/RefModels/Results/Fluo-N2DH-SIM+/seg_scores.csv'
   checkpoint_dir_sim+: '/home/sidorov/projects/QANetV2/qanet/output/train/tensorflow/128x128/dropblock_last_dropout_last_l2_001_arch_2/checkpoints'  # <= error of -4.7%

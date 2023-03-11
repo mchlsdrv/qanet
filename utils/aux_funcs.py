@@ -165,12 +165,12 @@ def transform_image(image: np.ndarray):
     img = standardize_image(image=img)
 
     # # - Random contrast plus/minus 50%
-    random_contrast_factor = np.random.rand() + 0.5
-    img = adjust_contrast_(img, random_contrast_factor)
+    # random_contrast_factor = np.random.rand() + 0.5
+    # img = adjust_contrast_(img, random_contrast_factor)
     #
     # # - Random brightness delta plus/minus 10% of maximum value
-    # random_brightness_delta = (np.random.rand() - 0.5) * 0.2 * img.max()
-    # img = adjust_brightness_(img, random_brightness_delta)
+    random_brightness_delta = (np.random.rand() - 0.5) * 0.2 * img.max()
+    img = adjust_brightness_(img, random_brightness_delta)
 
     return img
 
@@ -485,6 +485,15 @@ def scan_files(root_dir: pathlib.Path or str, seg_dir_postfix: str,
                         if img_fl.is_file() and seg_fl.is_file():
                             file_tuples.append((img_fl, seg_fl))
     return file_tuples
+
+
+def rename_string_column(dataframe: pd.DataFrame, column_name: str, old_str: str, new_str: str,
+                         save_file: pathlib.Path or str = None):
+    dataframe.loc[:, column_name] = dataframe.apply(
+        lambda x: x[column_name].replace(old_str, new_str), axis=1)
+
+    if check_pathable(save_file):
+        dataframe.to_csv(save_file, index=False)
 
 
 def get_data_dict(data_file_tuples: list):

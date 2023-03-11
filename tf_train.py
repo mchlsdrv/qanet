@@ -2,10 +2,12 @@ import os
 import pathlib
 import time
 import datetime
+from copy import deepcopy
+
 import yaml
 import matplotlib as mpl
-from tensor_flow.utils.tf_utils import train_model, choose_gpu
-from clearml import Task
+from tensor_flow.utils.tf_utils import train_model, choose_gpu, load_checkpoint
+# from clearml import Task
 from utils.aux_funcs import (
     get_arg_parser,
     get_runtime,
@@ -13,6 +15,7 @@ from utils.aux_funcs import (
     err_log,
     update_hyper_parameters, print_pretty_message
 )
+from tf_test import run_test
 import wandb
 
 os.environ['TF_FORCE_GPU_ALLOW_GROWTH'] = 'true'
@@ -81,10 +84,10 @@ if __name__ == '__main__':
             'callbacks')['wandb_project_name'])
 
     # - Train model
-    trained_model = None
+    model = None
 
     try:
-        trained_model = train_model(
+        model = train_model(
             hyper_parameters=hyp_params_dict,
             output_dir=current_run_dir,
             logger=logger
@@ -107,38 +110,62 @@ if __name__ == '__main__':
     ''')
 
     if args.run_tests:
-        print_pretty_message(message='Testing the SIM+ Data')
-        print(f'- Best Model:')
-        os.system(f'python tf_test.py --architecture {hyp_params_dict.get("model")["architecture"]} '
-                  f'--gpu_id {args.gpu_id} --test_sim --hyper_params_file train_configs/hyper_params.yml '
-                  f'--checkpoint_dir {current_run_dir}/{hyp_params_dict.get("callbacks")["checkpoint_file_best_model"]}'
-                  )
-        print(f'- Last Model:')
-        os.system(f'python tf_test.py --architecture {hyp_params_dict.get("model")["architecture"]} '
-                  f'--gpu_id {args.gpu_id} --test_sim --hyper_params_file train_configs/hyper_params.yml '
-                  f'--checkpoint_dir {current_run_dir}/{hyp_params_dict.get("callbacks")["checkpoint_file_last_model"]}'
-                  )
+        hyp_params_dict.get('test')['experiment_name'] = hyp_params_dict.get('general')['experiment_name'] + '_test'
 
-        print_pretty_message(message='Testing the GOWT1 Data')
-        print(f'- Best Model:')
-        os.system(f'python tf_test.py --architecture {hyp_params_dict.get("model")["architecture"]} '
-                  f'--gpu_id {args.gpu_id} --test_gowt1 --hyper_params_file train_configs/hyper_params.yml'
-                  f'--checkpoint_dir {current_run_dir}/{hyp_params_dict.get("callbacks")["checkpoint_file_best_model"]}'
-                  )
-        print(f'- Last Model:')
-        os.system(f'python tf_test.py --architecture {hyp_params_dict.get("model")["architecture"]} '
-                  f'--gpu_id {args.gpu_id} --test_gowt1 --hyper_params_file train_configs/hyper_params.yml'
-                  f'--checkpoint_dir {current_run_dir}/{hyp_params_dict.get("callbacks")["checkpoint_file_last_model"]}'
-                  )
+        ckpt_bst = current_run_dir / hyp_params_dict.get("callbacks")["checkpoint_file_best_model"]
+        ckpt_lst = current_run_dir / hyp_params_dict.get("callbacks")["checkpoint_file_last_model"]
 
-        print_pretty_message(message='Testing the HeLa data')
-        print(f'- Best Model:')
-        os.system(f'python tf_test.py --architecture {hyp_params_dict.get("model")["architecture"]} '
-                  f'--gpu_id {args.gpu_id} --test_hela --hyper_params_file train_configs/hyper_parameters.yml',
-                  f'--checkpoint_dir {current_run_dir}/{hyp_params_dict.get("callbacks")["checkpoint_file_best_model"]}'
-                  )
-        print(f'- Last Model:')
-        os.system(f'python tf_test.py --architecture {hyp_params_dict.get("model")["architecture"]} '
-                  f'--gpu_id {args.gpu_id} --test_hela --hyper_params_file train_configs/hyper_parameters.yml',
-                  f'--checkpoint_dir {current_run_dir}/{hyp_params_dict.get("callbacks")["checkpoint_file_last_model"]}'
-                  )
+        hyp_params_dict.get('test')['checkpoint_file_best'] = ckpt_bst
+        hyp_params_dict.get('test')['checkpoint_file_last'] = ckpt_lst
+
+        hyp_params_dict.get('test')['gpu_id'] = args.gpu_id
+
+        hyp_params_dict.get('test')['output_dir'] = current_run_dir
+
+        # - SIM+
+        test_hyp_params_dict = deepcopy(hyp_params_dict)
+        ckpt_loaded = load_checkpoint(model=model, checkpoint_file=ckpt_bst)
+        if ckpt_loaded:
+            print_pretty_message(message='Testing the SIM+ Data')
+            print(f'- Best Model:')
+            test_hyp_params_dict.get('test')['test_sim'] = True
+            test_hyp_params_dict.get('test')['type'] = 'best'
+            run_test(model=model, hyper_parameters=test_hyp_params_dict)
+
+        ckpt_loaded = load_checkpoint(model=model, checkpoint_file=ckpt_lst)
+        if ckpt_loaded:
+            print(f'- Last Model:')
+            test_hyp_params_dict.get('test')['type'] = 'last'
+            run_test(model=model, hyper_parameters=test_hyp_params_dict)
+
+        # - GOWT1
+        test_hyp_params_dict = deepcopy(hyp_params_dict)
+        ckpt_loaded = load_checkpoint(model=model, checkpoint_file=ckpt_bst)
+        if ckpt_loaded:
+            print_pretty_message(message='Testing the GOWT1 Data')
+            print(f'- Best Model:')
+            test_hyp_params_dict.get('test')['test_gowt1'] = True
+            test_hyp_params_dict.get('test')['type'] = 'best'
+            run_test(model=model, hyper_parameters=test_hyp_params_dict)
+
+        ckpt_loaded = load_checkpoint(model=model, checkpoint_file=ckpt_lst)
+        if ckpt_loaded:
+            print(f'- Last Model:')
+            test_hyp_params_dict.get('test')['type'] = 'last'
+            run_test(model=model, hyper_parameters=test_hyp_params_dict)
+
+        # - HeLa
+        test_hyp_params_dict = deepcopy(hyp_params_dict)
+        ckpt_loaded = load_checkpoint(model=model, checkpoint_file=ckpt_bst)
+        if ckpt_loaded:
+            print_pretty_message(message='Testing the HeLa Data')
+            print(f'- Best Model:')
+            test_hyp_params_dict.get('test')['test_hela'] = True
+            test_hyp_params_dict.get('test')['type'] = 'best'
+            run_test(model=model, hyper_parameters=test_hyp_params_dict)
+
+        ckpt_loaded = load_checkpoint(model=model, checkpoint_file=ckpt_lst)
+        if ckpt_loaded:
+            print(f'- Last Model:')
+            test_hyp_params_dict.get('test')['type'] = 'last'
+            run_test(model=model, hyper_parameters=test_hyp_params_dict)

@@ -1,5 +1,4 @@
 import os
-import io
 import numpy as np
 from functools import partial
 import logging
@@ -7,7 +6,6 @@ import logging.config
 import threading
 import multiprocessing as mlp
 import pathlib
-import matplotlib.pyplot as plt
 import pandas as pd
 import tensorflow as tf
 import tensorflow_addons as tfa
@@ -15,9 +13,9 @@ from keras import backend as K
 
 from utils.aux_funcs import (
     info_log,
-    warning_log,
-    err_log,
-    get_data, str_2_path, print_pretty_message, get_data_dict,
+    get_data,
+    print_pretty_message,
+    get_data_dict,
     clear_unnecessary_columns
 )
 
@@ -242,17 +240,25 @@ def launch_tensorboard(logdir):
     return tensorboard_th
 
 
+def load_checkpoint(model, checkpoint_file: str or pathlib.Path):
+    # ckpt_fl = str_2_path(path=checkpoint_file)
+
+    weights_loaded = False
+    try:
+        model.load_weights(checkpoint_file)
+        weights_loaded = True
+    except Exception as err:
+        print(err)
+
+    return weights_loaded
+
+
 def get_model(mode: str, hyper_parameters: dict, output_dir: pathlib.Path or str, logger: logging.Logger = None):
     weights_loaded = False
 
     model_configs = dict(
         input_image_dims=(hyper_parameters.get('augmentations')['crop_height'],
                           hyper_parameters.get('augmentations')['crop_width']),
-        # drop_block=dict(
-        #     use=hyper_parameters.get('regularization')['drop_block'],
-        #     keep_prob=hyper_parameters.get('regularization')['drop_block_keep_prob'],
-        #     block_size=hyper_parameters.get('regularization')['drop_block_block_size']
-        # ),
         architecture=hyper_parameters.get('model')['architecture'],
         kernel_regularizer=dict(
             type=hyper_parameters.get('regularization')[
@@ -275,32 +281,8 @@ def get_model(mode: str, hyper_parameters: dict, output_dir: pathlib.Path or str
             alpha=hyper_parameters.get('model')['activation_leaky_relu_alpha']
         )
     )
-    model = RibCage(model_configs=model_configs, output_dir=output_dir,
-                    logger=logger)
-
-    checkpoint_dir = str_2_path(path=hyper_parameters.get(mode)['checkpoint_dir'])
-    if checkpoint_dir.is_dir():
-        try:
-            latest_cpt = tf.train.latest_checkpoint(checkpoint_dir)
-            if latest_cpt is not None:
-                model.load_weights(latest_cpt)
-                weights_loaded = True
-        except Exception as err:
-            if isinstance(logger, logging.Logger):
-                err_log(logger=logger,
-                        message=f'Can\'t load weighs from '
-                                f'\'{checkpoint_dir}\' due to error: {err}')
-        else:
-            if isinstance(logger, logging.Logger):
-                if latest_cpt is not None:
-                    info_log(logger=logger,
-                             message=f'Weights from '
-                                     f'\'{checkpoint_dir}\' were loaded '
-                                     f'successfully to the \'RibCage\' model!')
-                else:
-                    warning_log(logger=logger,
-                                message=f'No weights were found to load in '
-                                        f'\'{checkpoint_dir}\'!')
+    model = RibCage(model_configs=model_configs, output_dir=output_dir, logger=logger)
+    load_checkpoint(model=model, checkpoint_file=hyper_parameters.get(mode)['checkpoint_file'])
     if isinstance(logger, logging.Logger):
         info_log(logger=logger, message=model.summary())
 
@@ -316,10 +298,6 @@ def get_model(mode: str, hyper_parameters: dict, output_dir: pathlib.Path or str
         momentum=hyper_parameters.get('training')['optimizer_momentum'],
         nesterov=hyper_parameters.get('training')['optimizer_nesterov'],
         centered=hyper_parameters.get('training')['optimizer_centered'],
-        # cyclical_lr=hyper_parameters.get('callbacks')['lr_reduction_scheduler_cyclical_lr'],
-        # cyclical_lr_init_lr=hyper_parameters.get('callbacks')['cyclical_lr_init_lr'],
-        # cyclical_lr_max_lr=hyper_parameters.get('callbacks')['cyclical_lr_max_lr'],
-        # cyclical_lr_step_size=hyper_parameters.get('callbacks')['cyclical_lr_step_size'],
         lr_reduction_scheduler=hyper_parameters.get('callbacks')['lr_reduction_scheduler'],
         lr_reduction_scheduler_cyclical_init_lr=hyper_parameters.get(
             'callbacks')['lr_reduction_scheduler_cyclical_init_lr'],
@@ -340,7 +318,6 @@ def get_model(mode: str, hyper_parameters: dict, output_dir: pathlib.Path or str
 
 
 class LRScheduler(tf.keras.optimizers.schedules.LearningRateSchedule):
-
     def __init__(self, initial_learning_rate, lr_reduction_points: list, lr_reduction_factor: float = 0.3):
         self.lr = initial_learning_rate
         self.lr_rdctn_pts = np.array(lr_reduction_points, dtype=np.int16)
@@ -352,7 +329,7 @@ class LRScheduler(tf.keras.optimizers.schedules.LearningRateSchedule):
         if self.lr_rdctn_pts.any() and step > self.lr_rdctn_pts[0]:
 
             # - Reduce the learning rate by the factor
-            self.lr = self.lr_rdctn_fctr * self.lr
+            self.lr *= self.lr_rdctn_fctr
 
             # - Update the reduction point array by discarding the last reduction point
             if len(self.lr_rdctn_pts) > 1:
@@ -361,6 +338,9 @@ class LRScheduler(tf.keras.optimizers.schedules.LearningRateSchedule):
                 self.lr_rdctn_pts = np.array([])
 
         return self.lr
+
+    def get_config(self):
+        pass
 
 
 def get_optimizer(args: dict):
@@ -494,6 +474,8 @@ def train_model(hyper_parameters: dict, output_dir: pathlib.Path or str, logger:
     if tb_prc is not None and hyper_parameters.get('callbacks')['tensorboard_launch']:
         tb_prc.join()
 
+    return model
+
 
 def infer_data(hyper_parameters: dict, output_dir: pathlib.Path or str, logger: logging.Logger = None):
     # - Load the data
@@ -542,7 +524,7 @@ def infer_data(hyper_parameters: dict, output_dir: pathlib.Path or str, logger: 
     return preds_dict
 
 
-def test_model(hyper_parameters: dict, output_dir: pathlib.Path or str, logger: logging.Logger = None):
+def test_model(model, hyper_parameters: dict, output_dir: pathlib.Path or str, logger: logging.Logger = None):
     test_res_df = None
     df_fl = pathlib.Path(hyper_parameters.get('test')['dataframe_file'])
     if df_fl.is_file():
@@ -553,8 +535,7 @@ def test_model(hyper_parameters: dict, output_dir: pathlib.Path or str, logger: 
         test_res_df = clear_unnecessary_columns(dataframe=test_res_df)
 
         # - Clear the nans
-        test_res_df = test_res_df.loc[~test_res_df.loc[:, 'seg_score'].isna()] \
-            .reset_index(drop=True)
+        test_res_df = test_res_df.loc[~test_res_df.loc[:, 'seg_score'].isna()].reset_index(drop=True)
 
         # - Create the data tuples for the to be fed into the get_data_dict
         data_file_tuples = [(img_fl, pred_msk_fl) for
@@ -575,16 +556,17 @@ def test_model(hyper_parameters: dict, output_dir: pathlib.Path or str, logger: 
 
         # MODEL
         # -1- Build the model and optionally load the weights
-        trained_model, weights_loaded = get_model(
-            mode='test',
-            hyper_parameters=hyper_parameters,
-            output_dir=output_dir, logger=logger)
+        if model is None:
+            model, weights_loaded = get_model(
+                mode='test',
+                hyper_parameters=hyper_parameters,
+                output_dir=output_dir, logger=logger)
 
-        chkpt_dir = hyper_parameters.get("test")["checkpoint_dir"]
-        assert weights_loaded, f'Could not load weights from {pathlib.Path(chkpt_dir)}!'
+            chkpt_dir = hyper_parameters.get("test")["checkpoint_dir"]
+            assert weights_loaded, f'Could not load weights from {pathlib.Path(chkpt_dir)}!'
 
         # - Infer
-        pred_df = trained_model.test(data_loader=test_dl)
+        pred_df = model.test(data_loader=test_dl)
 
         test_res_df.loc[test_res_df.loc[:, 'image_file'].isin(pred_df.loc[:, 'image_file']), 'pred_seg_score'] = \
             pred_df.loc[:, 'seg_score']

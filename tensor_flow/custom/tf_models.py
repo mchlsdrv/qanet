@@ -15,7 +15,8 @@ from global_configs.general_configs import COLUMN_NAMES
 from .tf_activations import (
     Swish
 )
-
+import warnings
+warnings.simplefilter(action='ignore', category=FutureWarning)
 DEBUG = False
 
 
@@ -92,39 +93,6 @@ class RibCage(keras.Model):
             kernel_regularizer = tf.keras.regularizers.OrthogonalRegularizer(
                 factor=configs.get('factor'), l2=configs.get('mode'))
         return kernel_regularizer
-    #
-    # def _build_conv2d_block(self, filters: int, kernel_size: int, dropblock_rate: float = 0.0, dropblock_size: int = 7,
-    #                         last: bool = False):
-    #     blk = [
-    #         tf.keras.layers.Conv2D(filters=filters, kernel_size=kernel_size, padding='same',
-    #                                kernel_regularizer=self.kernel_regularizer),
-    #         tf.keras.layers.BatchNormalization(),
-    #         self.activation_layer,
-    #         tf.keras.layers.MaxPool2D(padding='same'),
-    #     ]
-    #     if last:  # and dropblock_rate > 0.0:
-    #         blk.append(DropBlock2D(rate=0.1, block_size=7))
-    #
-    #     return keras.Sequential(blk)
-    #
-    # def _build_fully_connected_block(self, units: int, drop_rate: float, last: bool = False):
-    #     if not last:
-    #         blck = tf.keras.Sequential(
-    #             [
-    #                 tf.keras.layers.Dense(units=units, kernel_regularizer=self.kernel_regularizer),
-    #                 tf.keras.layers.BatchNormalization(),
-    #                 self.activation_layer,
-    #             ]
-    #         )
-    #     else:
-    #         blck = keras.Sequential(
-    #             [
-    #                 tf.keras.layers.Dense(units=units, kernel_regularizer=self.kernel_regularizer, activation=None),
-    #                 tf.keras.layers.BatchNormalization(),
-    #                 tf.keras.layers.Dropout(rate=drop_rate)
-    #             ]
-    #         )
-    #     return blck
 
     def _build_conv2d_block(self, filters: int, kernel_size: int, dropblock_rate: float = 0.0, dropblock_size: int = 7,
                             last: bool = False):
@@ -272,7 +240,7 @@ class RibCage(keras.Model):
                                                 dtype=tf.float32, name='btch_true_seg_msrs')
                                   ])
     def learn(self, btch_imgs_aug, btch_msks_aug, btch_true_seg_msrs) -> dict:
-        print(f'\nTrain Tracing')
+        print(f'\n- Train Tracing')
         # - Compute the loss according to the predictions
         with tf.GradientTape() as tape:
             btch_pred_seg_msrs = self.model([btch_imgs_aug, btch_msks_aug], training=True)
@@ -314,7 +282,7 @@ class RibCage(keras.Model):
                                   tf.TensorSpec(shape=[None], dtype=tf.float32, name='seg_scores')
                                   ])
     def validate(self, btch_imgs_aug, btch_msks_aug, btch_true_seg_msrs) -> dict:
-        print(f'\nTest Tracing')
+        print(f'\n- Validation Tracing')
         # - Compute the loss according to the predictions
         btch_pred_seg_msrs = self.model([btch_imgs_aug, btch_msks_aug], training=False)
         loss = self.compiled_loss(btch_true_seg_msrs, btch_pred_seg_msrs)
