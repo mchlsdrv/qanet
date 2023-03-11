@@ -3,7 +3,7 @@ import pathlib
 import time
 import datetime
 import yaml
-
+import matplotlib as mpl
 from tensor_flow.utils.tf_utils import train_model, choose_gpu
 from clearml import Task
 from utils.aux_funcs import (
@@ -11,11 +11,12 @@ from utils.aux_funcs import (
     get_runtime,
     get_logger,
     err_log,
-    update_hyper_parameters
+    update_hyper_parameters, print_pretty_message
 )
 import wandb
 
 os.environ['TF_FORCE_GPU_ALLOW_GROWTH'] = 'true'
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 
 
 if __name__ == '__main__':
@@ -33,15 +34,19 @@ if __name__ == '__main__':
 
     # - Update the hyperparameters with the parsed arguments
     update_hyper_parameters(hyper_parameters=hyp_params_dict, arguments=args)
+    if not hyp_params_dict.get('general')['debug']:
+        mpl.use('Agg')  # <= avoiding the "Tcl_AsyncDelete: async handler deleted by the wrong thread" exception
 
     # - Create the directory for the current run
     if hyp_params_dict.get('training')['load_checkpoint']:
         current_run_dir = pathlib.Path(hyp_params_dict.get('training')['tf_checkpoint_dir']).parent
         dir_name = current_run_dir.name
     else:
-        dir_name = f'{args.experiment_name}_{ts}'
-        current_run_dir = pathlib.Path(hyp_params_dict.get(
-            'general')['output_dir']) / f'train/tensorflow/{dir_name}'
+        crp_w = hyp_params_dict.get('augmentations')['crop_width']
+        crp_h = hyp_params_dict.get('augmentations')['crop_height']
+        dir_name = f'{hyp_params_dict.get("general")["experiment_name"]}_{ts}'
+        current_run_dir = pathlib.Path(
+            hyp_params_dict.get('general')['output_dir']) / f'train/tensorflow/{crp_h}x{crp_w}/{dir_name}'
         os.makedirs(current_run_dir)
 
     # - ClearML
@@ -100,3 +105,40 @@ if __name__ == '__main__':
     print(f'''
     > Total runtime: {get_runtime(seconds=time.time() - t_start)}
     ''')
+
+    if args.run_tests:
+        print_pretty_message(message='Testing the SIM+ Data')
+        print(f'- Best Model:')
+        os.system(f'python tf_test.py --architecture {hyp_params_dict.get("model")["architecture"]} '
+                  f'--gpu_id {args.gpu_id} --test_sim --hyper_params_file train_configs/hyper_params.yml '
+                  f'--checkpoint_dir {current_run_dir}/{hyp_params_dict.get("callbacks")["checkpoint_file_best_model"]}'
+                  )
+        print(f'- Last Model:')
+        os.system(f'python tf_test.py --architecture {hyp_params_dict.get("model")["architecture"]} '
+                  f'--gpu_id {args.gpu_id} --test_sim --hyper_params_file train_configs/hyper_params.yml '
+                  f'--checkpoint_dir {current_run_dir}/{hyp_params_dict.get("callbacks")["checkpoint_file_last_model"]}'
+                  )
+
+        print_pretty_message(message='Testing the GOWT1 Data')
+        print(f'- Best Model:')
+        os.system(f'python tf_test.py --architecture {hyp_params_dict.get("model")["architecture"]} '
+                  f'--gpu_id {args.gpu_id} --test_gowt1 --hyper_params_file train_configs/hyper_params.yml'
+                  f'--checkpoint_dir {current_run_dir}/{hyp_params_dict.get("callbacks")["checkpoint_file_best_model"]}'
+                  )
+        print(f'- Last Model:')
+        os.system(f'python tf_test.py --architecture {hyp_params_dict.get("model")["architecture"]} '
+                  f'--gpu_id {args.gpu_id} --test_gowt1 --hyper_params_file train_configs/hyper_params.yml'
+                  f'--checkpoint_dir {current_run_dir}/{hyp_params_dict.get("callbacks")["checkpoint_file_last_model"]}'
+                  )
+
+        print_pretty_message(message='Testing the HeLa data')
+        print(f'- Best Model:')
+        os.system(f'python tf_test.py --architecture {hyp_params_dict.get("model")["architecture"]} '
+                  f'--gpu_id {args.gpu_id} --test_hela --hyper_params_file train_configs/hyper_parameters.yml',
+                  f'--checkpoint_dir {current_run_dir}/{hyp_params_dict.get("callbacks")["checkpoint_file_best_model"]}'
+                  )
+        print(f'- Last Model:')
+        os.system(f'python tf_test.py --architecture {hyp_params_dict.get("model")["architecture"]} '
+                  f'--gpu_id {args.gpu_id} --test_hela --hyper_params_file train_configs/hyper_parameters.yml',
+                  f'--checkpoint_dir {current_run_dir}/{hyp_params_dict.get("callbacks")["checkpoint_file_last_model"]}'
+                  )

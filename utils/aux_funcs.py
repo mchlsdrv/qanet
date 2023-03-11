@@ -8,7 +8,6 @@ import re
 from copy import deepcopy
 import numpy as np
 import pandas as pd
-import torch
 import cv2
 import yaml
 
@@ -31,6 +30,7 @@ warnings.simplefilter("ignore", RuntimeWarning)
 
 
 def get_range(value, ranges: np.ndarray):
+    rng_min, rng_max, idx = 0, 0, 0
     for idx, (rng_min, rng_max) in enumerate(ranges):
         if rng_min < value < rng_max:
             break
@@ -169,8 +169,8 @@ def transform_image(image: np.ndarray):
     img = adjust_contrast_(img, random_contrast_factor)
     #
     # # - Random brightness delta plus/minus 10% of maximum value
-    random_brightness_delta = (np.random.rand() - 0.5) * 0.2 * img.max()
-    img = adjust_brightness_(img, random_brightness_delta)
+    # random_brightness_delta = (np.random.rand() - 0.5) * 0.2 * img.max()
+    # img = adjust_brightness_(img, random_brightness_delta)
 
     return img
 
@@ -765,15 +765,13 @@ def update_hyper_parameters(hyper_parameters: dict, arguments: argparse.Namespac
             # - If the argument name is in hyperparameter names for the current
             # category
             if arg_name in hyp_param_names and args.get(arg_name) is not None:
-                # - Update it with the relevant value
+                # - Special cases
                 if arg_name == 'architecture':
                     arch = args.get('architecture')
                     if arch == 'arch2':
-                        hyper_parameters.get('model')['architecture'] = \
-                            hyper_parameters.get('model')['architecture2']
+                        hyper_parameters.get('model')['architecture'] = hyper_parameters.get('model')['architecture2']
                     elif arch == 'arch3':
-                        hyper_parameters.get('model')['architecture'] = \
-                            hyper_parameters.get('model')['architecture3']
+                        hyper_parameters.get('model')['architecture'] = hyper_parameters.get('model')['architecture3']
                 elif arg_name == 'test_data':
                     test_dt = args.get('test_data')
                     if test_dt == 'sim+':
@@ -816,8 +814,8 @@ def update_hyper_parameters(hyper_parameters: dict, arguments: argparse.Namespac
                             hyper_parameters.get(
                                 'inference')['checkpoint_dir_hela']
                 else:
-                    hyper_parameters.get(
-                        hyp_param_cat)[arg_name] = args.get(arg_name)
+                    # - Hyper-parameter update with the parameter in args
+                    hyper_parameters.get(hyp_param_cat)[arg_name] = args.get(arg_name)
 
 
 def normalize(image: np.ndarray):
@@ -831,7 +829,7 @@ def calc_histogram(data: np.ndarray or list, bins: np.ndarray, normalize: bool =
                                    bins=len(bins), density=False)
 
     if normalize:
-        heights = heights / len(data)
+        heights /= len(data)
 
     return heights, ranges
 
@@ -895,6 +893,9 @@ def from_pickle(data_file: pathlib.Path or str, logger: logging.Logger = None):
 
 
 def to_pickle(data, save_file: str or pathlib.Path, logger: logging.Logger = None):
+    """
+    :param: data
+    """
     if check_pathable(path=save_file):
         save_file = str_2_path(path=save_file)
 
@@ -905,6 +906,10 @@ def to_pickle(data, save_file: str or pathlib.Path, logger: logging.Logger = Non
 
 
 def print_pretty_message(message: str, delimiter_symbol: str = '='):
+    """
+    :param: message
+    :param: delimiter_symbol
+    """
     delimiter_len = len(message) + 6
 
     print('\n\t', end='')
@@ -984,65 +989,76 @@ def categorical_2_rgb(mask: np.ndarray):
 def get_arg_parser():
     parser = argparse.ArgumentParser()
 
+    parser.add_argument('--debug', default=False, action='store_true', help=f'If the run is a debugging run')
+    parser.add_argument('--gpu_id', type=int, default=-1, help='The ID of the GPU to run on')
+
     # - GENERAL PARAMETERS
-    parser.add_argument('--project_name', type=str, default='', help='The name of the project')
-    parser.add_argument('--experiment_name', type=str, default='', help='The name of the experiment')
-    parser.add_argument('--queue_name', type=str, default=None, help='The name of the queue to assign the tas to')
+    parser.add_argument('--project_name', type=str, help='The name of the project')
+    parser.add_argument('--experiment_name', type=str, help='The name of the experiment')
+    parser.add_argument('--queue_name', type=str, help='The name of the queue to assign the task to')
     parser.add_argument('--local_execution', default=False, action='store_true', help=f'If to execute the task locally')
-    parser.add_argument('--architecture', type=str,
-                        choices=['arch1', 'arch2', 'arch3'],
-                        help=f'''
+    parser.add_argument('--architecture', type=str, choices=['arch1', 'arch2', 'arch3'], help=f'''
     > arch1: 
         conv2d_blocks:
           out_channels: [64, 128, 256, 256]
           kernel_sizes: [5, 5, 5, 5]
+          dropblock_rate: 0.1
+          dropblock_size: 7
 
         fc_blocks:
           out_features: [512, 1024]
           drop_rate: 0.2
+          
     > arch2: 
         conv2d_blocks:
           out_channels: [64, 128, 256, 256]
           kernel_sizes: [3, 3, 3, 3]
+          dropblock_rate: 0.1
+          dropblock_size: 7
+          
         fc_blocks:
           out_features: [128, 128]
           drop_rate: 0.5
+          
     > arch3: 
         conv2d_blocks:
           out_channels: [32, 64, 128, 256]
           kernel_sizes: [5, 5, 5, 5]
-
+          dropblock_rate: 0.1
+          dropblock_size: 7
+          
         fc_blocks:
           out_features: [512, 1024]
           drop_rate: 0.2
                         ''')
-    parser.add_argument('--test_data', type=str,
-                        choices=['sim+', 'gowt1', 'hela'], default='sim+', help=f'The data to run test on')
-    parser.add_argument('--inference_data', type=str,
-                        choices=['sim+', 'gowt1', 'hela'], default='gowt1', help=f'The data to run test on')
-    parser.add_argument('--debug', default=False, action='store_true', help=f'If the run is a debugging run')
-    parser.add_argument('--gpu_id', type=int, default=0 if torch.cuda.device_count() > 0 else -1,
-                        help='The ID of the GPU (if there is any) to run the '
-                             'network on (e.g., --gpu_id 1 will run the network on GPU #1 etc.)')
-    parser.add_argument('--hyper_params_file', type=str, default=HYPER_PARAMS_FILE,
-                        help='The path to the file with the hyper-parameters')
-    parser.add_argument('--reload_data', default=False, action='store_true', help=f'If to reload the data')
-
-    parser.add_argument('--in_train_augmentation', default=False, action='store_true',
-                        help=f'Regular mode where the augmentation is performed on-the-fly')
-    parser.add_argument('--wandb', default=False, action='store_true', help=f'If to use the wandb callback')
-    parser.add_argument('--tensorboard', default=False, action='store_true',
-                        help=f'If to use the tensorboard callback')
-    parser.add_argument('--load_checkpoint', default=False, action='store_true',
-                        help=f'If to continue the training from the checkpoint '
-                             f'saved at the checkpoint file')
-    parser.add_argument('--train_data_dir', type=str, help='The path to the train data file')
-    parser.add_argument('--train_temp_data_file', type=str, help='The path to the train data file')
-    parser.add_argument('--test_data_dir', type=str, help='The path to the custom test file')
-    parser.add_argument('--inference_data_dir', type=str, help='The path to the inference data dir')
 
     parser.add_argument('--output_dir', type=str, help='The path to the directory where the outputs will be placed')
+    parser.add_argument('--hyper_params_file', type=str, default=HYPER_PARAMS_FILE,
+                        help=f'The path to the file with the hyper-parameters')
+    parser.add_argument('--checkpoint_file', type=str, help=f'The path to the file which contains the '
+                                                            f'checkpoints of the model')
+    parser.add_argument('--checkpoint_dir', type=str, help=f'The path to the directory which contains the '
+                                                           f'checkpoints of the model')
 
+    # - Train
+    parser.add_argument('--run_tests', default=False, action='store_true',
+                        help=f'If to run final tests on the trained model')
+    parser.add_argument('--reload_data', default=False, action='store_true', help=f'If to reload the data')
+    parser.add_argument('--train_data_dir', type=str, help='The path to the train data file')
+    parser.add_argument('--epochs', type=int, help='Number of epochs to train the model')
+    parser.add_argument('--batch_size', type=int, help='The number of samples in each train batch')
+    parser.add_argument('--val_batch_size', type=int, help='The number of samples in each validation batch')
+    parser.add_argument('--optimizer', type=str,
+                        choices=['sgd', 'adam', 'adamw', 'sparse_adam', 'nadam', 'adadelta', 'adamax', 'adagrad'],
+                        help=f'The optimizer to use')
+    parser.add_argument('--weighted_loss', default=False, action='store_true',
+                        help=f'If to use the weighted version of the MSE loss')
+    parser.add_argument('--load_checkpoint', default=False, action='store_true',
+                        help=f'If to continue the training from the checkpoint saved at the checkpoint file')
+    parser.add_argument('--learning_rate', type=float, help=f'The initial learning rate of the optimizer')
+    parser.add_argument('--kernel_regularizer_type', type=str,
+                        choices=['l1', 'l2', 'l1l2'],
+                        help=f'The type of the regularization')
     parser.add_argument('--crop_height', type=int,
                         help='The height of the images that will be used for network training and inference. '
                              'If not specified, will be set to IMAGE_HEIGHT as in general_configs.py file.')
@@ -1050,119 +1066,22 @@ def get_arg_parser():
                         help='The width of the images that will be used for network training and inference. '
                              'If not specified, will be set to IMAGE_WIDTH as in general_configs.py file.')
 
-    parser.add_argument('--in_channels', type=int,
-                        help='The number of channels in an input image (e.g., 3 for RGB, 1 for Grayscale etc)')
-    parser.add_argument('--out_channels', type=int,
-                        help='The number of channels in the output image (e.g., 3 for RGB, 1 for Grayscale etc)')
+    # - Callbacks
+    parser.add_argument('--wandb', default=False, action='store_true', help=f'If to use the wandb callback')
+    parser.add_argument('--tensorboard', default=False, action='store_true',
+                        help=f'If to use the tensorboard callback')
 
-    # - TRAINING
-    parser.add_argument('--epochs', type=int, help='Number of epochs to train the model')
-    parser.add_argument('--batch_size', type=int, help='The number of samples in each train batch')
-    parser.add_argument('--val_batch_size', type=int, help='The number of samples in each validation batch')
-    parser.add_argument('--val_prop', type=float, help=f"The proportion of the data which will be set "
-                                                       f"aside, and be used in the process of validation")
-    parser.add_argument('--tr_checkpoint_file', type=str, help=f"The path to the file which contains the "
-                                                               f"checkpoints of the model")
-    parser.add_argument('--tf_checkpoint_dir', type=str, help=f"The path to the directory which contains the "
-                                                              f"checkpoints of the model")
-    parser.add_argument('--tf_checkpoint_file', type=str,
-                        help=f'The path to the file which contains the checkpoints of the model')
+    # - Test flags
+    parser.add_argument('--test_data_dir', type=str, help='The path to the test data dir')
+    parser.add_argument('--test_sim', default=False, action='store_true', help=f'Run test on the SIM+ data')
+    parser.add_argument('--test_gowt1', default=False, action='store_true', help=f'Run test on the GWOT1 data')
+    parser.add_argument('--test_hela', default=False, action='store_true', help=f'Run test on the HELA data')
 
-    # - DROP BLOCK
-    parser.add_argument('--drop_block', default=False, action='store_true',
-                        help=f'If to use the drop_block in the network')
-    parser.add_argument('--drop_block_keep_prob', type=float, help=f'The probability to keep the block')
-    parser.add_argument('--drop_block_block_size', type=int, help=f'The size of the block to drop')
-
-    # - OPTIMIZERS
-    # optimizer
-    parser.add_argument('--optimizer', type=str,
-                        choices=['sgd', 'adam', 'adamw', 'sparse_adam',
-                                 'nadam', 'adadelta', 'adamax', 'adagrad'],
-                        help=f'The optimizer to use')
-    parser.add_argument('--weighted_loss', default=False, action='store_true',
-                        help=f'If to use the weighted version of the MSE loss')
-
-    parser.add_argument('--optimizer_lr', type=float,
-                        help=f'The initial learning rate of the optimizer')
-    parser.add_argument('--optimizer_lr_decay', type=float,
-                        help=f'The learning rate decay for Adagrad optimizer')
-    parser.add_argument('--optimizer_beta_1', type=float,
-                        help=f'The exponential decay rate for the 1st moment '
-                             f'estimates (Adam, Nadam, Adamax)')
-    parser.add_argument('--optimizer_beta_2', type=float,
-                        help=f'The exponential decay rate for the 2st moment '
-                             f'estimates (Adam, Nadam, Adamax)')
-    parser.add_argument('--optimizer_rho', type=float,
-                        help=f'The decay rate (Adadelta, RMSprop)')
-    parser.add_argument('--optimizer_amsgrad', default=False,
-                        action='store_true',
-                        help=f'If to use the Amsgrad function '
-                             f'(Adam, Nadam, Adamax)')
-
-    parser.add_argument('--optimizer_weight_decay', type=float,
-                        help=f'The weight decay for ADAM, NADAM')
-    parser.add_argument('--optimizer_momentum', type=float,
-                        help=f'The momentum for SGD')
-    parser.add_argument('--optimizer_dampening', type=float,
-                        help=f'The dampening for momentum')
-    parser.add_argument('--optimizer_momentum_decay', type=float,
-                        help=f'The momentum for NADAM')
-    parser.add_argument('--optimizer_nesterov', default=False,
-                        action='store_true',
-                        help=f'If to use the Nesterov momentum (SGD)')
-    parser.add_argument('--optimizer_centered', default=False,
-                        action='store_true',
-                        help=f'If True, gradients are normalized by the '
-                             f'estimated variance of the gradient; if False, '
-                             f'by the un-centered second moment. '
-                             f'Setting this to True may help with training, '
-                             f'but is slightly more expensive in terms of '
-                             f'computation and memory. (RMSprop)')
-
-    parser.add_argument('--cyclical_lr', default=False,
-                        action='store_true',
-                        help=f'If to use the cyclical learning rate scheduler')
-    parser.add_argument('--cyclical_lr_init_lr', type=float,
-                        help=f'The initial value of the cyclical learning rate'
-                             f' scheduler')
-    parser.add_argument('--cyclical_lr_max_lr', type=float,
-                        help=f'The maximal value of the cyclical learning rate'
-                             f' scheduler')
-    parser.add_argument('--cyclical_lr_tep_size', type=float,
-                        help=f'The maximal value of the cyclical learning rate'
-                             f' scheduler')
-    # - KERNEL REGULARIZER
-    parser.add_argument('--kernel_regularizer_type', type=str, default='l2',
-                        choices=['l1', 'l2', 'l1l2'],
-                        help=f'The type of the regularization')
-    parser.add_argument('--kernel_regularizer_l1', type=float,
-                        help=f'The strength of the L1 regularization')
-    parser.add_argument('--kernel_regularizer_l2', type=float,
-                        help=f'The strength of the L2 regularization')
-    parser.add_argument('--kernel_regularizer_factor', type=float,
-                        help=f'The strength of the orthogonal regularization')
-    parser.add_argument('--kernel_regularizer_mode', type=str,
-                        choices=['rows', 'columns'],
-                        help=f"The mode ('columns' or 'rows') of the orthogonal"
-                             f" regularization")
-
-    # - ACTIVATION
-    parser.add_argument('--activation', type=str,
-                        choices=['swish', 'relu', 'leaky_relu'],
-                        help=f'The activation to use')
-    parser.add_argument('--activation_relu_max_value', type=float,
-                        help=f'The negative slope in the LeakyReLU activation'
-                             f' function for values < 0')
-    parser.add_argument('--activation_relu_negative_slope', type=float,
-                        help=f'The negative slope in the ReLU activation '
-                             f'function for values < 0')
-    parser.add_argument('--activation_relu_threshold', type=float,
-                        help=f'The value that has to be exceeded activate the'
-                             f' neuron')
-    parser.add_argument('--activation_leaky_relu_alpha', type=float,
-                        help=f'The negative slope in the LeakyReLU activation'
-                             f' function for values < 0')
+    # - Inference flags
+    parser.add_argument('--inference_data_dir', type=str, help='The path to the inference data dir')
+    parser.add_argument('--infer_sim', default=False, action='store_true', help=f'Run inference on the SIM+ data')
+    parser.add_argument('--infer_gwot1', default=False, action='store_true', help=f'Run inference on the GWOT1 data')
+    parser.add_argument('--infer_hela', default=False, action='store_true', help=f'Run inference on the HELA data')
 
     return parser
 
@@ -1229,7 +1148,6 @@ def instance_2_categorical(masks: np.ndarray or list):
 
 
 def test_instance_2_categorical_single():
-
     msk_57_fl = '/media/rrtammyfs/labDatabase/CellTrackingChallenge/Test/Fluo-N2DH-SIM+/01_RES/mask057.tif'
 
     msk_57_inst = load_image(msk_57_fl)
@@ -1244,7 +1162,6 @@ def test_instance_2_categorical_single():
 
 
 def test_instance_2_categorical_batch():
-
     msk_57_fl = '/media/rrtammyfs/labDatabase/CellTrackingChallenge/Test/Fluo-N2DH-SIM+/01_RES/mask057.tif'
     msk_77_fl = '/media/rrtammyfs/labDatabase/CellTrackingChallenge/Test/Fluo-N2DH-SIM+/01_RES/mask077.tif'
     msk_91_fl = '/media/rrtammyfs/labDatabase/CellTrackingChallenge/Test/Fluo-N2DH-SIM+/01_RES/mask091.tif'

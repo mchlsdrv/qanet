@@ -11,8 +11,6 @@ data:
   image_width: 419
 
 augmentations:
-#  crop_height: 256
-#  crop_width: 256
   crop_height: 128
   crop_width: 128
 
@@ -26,6 +24,7 @@ model:
       kernel_sizes: [3, 3, 3, 3]
       dropblock_rate: 0.1
       dropblock_size: 7
+
     fc_blocks:
       out_features: [128, 128, 1]
       drop_rate: 0.2
@@ -39,7 +38,7 @@ model:
 
     fc_blocks:
       out_features: [128, 128, 1]
-      drop_rate: 0.5
+      drop_rate: 0.2
 
   architecture3:
     conv2d_blocks:
@@ -64,7 +63,7 @@ regularization:
 #  kernel_regularizer_type: None
   kernel_regularizer_type: 'l2'
   kernel_regularizer_l1: 0.01
-  kernel_regularizer_l2: 1.1
+  kernel_regularizer_l2: 0.01
   kernel_regularizer_factor: 0.01
   kernel_regularizer_mode: 'rows'
 
@@ -91,13 +90,12 @@ callbacks:
   terminate_on_nan: True
 
   # - Checkpoint
-  checkpoint: True
+#  checkpoint_file_best_model_file: 'best_model.ckpt'  # <- overwrites the second-best model weights in case MODEL_CHECKPOINT_SAVE_BEST_ONLY = True
   checkpoint_file_template: 'checkpoints/cp-{epoch:04d}.ckpt'  # <- may be used in case we want to save all teh check points, and not only the best
-  checkpoint_file_best_model_file_name: 'best_model.ckpt'  # <- overwrites the second-best model weights in case MODEL_CHECKPOINT_SAVE_BEST_ONLY = True
   checkpoint_file_best_model: 'checkpoints/best_model.ckpt'  # <- overwrites the second-best model weights in case MODEL_CHECKPOINT_SAVE_BEST_ONLY = True
+  checkpoint_file_last_model: 'checkpoints/last_model.ckpt'  # <- overwrites the second-best model weights in case MODEL_CHECKPOINT_SAVE_BEST_ONLY = True
   checkpoint_monitor: 'val_loss'
   checkpoint_verbose: 1
-  checkpoint_save_best_only: True
   checkpoint_mode: 'auto'
   checkpoint_save_weights_only: True
   checkpoint_save_freq: 'epoch'
@@ -145,11 +143,11 @@ training:
   seg_sub_dir: 'SEG'
 
   data_dir: '../data/train/CytoPack'
-#  mask_dir: '/home/sidorov/projects/QANetV2/data/generated/masks'
   temp_data_file: '../data/train/temp/CytoPack/clean_data.pkl'
 
-  tr_checkpoint_file: '/home/sidorov/projects/QANetV2/qanet/output/train/pytorch_2022-08-08_17-28-30/checkpoints/best_val_loss_chkpt.pth.tar'
+  checkpoint_file: ''
   checkpoint_dir: '/home/sidorov/projects/QANetV2/qanet/output/train/tensor_flow_2022-11-24_13-15-16/checkpoints'
+  tr_checkpoint_file: '/home/sidorov/projects/QANetV2/qanet/output/train/pytorch_2022-08-08_17-28-30/checkpoints/best_val_loss_chkpt.pth.tar'
   tf_checkpoint_file: 'checkpoints/best_model.ckpt'
 
   loss: 'mse'
@@ -222,5 +220,4 @@ inference:
 
   # - HeLa
   checkpoint_dir_hela: '/home/sidorov/projects/QANetV2/qanet/output/train/tensor_flow_arch_1_float64_cyclic_HeLa_3.5_pct/checkpoints'
-#  checkpoint_dir: '/home/sidorov/projects/QANetV2/qanet/output/train/tensor_flow_gauss_blur_2023-01-17_01-10-32/checkpoints'
 

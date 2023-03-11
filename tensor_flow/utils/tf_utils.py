@@ -205,22 +205,30 @@ def get_callbacks(callback_type: str, hyper_parameters: dict, output_dir: pathli
             )
         )
 
-    if hyper_parameters.get('callbacks')['checkpoint']:
-        callbacks.append(
-            tf.keras.callbacks.ModelCheckpoint(
-                filepath=output_dir / hyper_parameters.get('callbacks')[
-                    'checkpoint_file_best_model'],
-                monitor=hyper_parameters.get('callbacks')['checkpoint_monitor'],
-                verbose=hyper_parameters.get('callbacks')['checkpoint_verbose'],
-                save_best_only=hyper_parameters.get('callbacks')[
-                    'checkpoint_save_best_only'],
-                mode=hyper_parameters.get('callbacks')['checkpoint_mode'],
-                save_weights_only=hyper_parameters.get('callbacks')[
-                    'checkpoint_save_weights_only'],
-                save_freq=hyper_parameters.get('callbacks')[
-                    'checkpoint_save_freq'],
-            )
+    # - Best checkpoint
+    callbacks.append(
+        tf.keras.callbacks.ModelCheckpoint(
+            filepath=output_dir / hyper_parameters.get('callbacks')['checkpoint_file_best_model'],
+            monitor=hyper_parameters.get('callbacks')['checkpoint_monitor'],
+            verbose=hyper_parameters.get('callbacks')['checkpoint_verbose'],
+            save_best_only=True,
+            mode=hyper_parameters.get('callbacks')['checkpoint_mode'],
+            save_weights_only=hyper_parameters.get('callbacks')['checkpoint_save_weights_only'],
+            save_freq=hyper_parameters.get('callbacks')['checkpoint_save_freq']
         )
+    )
+
+    # - Last checkpoint
+    callbacks.append(
+        tf.keras.callbacks.ModelCheckpoint(
+            filepath=output_dir / hyper_parameters.get('callbacks')['checkpoint_file_last_model'],
+            monitor=hyper_parameters.get('callbacks')['checkpoint_monitor'],
+            verbose=hyper_parameters.get('callbacks')['checkpoint_verbose'],
+            mode=hyper_parameters.get('callbacks')['checkpoint_mode'],
+            save_weights_only=hyper_parameters.get('callbacks')['checkpoint_save_weights_only'],
+            save_freq=hyper_parameters.get('callbacks')['checkpoint_save_freq'],
+        )
+    )
 
     return callbacks, tb_prc
 
@@ -469,8 +477,7 @@ def train_model(hyper_parameters: dict, output_dir: pathlib.Path or str, logger:
                                       output_dir=output_dir, logger=logger)
 
     # - If the setting is to launch the tensorboard process automatically
-    if tb_prc is not None \
-            and hyper_parameters.get('callbacks')['tensorboard_launch']:
+    if tb_prc is not None and hyper_parameters.get('callbacks')['tensorboard_launch']:
         tb_prc.start()
 
     # - Train -
@@ -484,8 +491,7 @@ def train_model(hyper_parameters: dict, output_dir: pathlib.Path or str, logger:
     )
 
     # -> If the setting is to launch the tensorboard process automatically
-    if tb_prc is not None and \
-            hyper_parameters.get('callbacks')['tensorboard_launch']:
+    if tb_prc is not None and hyper_parameters.get('callbacks')['tensorboard_launch']:
         tb_prc.join()
 
 

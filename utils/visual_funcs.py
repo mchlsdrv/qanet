@@ -1,20 +1,22 @@
 import os
-import io
 import pathlib
 import numpy as np
 import pandas as pd
-import tensorflow as tf
 import logging
-import matplotlib as mpl
 import matplotlib.pyplot as plt
 import seaborn as sns
 from scipy.stats import pearsonr
 
 import warnings
 
-from utils.aux_funcs import categorical_2_rgb, err_log, check_pathable, str_2_path, info_log, print_pretty_message
+from utils.aux_funcs import (
+    categorical_2_rgb,
+    check_pathable,
+    str_2_path,
+    info_log,
+    print_pretty_message
+)
 
-# mpl.use('Agg')  # <= avoiding the "Tcl_AsyncDelete: async handler deleted by the wrong thread" exception
 plt.style.use('seaborn')  # <= using the seaborn plot style
 
 warnings.simplefilter("ignore", UserWarning)
@@ -66,23 +68,6 @@ def show_images(images, labels, suptitle='', figsize=(25, 10), save_file: pathli
     save_figure(figure=fig, save_file=pathlib.Path(save_file),
                 close_figure=True, verbose=verbose, logger=logger)
 
-
-# def line_plot(x: list or np.ndarray, ys: list or np.ndarray, suptitle: str,
-#               labels: list, colors: tuple = ('r', 'g', 'b'),
-#               save_file: pathlib.Path or str = None,
-#               logger: logging.Logger = None):
-#     fig, ax = plt.subplots()
-#     for y, lbl, clr in zip(ys, labels, colors):
-#         ax.plot(x, y, color=clr, label=lbl)
-#
-#     plt.legend()
-#
-#     try:
-#         save_figure(figure=fig, save_file=save_file, close_figure=False,
-#                     logger=logger)
-#     except Exception as err:
-#         err_log(logger=logger, message=f'{err}')
-#
 
 def get_hit_rate_plot_figure(true: np.ndarray, pred: np.ndarray,
                              hit_rate_percent: int = None,
