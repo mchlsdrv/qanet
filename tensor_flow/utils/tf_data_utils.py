@@ -1,9 +1,5 @@
-import io
-import os
-import pathlib
 from functools import partial
 
-import matplotlib.pyplot as plt
 import numpy as np
 import tensorflow as tf
 import logging
@@ -13,12 +9,6 @@ from utils.augs import elastic_transform
 
 from utils.aux_funcs import (
     get_train_val_split,
-    get_file_name,
-    get_parent_dir_name,
-    str_2_float,
-    load_image,
-    assert_pathable,
-    str_2_path,
     instance_2_categorical,
     err_log,
     calc_seg_score,
@@ -49,6 +39,7 @@ def get_data_loaders(mode: str, data_dict: dict, hyper_parameters: dict, logger:
         logger=logger
     )
 
+    val_dl = None
     if len(val_files) > 0:
         val_dl = DataLoader(
             mode='validation',
@@ -131,6 +122,7 @@ class DataLoader(tf.keras.utils.Sequence):
         end_idx = start_idx + self.batch_size if \
             start_idx + self.batch_size < self.n_images else self.n_images - 1
 
+        item = None
         if self.mode in ['training', 'validation']:
             item = self.get_batch_train(start_index=start_idx, end_index=end_idx)
         elif self.mode == 'inference':
@@ -204,18 +196,14 @@ class DataLoader(tf.keras.utils.Sequence):
         # - Get the image and the mask
         img, _, msk = self.data_dict.get(img_key)
 
-        # - Discard the last channel as it is a gray scale image
-        img, msk = img[..., -1], msk[..., -1]
+        # - Transform the image
+        img = img[..., -1]  # - Discard the last channel as it is a gray scale image
+        img = transform_image(image=img)
 
-        # - Apply image transformations
-        img = img / img.max()
-
-        # - Transform the mask from instance segmentation representation to
+        # - Transform the mask
+        msk = msk[..., -1]  # - Discard the last channel as it is a gray scale image
+        msk = instance_2_categorical(masks=msk)  # - Transform the mask from instance segmentation representation to
         # categorical, i.e., 3 classes - background, inner part and the boundary
-        msk = instance_2_categorical(masks=msk)
-
-        # - Convert the image and the mask to  tensor
-        # img, msk = tf.convert_to_tensor([img], dtype=tf.float32), tf.convert_to_tensor([msk], dtype=tf.float32)
 
         return img, msk, img_key
 

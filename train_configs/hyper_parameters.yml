@@ -63,7 +63,7 @@ regularization:
 #  kernel_regularizer_type: None
   kernel_regularizer_type: 'l2'
   kernel_regularizer_l1: 0.01
-  kernel_regularizer_l2: 0.01
+  kernel_regularizer_l2: 0.001
   kernel_regularizer_factor: 0.01
   kernel_regularizer_mode: 'rows'
 
@@ -110,18 +110,6 @@ callbacks:
   early_stopping_restore_best_weights: True
   early_stopping_verbose: 1
 
-  # - LR Reduction Scheduler
-  lr_reduction_scheduler: 'None'
-#  lr_reduction_scheduler: 'cosine'
-#  lr_reduction_scheduler: 'cyclical'
-  lr_reduction_scheduler_cyclical_init_lr: 0.0001
-  lr_reduction_scheduler_cyclical_max_lr: 0.0005
-  lr_reduction_scheduler_cyclical_step_size: 2 * 10  # 2 * IMAGES / BATCH_SIZE
-  lr_reduction_scheduler_decay_steps: 30
-  lr_reduction_scheduler_patience: [150, 300]
-  lr_reduction_scheduler_factor: 0.3
-  lr_reduction_scheduler_min: 1e-9
-
   # - LR Reduce on Plateau
   reduce_lr_on_plateau: True
   reduce_lr_on_plateau_patience: 50
@@ -165,10 +153,26 @@ training:
   optimizer_foreach: None
 #  optimizer: 'sgd'
   optimizer: 'adam'
-  optimizer_lr: 0.001
-  optimizer_lr_scheduler_reduction_points: [50, 100, 150, 250]
-  optimizer_lr_scheduler_reduction_factor: 0.3
-  optimizer_lr_decay: 0.001
+  learning_rate_optimization_epochs: 0
+  learning_rate: 0.001
+  learning_rate_scheduler_reduction_points: [50, 100, 150, 250]
+  learning_rate_scheduler_reduction_factor: 0.3
+  learning_rate_decay: 0.001
+  learning_rate_min: 0.0001
+  learning_rate_max: 0.005
+
+  # - LR Reduction Scheduler
+  #  lr_reduction_scheduler: 'None'
+  #  lr_reduction_scheduler: 'cosine'
+  learning_rate_scheduler: 'cyclical'
+  learning_rate_scheduler_cyclical_init_lr: 0.001
+  learning_rate_scheduler_cyclical_max_lr: 0.9
+  learning_rate_scheduler_cyclical_step_size: 156 # 2 * 5011 // 64 = 156 # 2 * IMAGES / BATCH_SIZE
+  learning_rate_scheduler_decay_steps: 30
+  learning_rate_scheduler_patience: [150, 300]
+  learning_rate_scheduler_factor: 0.3
+  learning_rate_scheduler_min: 1e-9
+
   optimizer_beta_1: 0.9
   optimizer_beta_2: 0.999
   optimizer_rho: 0.9

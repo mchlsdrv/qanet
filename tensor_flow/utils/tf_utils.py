@@ -1,4 +1,6 @@
 import os
+
+import matplotlib.pyplot as plt
 import numpy as np
 from functools import partial
 import logging
@@ -10,13 +12,14 @@ import pandas as pd
 import tensorflow as tf
 import tensorflow_addons as tfa
 from keras import backend as K
+from tqdm import tqdm
 
 from utils.aux_funcs import (
     info_log,
     get_data,
     print_pretty_message,
     get_data_dict,
-    clear_unnecessary_columns
+    clear_unnecessary_columns, check_pathable
 )
 
 from .tf_data_utils import (
@@ -33,6 +36,77 @@ from ..custom.tf_callbacks import (
 )
 
 tf.config.run_functions_eagerly(False)
+plt.style.use('seaborn')
+
+
+def optimize_learning_rate(model, data_loader, epochs: int = 10,
+                           learning_rate_min: float = 0.0001, learning_rate_max: float = 0.1,
+                           plot_file: pathlib.Path or str = None) -> (float, float):
+    # - The optimal learning rate is set to infinity in case of an error
+    opt_lr = np.inf
+
+    # - Make a list of learning rates for testing inside the bounds
+    lrs = np.linspace(learning_rate_min, learning_rate_max, epochs)
+
+    # - Place the mean losses here
+    mean_epch_losses = np.array([])
+
+    # - Save the weights of the initial model
+    init_weights = model.get_weights()
+
+    print_pretty_message(message='Searching for the optimal learning rate')
+    for epch, lr in zip(range(epochs), lrs):
+        print(f'- Optimization Epoch: {epch+1}/{epochs} ({100 * epch / epochs:.2f}% done)')
+
+        # - Initialize model's weights
+        model.set_weights(init_weights)
+
+        # - Place the epoch losses here
+        epch_losses = np.array([])
+        pbar = tqdm(data_loader)
+        for idx, ((imgs, msks), seg_scrs) in enumerate(pbar):
+            model.optimizer.lr.assign(lr)
+
+            # - Compute the loss according to the predictions
+            with tf.GradientTape() as tape:
+                preds = model([imgs, msks], training=True)
+                loss = model.compiled_loss(seg_scrs, preds)
+
+            # - Get the weights to adjust according to the loss calculated
+            trainable_vars = model.trainable_variables
+
+            # - Calculate gradients
+            gradients = tape.gradient(loss, trainable_vars)
+
+            # - Update weights
+            model.optimizer.apply_gradients(zip(gradients, trainable_vars))
+
+            # - Append the current loss to the past losses
+            epch_losses = np.append(epch_losses, loss.numpy())
+
+        mean_epch_losses = np.append(mean_epch_losses, epch_losses.mean())
+        print(f'''
+        Stats for Epoch {epch}:
+            - lr: {lr}
+            - mean loss: {mean_epch_losses[-1]:.4f}
+            '''
+              )
+
+    # - The optimal learning rate is the one with the lowest loss
+    opt_lr_min = lrs[np.argmin(mean_epch_losses)]
+    opt_lr_max = lrs[np.argmax(mean_epch_losses)]
+    if check_pathable(path=plot_file):
+        plt.plot(lrs, mean_epch_losses)
+        plt.scatter(opt_lr_min, mean_epch_losses.min(), edgecolors='b')
+        plt.scatter(opt_lr_max, mean_epch_losses.max(), edgecolors='r')
+        plt.legend()
+        plt.savefig(plot_file)
+
+    # - Return the initial model's weights
+    model.set_weights(init_weights)
+    if opt_lr_max < opt_lr_min:
+        opt_lr_max = 5 * opt_lr_min
+    return opt_lr_min, opt_lr_max
 
 
 class WeightedMSE:
@@ -286,34 +360,12 @@ def get_model(mode: str, hyper_parameters: dict, output_dir: pathlib.Path or str
     if isinstance(logger, logging.Logger):
         info_log(logger=logger, message=model.summary())
 
-    # -2- Compile the model
-    compilation_configs = dict(
-        algorithm=hyper_parameters.get('training')['optimizer'],
-        learning_rate=hyper_parameters.get('training')['optimizer_lr'],
-        weighted_loss=hyper_parameters.get('training')['weighted_loss'],
-        rho=hyper_parameters.get('training')['optimizer_rho'],
-        beta_1=hyper_parameters.get('training')['optimizer_beta_1'],
-        beta_2=hyper_parameters.get('training')['optimizer_beta_2'],
-        amsgrad=hyper_parameters.get('training')['optimizer_amsgrad'],
-        momentum=hyper_parameters.get('training')['optimizer_momentum'],
-        nesterov=hyper_parameters.get('training')['optimizer_nesterov'],
-        centered=hyper_parameters.get('training')['optimizer_centered'],
-        lr_reduction_scheduler=hyper_parameters.get('callbacks')['lr_reduction_scheduler'],
-        lr_reduction_scheduler_cyclical_init_lr=hyper_parameters.get(
-            'callbacks')['lr_reduction_scheduler_cyclical_init_lr'],
-        lr_reduction_scheduler_cyclical_max_lr=hyper_parameters.get(
-            'callbacks')['lr_reduction_scheduler_cyclical_max_lr'],
-        lr_reduction_scheduler_cyclical_step_size=hyper_parameters.get(
-            'callbacks')['lr_reduction_scheduler_cyclical_step_size'],
-        lr_reduction_scheduler_factor=hyper_parameters.get('callbacks')['lr_reduction_scheduler_factor'],
-        lr_reduction_scheduler_decay_steps=hyper_parameters.get('callbacks')['lr_reduction_scheduler_decay_steps'],
-    )
-    model.compile(
-        loss=tf.keras.losses.MeanSquaredError(),
-        optimizer=get_optimizer(args=compilation_configs),
-        run_eagerly=True,
-        metrics=hyper_parameters.get('training')['metrics']
-    )
+    # model.compile(
+    #     loss=tf.keras.losses.MeanSquaredError(),
+    #     optimizer=get_optimizer(args=hyper_parameters),
+    #     run_eagerly=True,
+    #     metrics=hyper_parameters.get('training')['metrics']
+    # )
     return model, weights_loaded
 
 
@@ -344,62 +396,62 @@ class LRScheduler(tf.keras.optimizers.schedules.LearningRateSchedule):
 
 
 def get_optimizer(args: dict):
-    algorithm = args.get('algorithm')
+    algorithm = args.get('training')['optimizer']
     optimizer = None
     if algorithm == 'adam':
         optimizer = partial(
             tf.keras.optimizers.Adam,
-            beta_1=args.get('beta_1'),
-            beta_2=args.get('beta_2'),
-            amsgrad=args.get('amsgrad'),
+            beta_1=args.get('training')['optimizer_beta_1'],
+            beta_2=args.get('training')['optimizer_beta_2'],
+            amsgrad=args.get('training')['optimizer_amsgrad'],
         )
     elif algorithm == 'nadam':
         optimizer = partial(
             tf.keras.optimizers.Nadam,
-            beta_1=args.get('beta_1'),
-            beta_2=args.get('beta_2'),
+            beta_1=args.get('training')['optimizer_beta_1'],
+            beta_2=args.get('training')['optimizer_beta_2'],
         )
     elif algorithm == 'adamax':
         optimizer = partial(
             tf.keras.optimizers.Adamax,
-            beta_1=args.get('beta_1'),
-            beta_2=args.get('beta_2'),
+            beta_1=args.get('training')['optimizer_beta_1'],
+            beta_2=args.get('training')['optimizer_beta_2'],
         )
     elif algorithm == 'adagrad':
         optimizer = tf.keras.optimizers.Adagrad
     elif algorithm == 'adadelta':
         optimizer = partial(
             tf.keras.optimizers.Adadelta,
-            rho=args.get('rho'),
+            rho=args.get('training')['optimizer_rho'],
         )
     elif algorithm == 'sgd':
         optimizer = partial(
             tf.keras.optimizers.SGD,
-            momentum=args.get('momentum'),
-            nesterov=args.get('nesterov'),
+            momentum=args.get('training')['optimizer_momentum'],
+            nesterov=args.get('training')['optimizer_nesterov'],
         )
     elif algorithm == 'rms_prop':
         optimizer = partial(
             tf.keras.optimizers.RMSprop,
             rho=args.get('rho'),
-            momentum=args.get('momentum'),
-            centered=args.get('centered'),
+            momentum=args.get('training')['optimizer_momentum'],
+            centered=args.get('training')['optimizer_centered'],
         )
 
-    if args.get('lr_reduction_scheduler') == 'cyclical':
+    if args.get('learning_rate_scheduler') == 'cyclical':
         lr = tfa.optimizers.CyclicalLearningRate(
-            initial_learning_rate=args.get('lr_reduction_scheduler_cyclical_init_lr'),
-            maximal_learning_rate=args.get('lr_reduction_scheduler_cyclical_max_lr'),
+            initial_learning_rate=args.get('training')['learning_rate_scheduler_cyclical_init_lr'],
+            maximal_learning_rate=args.get('training')['learning_rate_scheduler_cyclical_max_lr'],
             scale_fn=lambda x: 1 / (2. ** (x - 1)),
-            step_size=args.get('lr_reduction_scheduler_cyclical_step_size')
+            step_size=args.get('training')['learning_rate_scheduler_cyclical_step_size']
         )
-    elif args.get('lr_reduction_scheduler') == 'cosine':
+    elif args.get('training')['learning_rate_scheduler'] == 'cosine':
         lr = tf.keras.optimizers.schedules.CosineDecay(
-            args.get('learning_rate'),
-            decay_steps=args.get('lr_reduction_scheduler_decay_steps')
+            args.get('training')['learning_rate'],
+            decay_steps=args.get('training')['learning_rate_scheduler_decay_steps']
         )
     else:
-        lr = args.get('learning_rate')
+        lr = args.get('training')['learning_rate']
     return optimizer(learning_rate=lr)
 
 
@@ -459,6 +511,53 @@ def train_model(hyper_parameters: dict, output_dir: pathlib.Path or str, logger:
     # - If the setting is to launch the tensorboard process automatically
     if tb_prc is not None and hyper_parameters.get('callbacks')['tensorboard_launch']:
         tb_prc.start()
+
+    # - Optimize the learning rate
+    if hyper_parameters.get('training')['learning_rate_optimization_epochs'] > 0:
+        if hyper_parameters.get('training')['learning_rate_scheduler'] == 'cyclical':
+            opt_lr_min, opt_lr_max = optimize_learning_rate(
+                model=model,
+                data_loader=train_dl,
+                learning_rate_min=hyper_parameters.get('training')['learning_rate_scheduler_cyclical_init_lr'],
+                learning_rate_max=hyper_parameters.get('training')['learning_rate_scheduler_cyclical_max_lr'],
+                epochs=hyper_parameters.get('training')['learning_rate_optimization_epochs'],
+                plot_file=output_dir / 'learning_rate_optimization_plot.png'
+            )
+
+            # - Assign the optimal learning rate to the initial learning rate in the cyclical lr scheduler
+            hyper_parameters.get('training')['learning_rate_scheduler_cyclical_init_lr'] = opt_lr_min
+            hyper_parameters.get('training')['learning_rate_scheduler_cyclical_max_lr'] = opt_lr_max
+
+            print(f''''
+            Learning Rate Optimization Stats:
+                - Optimal initial learning rate: {opt_lr_min}
+                - Optimal maximal learning rate: {opt_lr_max}'
+            ''')
+        else:
+            opt_lr, _ = optimize_learning_rate(
+                model=model,
+                data_loader=train_dl,
+                learning_rate_min=hyper_parameters.get('training')['learning_rate_min'],
+                learning_rate_max=hyper_parameters.get('training')['learning_rate_max'],
+                epochs=hyper_parameters.get('training')['learning_rate_optimization_epochs'],
+                plot_file=output_dir / 'learning_rate_optimization_plot.png'
+            )
+
+            # - Set the optimal learning rate
+            hyper_parameters.get('training')['learning_rate'] = opt_lr
+
+            print(f''''
+            Learning Rate Optimization Stats:
+                - Optimal learning rate: {opt_lr}')
+            ''')
+
+    # - Compile the model
+    model.compile(
+        loss=tf.keras.losses.MeanSquaredError(),
+        optimizer=get_optimizer(args=hyper_parameters),
+        run_eagerly=True,
+        metrics=hyper_parameters.get('training')['metrics']
+    )
 
     # - Train -
     model.fit(

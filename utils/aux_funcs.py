@@ -164,11 +164,11 @@ def transform_image(image: np.ndarray):
     # - Standardize the image by (I - E[I]) / std(I)
     img = standardize_image(image=img)
 
-    # # - Random contrast plus/minus 50%
-    # random_contrast_factor = np.random.rand() + 0.5
-    # img = adjust_contrast_(img, random_contrast_factor)
-    #
-    # # - Random brightness delta plus/minus 10% of maximum value
+    # - Random contrast plus/minus 50%
+    random_contrast_factor = np.random.rand() + 0.5
+    img = adjust_contrast_(img, random_contrast_factor)
+
+    # - Random brightness delta plus/minus 10% of maximum value
     random_brightness_delta = (np.random.rand() - 0.5) * 0.2 * img.max()
     img = adjust_brightness_(img, random_brightness_delta)
 
@@ -1050,6 +1050,8 @@ def get_arg_parser():
                                                            f'checkpoints of the model')
 
     # - Train
+    parser.add_argument('--learning_rate_optimization_epochs', type=int,
+                        help=f'The number of optimization epochs for the learning rate')
     parser.add_argument('--run_tests', default=False, action='store_true',
                         help=f'If to run final tests on the trained model')
     parser.add_argument('--reload_data', default=False, action='store_true', help=f'If to reload the data')
