@@ -314,25 +314,10 @@ class RibCage(keras.Model):
     def get_preds(self, image, mask):
         return self.model([image, mask], training=False)
 
-    def infer(self, data_loader) -> dict:
-        t_strt = time.time()
-
-        results_dict = dict()
-        # results = np.array([])
-
-        # - Get the data of the current epoch
-        pbar = tqdm(data_loader)
-        for idx, (img, msk, key) in enumerate(pbar):
-            # - Get the predictions
-            pred_seg_scr = self.get_preds(img, msk).numpy().flatten()[0]
-
-            # - Append the predicted seg measures to the results
-            results_dict[key] = (img.numpy(), msk.numpy(), pred_seg_scr)
-
-            # results = np.append(results, pred_seg_msrs)
-            pbar.set_postfix(seg=f'{pred_seg_scr:.3f}')
-
-        return results_dict
+    def infer(self, data_loader) -> float:
+        pred_seg_scr_df = self.test(data_loader=data_loader)
+        mean_pred = pred_seg_scr_df.loc[:, 'seg_score'].values.mean()
+        return mean_pred
 
     def test(self, data_loader) -> pd.DataFrame:
         t_strt = time.time()
@@ -353,9 +338,6 @@ class RibCage(keras.Model):
                 tf.convert_to_tensor(msk_ptchs, dtype=tf.float32)
 
             ptch_pred_mean_seg_scr = self.get_preds(img_ptchs, msk_ptchs).numpy().flatten().mean()
-            # ptch_pred_mean_seg_scrs = np.append(ptch_pred_mean_seg_scrs, ptch_pred_mean_seg_scr)
-
-            # pred_mean_seg_scr = ptch_pred_mean_seg_scrs.mean()
 
             # - Append the predicted seg measures to the results
             results_df = results_df.append(

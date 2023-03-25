@@ -12,7 +12,6 @@ from utils.aux_funcs import (
     instance_2_categorical,
     err_log,
     calc_seg_score,
-    transform_image,
     repaint_instance_segmentation
 )
 
@@ -101,8 +100,9 @@ class DataLoader(tf.keras.utils.Sequence):
         self.batch_size = batch_size if batch_size > 0 else 1
 
         self.train_augs = augs.train_augs(crop_height=crop_height, crop_width=crop_width)
-        self.train_mask_augs = augs.mask_augs()
-        self.inf_augs = augs.inference_augs(crop_height=crop_height, crop_width=crop_width)
+        self.train_image_augs = augs.train_image_augs()
+        self.train_mask_augs = augs.train_mask_augs()
+        self.image_transforms = augs.image_transforms()
         self.apply_elastic = partial(elastic_transform, alpha=crop_width * 2, sigma=crop_width * 0.15)
 
         self.n_images = len(self.file_keys)
@@ -124,11 +124,9 @@ class DataLoader(tf.keras.utils.Sequence):
 
         item = None
         if self.mode in ['training', 'validation']:
-            item = self.get_batch_train(start_index=start_idx, end_index=end_idx)
-        elif self.mode == 'inference':
-            item = self.get_batch_inference(index=start_idx)
-        elif self.mode == 'test':
-            item = self.get_batch_test(index=start_idx)
+            item = self.get_batch_train_validation(start_index=start_idx, end_index=end_idx)
+        elif self.mode in ['test', 'inference']:
+            item = self.get_batch_test_inference(index=start_idx)
         else:
             err_log(logger=self.logger, message=f'Error in \'{self.mode}\' mode')
 
@@ -138,7 +136,7 @@ class DataLoader(tf.keras.utils.Sequence):
 
         return item
 
-    def get_batch_train(self, start_index, end_index):
+    def get_batch_train_validation(self, start_index, end_index):
         btch_imgs_aug = []
         btch_msks_gt = []
         btch_msks_aug = []
@@ -147,16 +145,21 @@ class DataLoader(tf.keras.utils.Sequence):
         for img_fl in self.file_keys[start_index:end_index]:
             # <1> Get the image and the mask
             img, _, msk_gt = self.data_dict.get(img_fl)
-            img = img[..., -1]
-            img = transform_image(image=img)
+            img, msk_gt = img[..., -1], msk_gt[..., -1]
+            # img = transform_image(image=img)
 
-            msk_gt = msk_gt[..., -1]
-
-            # <2> Perform the general augmentations which are made on both the image and the mask e.g., rotation, flip,
+            # <1> Perform the general augmentations which are made on both the image and the mask e.g., rotation, flip,
             # random crop etc.
             aug_res = self.train_augs(image=img, mask=msk_gt)
+            img, msk_gt = aug_res.get('image'), aug_res.get('mask')
+
+            # - Perform the general transformations on the image only
+            aug_res = self.image_transforms(image=img, mask=msk_gt)
             img = aug_res.get('image')
-            msk_gt = aug_res.get('mask')
+
+            # <2> Perform the general augmentations which are made on the image only
+            aug_res = self.train_image_augs(image=img, mask=msk_gt)
+            img = aug_res.get('image')
 
             # <3> Change the GT mask to simulate the imperfect segmentation
             aug_res = self.train_mask_augs(image=img, mask=msk_gt)
@@ -189,45 +192,44 @@ class DataLoader(tf.keras.utils.Sequence):
 
         return (btch_imgs_aug, btch_msks_aug), btch_seg_scrs
 
-    def get_batch_test(self, index):
+    def get_batch_test_inference(self, index):
         # - Get the key of the image
         img_key = self.file_keys[index]
 
         # - Get the image and the mask
         img, _, msk = self.data_dict.get(img_key)
 
+        # - Perform the general transformations on the image only
+        aug_res = self.image_transforms(image=img, mask=msk)
+        img = aug_res.get('image')
+
         # - Transform the image
-        img = img[..., -1]  # - Discard the last channel as it is a gray scale image
-        img = transform_image(image=img)
+        img, msk = img[..., -1], msk[..., -1]  # - Discard the last channel as it is a gray scale image
+
+        # img = transform_image(image=img)
 
         # - Transform the mask
-        msk = msk[..., -1]  # - Discard the last channel as it is a gray scale image
         msk = instance_2_categorical(masks=msk)  # - Transform the mask from instance segmentation representation to
         # categorical, i.e., 3 classes - background, inner part and the boundary
 
         return img, msk, img_key
-
-    def get_batch_inference(self, index):
-        # - Get the key of the image
-        img_key = self.file_keys[index]
-
-        # - Get the image and the mask
-        img, _, msk = self.data_dict.get(img_key)
-        # img, msk = img.astype(np.uint8), msk.astype(np.uint8)
-
-        # - Apply image transformations
-        img = transform_image(image=img)
-
-        # - Augment the image and the mask
-        aug_res = self.inf_augs(image=img, mask=msk)
-        img, msk = aug_res.get('image'), aug_res.get('mask')
-        msk = instance_2_categorical(masks=msk)
-
-        # - Discard the last channel as it is a gray scale image
-        img, msk = img[..., -1], msk[..., -1]
-
-        # - Convert the image and the mask to  tensor
-        img, msk = tf.convert_to_tensor([img], dtype=tf.float32), \
-            tf.convert_to_tensor([msk], dtype=tf.float32)
-
-        return img, msk, img_key
+    #
+    # def get_batch_inference(self, index):
+    #     # - Get the key of the image
+    #     img_key = self.file_keys[index]
+    #
+    #     # - Get the image and the mask
+    #     img, _, msk = self.data_dict.get(img_key)
+    #
+    #     # - Perform the general transformations on the image only
+    #     aug_res = self.image_transforms(image=img, mask=msk)
+    #     img = aug_res.get('image')
+    #
+    #     # - Discard the last channel as it is a gray scale image
+    #     img, msk = img[..., -1], msk[..., -1]
+    #
+    #     # - Transform the mask
+    #     msk = instance_2_categorical(masks=msk)  # - Transform the mask from instance segmentation representation to
+    #     # categorical, i.e., 3 classes - background, inner part and the boundary
+    #
+    #     return img, msk, img_key

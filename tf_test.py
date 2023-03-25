@@ -16,7 +16,7 @@ from utils.aux_funcs import (
     get_runtime,
     get_logger,
     update_hyper_parameters, print_pretty_message,
-    print_results,
+    print_results, check_pathable, str_2_path,
 )
 
 from utils.visual_funcs import (
@@ -27,7 +27,6 @@ os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 
 def run_test(model, hyper_parameters: dict):
     t_start = time.time()
-    ts = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
 
     data_name = ''
     if hyper_parameters.get('test')['test_sim']:
@@ -45,13 +44,16 @@ def run_test(model, hyper_parameters: dict):
     data_name = hyper_parameters.get('test')['data_name']
     if data_name:
         current_run_dir = hyper_parameters.get('test')['output_dir']
-        if not current_run_dir:
+        if current_run_dir == '':
+            ts = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
             # - Create the directory for the current run
-            exp_name = hyper_parameters.get('test')['experiment_name']
+            exp_name = hyper_parameters.get('test')['name']
             current_run_dir = pathlib.Path(
                 pathlib.Path(hyper_parameters.get('general')['output_dir']) /
                 f'test/tensor_flow/{data_name}_{exp_name}_{ts}')
             os.makedirs(current_run_dir)
+        elif check_pathable(current_run_dir):
+            current_run_dir = str_2_path(path=current_run_dir)
 
         print_pretty_message(
             message=f'Current run dir was set to: {current_run_dir}',
@@ -122,6 +124,8 @@ def run_test(model, hyper_parameters: dict):
             message=f'Total runtime: {get_runtime(seconds=time.time() - t_start)}',
             delimiter_symbol='='
         )
+    else:
+        print_pretty_message(message=f'No test data was chosen! Aborting...')
 
 
 if __name__ == '__main__':

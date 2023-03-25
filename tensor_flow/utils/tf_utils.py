@@ -356,16 +356,10 @@ def get_model(mode: str, hyper_parameters: dict, output_dir: pathlib.Path or str
         )
     )
     model = RibCage(model_configs=model_configs, output_dir=output_dir, logger=logger)
-    load_checkpoint(model=model, checkpoint_file=hyper_parameters.get(mode)['checkpoint_file'])
+    weights_loaded = load_checkpoint(model=model, checkpoint_file=hyper_parameters.get(mode)['checkpoint_file'])
     if isinstance(logger, logging.Logger):
         info_log(logger=logger, message=model.summary())
 
-    # model.compile(
-    #     loss=tf.keras.losses.MeanSquaredError(),
-    #     optimizer=get_optimizer(args=hyper_parameters),
-    #     run_eagerly=True,
-    #     metrics=hyper_parameters.get('training')['metrics']
-    # )
     return model, weights_loaded
 
 
@@ -438,7 +432,7 @@ def get_optimizer(args: dict):
             centered=args.get('training')['optimizer_centered'],
         )
 
-    if args.get('learning_rate_scheduler') == 'cyclical':
+    if args.get('training')['learning_rate_scheduler'] == 'cyclical':
         lr = tfa.optimizers.CyclicalLearningRate(
             initial_learning_rate=args.get('training')['learning_rate_scheduler_cyclical_init_lr'],
             maximal_learning_rate=args.get('training')['learning_rate_scheduler_cyclical_max_lr'],
@@ -494,9 +488,11 @@ def train_model(hyper_parameters: dict, output_dir: pathlib.Path or str, logger:
 
     # MODEL
     # -1- Build the model and optionally load the weights
-    model, weights_loaded = get_model(mode='training',
-                                      hyper_parameters=hyper_parameters,
-                                      output_dir=output_dir, logger=logger)
+    model, weights_loaded = get_model(
+        mode='training',
+        hyper_parameters=hyper_parameters,
+        output_dir=output_dir, logger=logger
+    )
 
     # - Get the train and the validation data loaders
     train_dl, val_dl = get_data_loaders(mode='training', data_dict=data_dict,
@@ -576,53 +572,6 @@ def train_model(hyper_parameters: dict, output_dir: pathlib.Path or str, logger:
     return model
 
 
-def infer_data(hyper_parameters: dict, output_dir: pathlib.Path or str, logger: logging.Logger = None):
-    # - Load the data
-    data_dict = get_data(mode='inference', hyper_parameters=hyper_parameters,
-                         logger=logger)
-
-    inf_dl = DataLoader(
-        mode='inference',
-        data_dict=data_dict,
-        file_keys=list(data_dict.keys()),
-        crop_height=hyper_parameters.get('augmentations')['crop_height'],
-        crop_width=hyper_parameters.get('augmentations')['crop_width'],
-        batch_size=1,
-        logger=logger
-    )
-
-    print_pretty_message(
-        message=f'Inferring {len(data_dict)} examples',
-        delimiter_symbol='='
-    )
-
-    # MODEL
-    # -1- Build the model and optionally load the weights
-    trained_model, weights_loaded = get_model(mode='inference',
-                                              hyper_parameters=hyper_parameters,
-                                              output_dir=output_dir,
-                                              logger=logger)
-
-    chkpt_dir = hyper_parameters.get("inference")["checkpoint_dir"]
-    assert weights_loaded, f'Could not load weights from {chkpt_dir}!'
-
-    # - Infer
-    preds_dict = trained_model.infer(data_loader=inf_dl)
-
-    results = np.array(list(preds_dict.values()))[:, -1]
-    print(f'''
-    > Preds: 
-        {results}
-    '''
-          )
-    print_pretty_message(
-        message=f'E[Preds]: {results.mean():.3f}±{results.std():5f}',
-        delimiter_symbol='='
-    )
-
-    return preds_dict
-
-
 def test_model(model, hyper_parameters: dict, output_dir: pathlib.Path or str, logger: logging.Logger = None):
     test_res_df = None
     df_fl = pathlib.Path(hyper_parameters.get('test')['dataframe_file'])
@@ -675,3 +624,86 @@ def test_model(model, hyper_parameters: dict, output_dir: pathlib.Path or str, l
         )
 
     return test_res_df
+
+
+def infer_data(model, hyper_parameters: dict, output_dir: pathlib.Path or str, logger: logging.Logger = None):
+    # - Load the data
+    data_dict = get_data(mode='inference', hyper_parameters=hyper_parameters,
+                         logger=logger)
+
+    inf_dl = DataLoader(
+        mode='inference',
+        data_dict=data_dict,
+        file_keys=list(data_dict.keys()),
+        crop_height=hyper_parameters.get('augmentations')['crop_height'],
+        crop_width=hyper_parameters.get('augmentations')['crop_width'],
+        batch_size=1,
+        logger=logger
+    )
+
+    print_pretty_message(
+        message=f'Inferring {len(data_dict)} examples',
+        delimiter_symbol='='
+    )
+
+    # # MODEL
+    # # -1- Build the model and optionally load the weights
+    # model, weights_loaded = get_model(
+    #     mode='inference',
+    #     hyper_parameters=hyper_parameters,
+    #     output_dir=output_dir,
+    #     logger=logger
+    # )
+    #
+    # # - Compile the model
+    # model.compile(
+    #     loss=tf.keras.losses.MeanSquaredError(),
+    #     optimizer=get_optimizer(args=hyper_parameters),
+    #     run_eagerly=True,
+    #     metrics=hyper_parameters.get('training')['metrics']
+    # )
+
+    # chkpt_fl = hyper_parameters.get("inference")["checkpoint_file"]
+    # assert weights_loaded, f'Could not load weights from {chkpt_fl}!'
+
+    # - Infer
+    prediction = model.infer(data_loader=inf_dl)
+
+    return prediction
+# def infer_model(model, hyper_parameters: dict, output_dir: pathlib.Path or str, logger: logging.Logger = None):
+#
+#     # - Construct the data dictionary containing the image files, images, mask files and masks
+#     data_dict = get_data_dict(data_file_tuples=data_file_tuples)
+#
+#     test_dl = DataLoader(
+#         mode='test',
+#         data_dict=data_dict,
+#         file_keys=list(data_dict.keys()),
+#         crop_height=hyper_parameters.get('augmentations')['crop_height'],
+#         crop_width=hyper_parameters.get('augmentations')['crop_width'],
+#         batch_size=1,
+#         logger=logger
+#     )
+#
+#     # MODEL
+#     # -1- Build the model and optionally load the weights
+#     if model is None:
+#         model, weights_loaded = get_model(
+#             mode='test',
+#             hyper_parameters=hyper_parameters,
+#             output_dir=output_dir, logger=logger)
+#
+#         chkpt_dir = hyper_parameters.get("test")["checkpoint_dir"]
+#         assert weights_loaded, f'Could not load weights from {pathlib.Path(chkpt_dir)}!'
+#
+#     # - Infer
+#     pred_df = model.test(data_loader=test_dl)
+#
+#     test_res_df.loc[test_res_df.loc[:, 'image_file'].isin(pred_df.loc[:, 'image_file']), 'pred_seg_score'] = \
+#         pred_df.loc[:, 'seg_score']
+#
+#     print_pretty_message(
+#         message=f'Testing {len(data_dict)} images'
+#     )
+#
+#     return test_res_df

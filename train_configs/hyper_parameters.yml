@@ -1,6 +1,6 @@
 general:
   project_name: 'QANetV2'
-  experiment_name: ''
+  name: ''
   debug: False
   configs_dir: './global_configs'
   output_dir: './output'
@@ -22,34 +22,34 @@ model:
     conv2d_blocks:
       out_channels: [64, 128, 256, 256]
       kernel_sizes: [3, 3, 3, 3]
-      dropblock_rate: 0.1
+      dropblock_rate: 0.0
       dropblock_size: 7
 
     fc_blocks:
       out_features: [128, 128, 1]
-      drop_rate: 0.2
+      drop_rate: 0.0
 
   architecture2:
     conv2d_blocks:
       out_channels: [64, 128, 256, 256]
       kernel_sizes: [3, 3, 3, 3]
-      dropblock_rate: 0.1
+      dropblock_rate: 0.0
       dropblock_size: 7
 
     fc_blocks:
       out_features: [128, 128, 1]
-      drop_rate: 0.2
+      drop_rate: 0.0
 
   architecture3:
     conv2d_blocks:
       out_channels: [32, 64, 128, 256]
       kernel_sizes: [5, 5, 5, 5]
-      dropblock_rate: 0.1
+      dropblock_rate: 0.0
       dropblock_size: 7
 
     fc_blocks:
       out_features: [512, 1024, 1]
-      drop_rate: 0.2
+      drop_rate: 0.0
 
 #  activation: 'leaky_relu'
 #  activation: 'relu'
@@ -60,10 +60,10 @@ model:
   activation_leaky_relu_alpha: 0.3
 
 regularization:
-#  kernel_regularizer_type: None
-  kernel_regularizer_type: 'l2'
+  kernel_regularizer_type: None
+#  kernel_regularizer_type: 'l2'
   kernel_regularizer_l1: 0.01
-  kernel_regularizer_l2: 0.001
+  kernel_regularizer_l2: 0.01
   kernel_regularizer_factor: 0.01
   kernel_regularizer_mode: 'rows'
 
@@ -111,6 +111,7 @@ callbacks:
   early_stopping_verbose: 1
 
   # - LR Reduce on Plateau
+#  reduce_lr_on_plateau: False
   reduce_lr_on_plateau: True
   reduce_lr_on_plateau_patience: 50
   reduce_lr_on_plateau_factor: 0.3
@@ -154,7 +155,7 @@ training:
 #  optimizer: 'sgd'
   optimizer: 'adam'
   learning_rate_optimization_epochs: 0
-  learning_rate: 0.001
+  learning_rate: 0.01
   learning_rate_scheduler_reduction_points: [50, 100, 150, 250]
   learning_rate_scheduler_reduction_factor: 0.3
   learning_rate_decay: 0.001
@@ -162,11 +163,11 @@ training:
   learning_rate_max: 0.005
 
   # - LR Reduction Scheduler
-  #  lr_reduction_scheduler: 'None'
-  #  lr_reduction_scheduler: 'cosine'
+#  learning_rate_scheduler: 'None'
+#  learning_rate_scheduler: 'cosine'
   learning_rate_scheduler: 'cyclical'
   learning_rate_scheduler_cyclical_init_lr: 0.001
-  learning_rate_scheduler_cyclical_max_lr: 0.9
+  learning_rate_scheduler_cyclical_max_lr: 0.05
   learning_rate_scheduler_cyclical_step_size: 156 # 2 * 5011 // 64 = 156 # 2 * IMAGES / BATCH_SIZE
   learning_rate_scheduler_decay_steps: 30
   learning_rate_scheduler_patience: [150, 300]
@@ -186,7 +187,7 @@ training:
 
 test:
   output_dir: ''
-  experiment_name: ''
+  name: ''
   data_name: ''
   gpu_id: -1
 
@@ -196,7 +197,12 @@ test:
 
 #  test_data: 'sim+'
 
-  checkpoint_file: '/home/sidorov/projects/QANetV2/qanet/output/train/tensorflow/128x128/DEBUG_2023-03-11_18-42-34/checkpoints/last_model.ckpt'  # <= error of -4.7%
+  checkpoint_file: '/home/sidorov/projects/QANetV2/qanet/output/train/tensorflow/128x128/adam_cyclical_001_05_l2_001_fixed_augs_2023-03-24_00-49-25/checkpoints/best_model.ckpt'
+#  checkpoint_file: '/home/sidorov/projects/QANetV2/qanet/output/train/tensorflow/128x128/adam_no_drop_block_no_drop_out_cyclical_001_05_2023-03-17_09-20-44/checkpoints/last_model.ckpt'
+#  checkpoint_file: '/home/sidorov/projects/QANetV2/qanet/output/train/tensorflow/128x128/adam_no_drop_block_no_drop_out_cyclical_001_05_2023-03-17_09-20-44/checkpoints/best_model.ckpt'
+#  checkpoint_file: '/home/sidorov/projects/QANetV2/qanet/output/train/tensorflow/128x128/adam_001_no_drop_block_arch3_2023-03-17_23-51-35/checkpoints/last_model.ckpt'
+#  checkpoint_file: '/home/sidorov/projects/QANetV2/qanet/output/train/tensorflow/128x128/adam_001_no_drop_block_arch3_2023-03-17_23-51-35/checkpoints/best_model.ckpt'
+#  checkpoint_file: '/home/sidorov/projects/QANetV2/qanet/output/train/tensorflow/128x128/DEBUG_2023-03-11_18-42-34/checkpoints/last_model.ckpt'
 
   checkpoint_dir: ''
   # - SIM+
@@ -216,19 +222,67 @@ test:
 
 
 inference:
-  inference_data: 'unsw_au_sim+'
-
   seg_dir_postfix: 'MASKS'
   image_prefix: 'image'
   seg_prefix: 'mask'
   seg_sub_dir: ''
 
-  temp_data_file: '../data/inference/temp/UNSW-AU-Fluo-N2DH-SIM+/clean_data.pkl'
+
+  checkpoint_file: '/home/sidorov/projects/QANetV2/qanet/output/train/tensorflow/128x128/adam_cyclical_001_05_l2_001_fixed_augs_2023-03-24_00-49-25/checkpoints/best_model.ckpt'
+  temp_data_file: ''
+  output_dir: ''
+  name: 'inference'
+  model_name: ''
+  gpu_id: -1
+
+  data_dir: ''
+  seg_score: 0.0
 
   # - SIM+
+  # > BGU-IL(3)
+  infer_bgu_3_sim: False    # x
+  bgu_3_sim_data_dir: ''
+  bgu_3_sim_seg_score: 0.811
+
+  # > CVUT-CZ
+  infer_cvut_sim: False     # x
+  cvut_sim_data_dir: ''
+  cvut_sim_seg_score: 0.807
+
+  # > KTH-SE
+  infer_kth_sim: False      # x
+  kth_sim_data_dir: ''
+  kth_sim_seg_score: 0.832
+
+  # > UNSW-AU
+  infer_unsw_sim: False     # v
+  unsw_sim_data_dir: '/home/sidorov/projects/QANetV2/data/inference/SIM+/UNSW-GE-Fluo-N2DH-SIM+'
+  unsw_sim_seg_score: 0.809
+
+  # > DKFZ-GE
+  infer_dkfz_sim: False     # v
+  dkfz_sim_data_dir: '/home/sidorov/projects/QANetV2/data/inference/SIM+/DKFZ-GE-Fluo-N2DH-SIM+'
+  dkfz_sim_seg_score: 0.832
+
+  # - GWOT1
+  # > BGU-IL(4)
+  infer_bgu_4_gowt1: False  # v
+  bgu_4_gowt1_data_dir: '/home/sidorov/projects/QANetV2/data/inference/GWOT1/BGU-IL-Fluo-N2DH-GOWT1(4)'
+  bgu_4_gowt1_seg_score: 0.874
+
+  # > BGU-IL(5)
+  infer_bgu_5_gowt1: False  # v
+  bgu_5_gowt1_data_dir: '/home/sidorov/projects/QANetV2/data/inference/GWOT1/BGU-IL-Fluo-N2DH-GOWT1(5)'
+  bgu_5_gowt1_seg_score: 0.920
+
+  # > UNSW-AU
+  infer_unsw_gowt1: False   # v
+  unsw_gowt1_data_dir: '/home/sidorov/projects/QANetV2/data/inference/GWOT1/UNSW-AU-Fluo-N2DH-GOWT1'
+  unsw_gowt1_seg_score: 0.933
+
+
 #  data_dir: '../data/inference/UNSW-AU-Fluo-N2DH-SIM+'
 #  data_dir: '/home/sidorov/projects/QANetV2/data/inference/BGU-IL-Fluo-N2DH-GOWT1(4)'
-  data_dir: '/home/sidorov/projects/QANetV2/data/inference/DKFZ-GE-Fluo-N2DH-SIM+'
   checkpoint_dir_sim+: '/home/sidorov/projects/QANetV2/qanet/output/train/tensor_flow_arch_1_float64_SIM+_3_3_pct/checkpoints'
 
   # - GOWT1

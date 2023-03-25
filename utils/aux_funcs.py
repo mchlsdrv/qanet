@@ -164,18 +164,19 @@ def transform_image(image: np.ndarray):
     # - Standardize the image by (I - E[I]) / std(I)
     img = standardize_image(image=img)
 
-    # - Random contrast plus/minus 50%
-    random_contrast_factor = np.random.rand() + 0.5
-    img = adjust_contrast_(img, random_contrast_factor)
-
-    # - Random brightness delta plus/minus 10% of maximum value
-    random_brightness_delta = (np.random.rand() - 0.5) * 0.2 * img.max()
-    img = adjust_brightness_(img, random_brightness_delta)
-
+    # # - Random contrast plus/minus 50%
+    # random_contrast_factor = np.random.rand() + 0.5
+    # img = adjust_contrast_(img, random_contrast_factor)
+    #
+    # # - Random brightness delta plus/minus 10% of maximum value
+    # random_brightness_delta = (np.random.rand() - 0.5) * 0.2 * img.max()
+    # img = adjust_brightness_(img, random_brightness_delta)
+    #
     return img
 
 
 def load_image(image_file, add_channels: bool = False):
+
     img = cv2.imread(str(image_file), cv2.IMREAD_UNCHANGED)
 
     if add_channels and len(img.shape) < 3:
@@ -961,12 +962,12 @@ def get_data(mode: str, hyper_parameters: dict, logger: logging.Logger = None):
                 data_dict=data_dict,
                 save_file=hyper_parameters.get(mode)['temp_data_file'])
 
-            data_dict = get_relevant_data(
-                data_dict=data_dict,
-                relevant_files=os.listdir(
-                    hyper_parameters.get(mode)['mask_dir']),
-                save_file=hyper_parameters.get(mode)['temp_data_file'],
-                logger=logger)
+            # data_dict = get_relevant_data(
+            #     data_dict=data_dict,
+            #     relevant_files=os.listdir(
+            #         hyper_parameters.get(mode)['mask_dir']),
+            #     save_file=hyper_parameters.get(mode)['temp_data_file'],
+            #     logger=logger)
         else:
             data_dict = get_data_dict(data_file_tuples=fl_tupls)
 
@@ -1002,8 +1003,8 @@ def get_arg_parser():
     parser.add_argument('--gpu_id', type=int, default=-1, help='The ID of the GPU to run on')
 
     # - GENERAL PARAMETERS
-    parser.add_argument('--project_name', type=str, help='The name of the project')
-    parser.add_argument('--experiment_name', type=str, help='The name of the experiment')
+    parser.add_argument('--project', type=str, help='The name of the project')
+    parser.add_argument('--name', type=str, help='The name of the experiment')
     parser.add_argument('--queue_name', type=str, help='The name of the queue to assign the task to')
     parser.add_argument('--local_execution', default=False, action='store_true', help=f'If to execute the task locally')
     parser.add_argument('--architecture', type=str, choices=['arch1', 'arch2', 'arch3'], help=f'''
@@ -1054,6 +1055,8 @@ def get_arg_parser():
                         help=f'The number of optimization epochs for the learning rate')
     parser.add_argument('--run_tests', default=False, action='store_true',
                         help=f'If to run final tests on the trained model')
+    parser.add_argument('--run_inferences', default=False, action='store_true',
+                        help=f'If to infer the test set with the trained model')
     parser.add_argument('--reload_data', default=False, action='store_true', help=f'If to reload the data')
     parser.add_argument('--train_data_dir', type=str, help='The path to the train data file')
     parser.add_argument('--epochs', type=int, help='Number of epochs to train the model')
@@ -1088,11 +1091,28 @@ def get_arg_parser():
     parser.add_argument('--test_gowt1', default=False, action='store_true', help=f'Run test on the GWOT1 data')
     parser.add_argument('--test_hela', default=False, action='store_true', help=f'Run test on the HELA data')
 
-    # - Inference flags
+    # - Inference
     parser.add_argument('--inference_data_dir', type=str, help='The path to the inference data dir')
-    parser.add_argument('--infer_sim', default=False, action='store_true', help=f'Run inference on the SIM+ data')
-    parser.add_argument('--infer_gwot1', default=False, action='store_true', help=f'Run inference on the GWOT1 data')
-    parser.add_argument('--infer_hela', default=False, action='store_true', help=f'Run inference on the HELA data')
+
+    # > SIM+ Data
+    parser.add_argument('--infer_bgu_3_sim', default=False, action='store_true',
+                        help=f'Run inference on the SIM+ data by BGU-IL(3) model')
+    parser.add_argument('--infer_cvut_sim', default=False, action='store_true',
+                        help=f'Run inference on the SIM+ data by CVUT-CZ model')
+    parser.add_argument('--infer_kth_sim', default=False, action='store_true',
+                        help=f'Run inference on the SIM+ data by KTH-SE model')
+    parser.add_argument('--infer_unsw_sim', default=False, action='store_true',
+                        help=f'Run inference on the SIM+ data by UNSW-AU model')
+    parser.add_argument('--infer_dkfz_sim', default=False, action='store_true',
+                        help=f'Run inference on the SIM+ data by DKFZ-GE model')
+
+    # > GWOT1 Data
+    parser.add_argument('--infer_bgu_4_gowt1', default=False, action='store_true',
+                        help=f'Run inference on the GWOT1 data by BGU-IL(4) model')
+    parser.add_argument('--infer_bgu_5_gowt1', default=False, action='store_true',
+                        help=f'Run inference on the GWOT1 data by BGU-IL(5) model')
+    parser.add_argument('--infer_unsw_gowt1', default=False, action='store_true',
+                        help=f'Run inference on the GWOT1 data by UNSW-AU model')
 
     return parser
 

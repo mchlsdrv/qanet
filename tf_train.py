@@ -7,6 +7,7 @@ from copy import deepcopy
 import yaml
 import matplotlib as mpl
 from tensor_flow.utils.tf_utils import train_model, choose_gpu, load_checkpoint
+from tf_infer import run_inference, infer_all
 # from clearml import Task
 from utils.aux_funcs import (
     get_arg_parser,
@@ -47,7 +48,7 @@ if __name__ == '__main__':
     else:
         crp_w = hyp_params_dict.get('augmentations')['crop_width']
         crp_h = hyp_params_dict.get('augmentations')['crop_height']
-        dir_name = f'{hyp_params_dict.get("general")["experiment_name"]}_{ts}'
+        dir_name = f'{hyp_params_dict.get("general")["name"]}_{ts}'
         current_run_dir = pathlib.Path(
             hyp_params_dict.get('general')['output_dir']) / f'train/tensorflow/{crp_h}x{crp_w}/{dir_name}'
         os.makedirs(current_run_dir)
@@ -110,7 +111,7 @@ if __name__ == '__main__':
     ''')
 
     if args.run_tests:
-        hyp_params_dict.get('test')['experiment_name'] = hyp_params_dict.get('general')['experiment_name'] + '_test'
+        hyp_params_dict.get('test')['name'] = hyp_params_dict.get('general')['name'] + '_test'
 
         ckpt_bst = current_run_dir / hyp_params_dict.get("callbacks")["checkpoint_file_best_model"]
         ckpt_lst = current_run_dir / hyp_params_dict.get("callbacks")["checkpoint_file_last_model"]
@@ -169,3 +170,30 @@ if __name__ == '__main__':
             print(f'- Last Model:')
             test_hyp_params_dict.get('test')['type'] = 'last'
             run_test(model=model, hyper_parameters=test_hyp_params_dict)
+
+    if args.run_inferences:
+        hyp_params_dict.get('inference')['name'] = \
+            hyp_params_dict.get('general')['name'] + '_inference'
+
+        ckpt_bst = current_run_dir / hyp_params_dict.get("callbacks")["checkpoint_file_best_model"]
+        ckpt_lst = current_run_dir / hyp_params_dict.get("callbacks")["checkpoint_file_last_model"]
+
+        hyp_params_dict.get('inference')['checkpoint_file_best'] = ckpt_bst
+        hyp_params_dict.get('inference')['checkpoint_file_last'] = ckpt_lst
+
+        hyp_params_dict.get('inference')['gpu_id'] = args.gpu_id
+
+        hyp_params_dict.get('inference')['output_dir'] = current_run_dir
+
+        # - SIM+
+        test_hyp_params_dict = deepcopy(hyp_params_dict)
+        ckpt_loaded = load_checkpoint(model=model, checkpoint_file=ckpt_bst)
+        if ckpt_loaded:
+            print_pretty_message(message='Inferring the SIM+ Data')
+            print(f'- Best Model:')
+            infer_all(model=model, hyper_parameters=hyp_params_dict)
+
+        ckpt_loaded = load_checkpoint(model=model, checkpoint_file=ckpt_lst)
+        if ckpt_loaded:
+            print(f'- Best Model (inference):')
+            infer_all(model=model, hyper_parameters=hyp_params_dict)
