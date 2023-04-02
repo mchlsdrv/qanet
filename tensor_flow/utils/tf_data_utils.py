@@ -12,7 +12,7 @@ from utils.aux_funcs import (
     instance_2_categorical,
     err_log,
     calc_seg_score,
-    repaint_instance_segmentation
+    repaint_instance_segmentation, transform_image
 )
 
 
@@ -146,25 +146,19 @@ class DataLoader(tf.keras.utils.Sequence):
             # <1> Get the image and the mask
             img, _, msk_gt = self.data_dict.get(img_fl)
             img, msk_gt = img[..., -1], msk_gt[..., -1]
-            # img = transform_image(image=img)
 
             # <1> Perform the general augmentations which are made on both the image and the mask e.g., rotation, flip,
             # random crop etc.
             aug_res = self.train_augs(image=img, mask=msk_gt)
             img, msk_gt = aug_res.get('image'), aug_res.get('mask')
 
-            # - Perform the general transformations on the image only
-            aug_res = self.image_transforms(image=img, mask=msk_gt)
-            img = aug_res.get('image')
-
-            # <2> Perform the general augmentations which are made on the image only
-            aug_res = self.train_image_augs(image=img, mask=msk_gt)
-            img = aug_res.get('image')
+            # <2> Perform the general transformations on the image only
+            img = transform_image(image=img, augment=True)
 
             # <3> Change the GT mask to simulate the imperfect segmentation
             aug_res = self.train_mask_augs(image=img, mask=msk_gt)
             msk = aug_res.get('mask')
-            if np.random.rand() > 0.2:
+            if np.random.rand() > 0.25:
                 msk = self.apply_elastic(msk)
             msk = repaint_instance_segmentation(mask=msk)
 
@@ -200,36 +194,13 @@ class DataLoader(tf.keras.utils.Sequence):
         img, _, msk = self.data_dict.get(img_key)
 
         # - Perform the general transformations on the image only
-        aug_res = self.image_transforms(image=img, mask=msk)
-        img = aug_res.get('image')
+        img = transform_image(image=img, augment=False)
 
         # - Transform the image
         img, msk = img[..., -1], msk[..., -1]  # - Discard the last channel as it is a gray scale image
-
-        # img = transform_image(image=img)
 
         # - Transform the mask
         msk = instance_2_categorical(masks=msk)  # - Transform the mask from instance segmentation representation to
         # categorical, i.e., 3 classes - background, inner part and the boundary
 
         return img, msk, img_key
-    #
-    # def get_batch_inference(self, index):
-    #     # - Get the key of the image
-    #     img_key = self.file_keys[index]
-    #
-    #     # - Get the image and the mask
-    #     img, _, msk = self.data_dict.get(img_key)
-    #
-    #     # - Perform the general transformations on the image only
-    #     aug_res = self.image_transforms(image=img, mask=msk)
-    #     img = aug_res.get('image')
-    #
-    #     # - Discard the last channel as it is a gray scale image
-    #     img, msk = img[..., -1], msk[..., -1]
-    #
-    #     # - Transform the mask
-    #     msk = instance_2_categorical(masks=msk)  # - Transform the mask from instance segmentation representation to
-    #     # categorical, i.e., 3 classes - background, inner part and the boundary
-    #
-    #     return img, msk, img_key

@@ -7,7 +7,7 @@ from copy import deepcopy
 import yaml
 import matplotlib as mpl
 from tensor_flow.utils.tf_utils import train_model, choose_gpu, load_checkpoint
-from tf_infer import run_inference, infer_all
+from tf_infer import infer_all
 # from clearml import Task
 from utils.aux_funcs import (
     get_arg_parser,
@@ -172,6 +172,7 @@ if __name__ == '__main__':
             run_test(model=model, hyper_parameters=test_hyp_params_dict)
 
     if args.run_inferences:
+        print('Inference')
         hyp_params_dict.get('inference')['name'] = \
             hyp_params_dict.get('general')['name'] + '_inference'
 
@@ -189,11 +190,10 @@ if __name__ == '__main__':
         test_hyp_params_dict = deepcopy(hyp_params_dict)
         ckpt_loaded = load_checkpoint(model=model, checkpoint_file=ckpt_bst)
         if ckpt_loaded:
-            print_pretty_message(message='Inferring the SIM+ Data')
             print(f'- Best Model:')
             infer_all(model=model, hyper_parameters=hyp_params_dict)
 
         ckpt_loaded = load_checkpoint(model=model, checkpoint_file=ckpt_lst)
         if ckpt_loaded:
-            print(f'- Best Model (inference):')
+            print(f'- Last Model:')
             infer_all(model=model, hyper_parameters=hyp_params_dict)

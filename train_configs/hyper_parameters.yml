@@ -18,7 +18,9 @@ model:
   in_channels: 1
   out_channels: 1
 
-  architecture:
+  architecture: None
+
+  architecture1:
     conv2d_blocks:
       out_channels: [64, 128, 256, 256]
       kernel_sizes: [3, 3, 3, 3]
@@ -60,10 +62,10 @@ model:
   activation_leaky_relu_alpha: 0.3
 
 regularization:
-  kernel_regularizer_type: None
-#  kernel_regularizer_type: 'l2'
+#  kernel_regularizer_type: None
+  kernel_regularizer_type: 'l2'
   kernel_regularizer_l1: 0.01
-  kernel_regularizer_l2: 0.01
+  kernel_regularizer_l2: 0.001
   kernel_regularizer_factor: 0.01
   kernel_regularizer_mode: 'rows'
 
@@ -141,9 +143,9 @@ training:
 
   loss: 'mse'
   metrics: []
-  epochs: 300
+  epochs: 500
   batch_size: 64
-  val_batch_size: 64
+  val_batch_size: 16
   num_train_workers: 8
   val_prop: 0.2
   num_val_workers: 4
@@ -155,7 +157,7 @@ training:
 #  optimizer: 'sgd'
   optimizer: 'adam'
   learning_rate_optimization_epochs: 0
-  learning_rate: 0.01
+  learning_rate: 0.001
   learning_rate_scheduler_reduction_points: [50, 100, 150, 250]
   learning_rate_scheduler_reduction_factor: 0.3
   learning_rate_decay: 0.001
@@ -163,11 +165,11 @@ training:
   learning_rate_max: 0.005
 
   # - LR Reduction Scheduler
-#  learning_rate_scheduler: 'None'
+  learning_rate_scheduler: 'None'
 #  learning_rate_scheduler: 'cosine'
-  learning_rate_scheduler: 'cyclical'
+#  learning_rate_scheduler: 'cyclical'
   learning_rate_scheduler_cyclical_init_lr: 0.001
-  learning_rate_scheduler_cyclical_max_lr: 0.05
+  learning_rate_scheduler_cyclical_max_lr: 0.005
   learning_rate_scheduler_cyclical_step_size: 156 # 2 * 5011 // 64 = 156 # 2 * IMAGES / BATCH_SIZE
   learning_rate_scheduler_decay_steps: 30
   learning_rate_scheduler_patience: [150, 300]
@@ -228,7 +230,7 @@ inference:
   seg_sub_dir: ''
 
 
-  checkpoint_file: '/home/sidorov/projects/QANetV2/qanet/output/train/tensorflow/128x128/adam_cyclical_001_05_l2_001_fixed_augs_2023-03-24_00-49-25/checkpoints/best_model.ckpt'
+  checkpoint_file: '/home/sidorov/projects/QANetV2/qanet/output/train/tensorflow/128x128/adam_001_l2_001_no_special_image_augs_2023-03-26_16-39-36/checkpoints/best_model.ckpt'
   temp_data_file: ''
   output_dir: ''
   name: 'inference'
@@ -250,13 +252,13 @@ inference:
   cvut_sim_seg_score: 0.807
 
   # > KTH-SE
-  infer_kth_sim: False      # x
-  kth_sim_data_dir: ''
-  kth_sim_seg_score: 0.832
+  infer_kth_sim: False   # v
+  kth_sim_data_dir: '/home/sidorov/projects/QANetV2/data/inference/SIM+/KTH-SE-Fluo-N2DH-SIM+'
+  kth_sim_seg_score: 0.792
 
   # > UNSW-AU
   infer_unsw_sim: False     # v
-  unsw_sim_data_dir: '/home/sidorov/projects/QANetV2/data/inference/SIM+/UNSW-GE-Fluo-N2DH-SIM+'
+  unsw_sim_data_dir: '/home/sidorov/projects/QANetV2/data/inference/SIM+/UNSW-AU-Fluo-N2DH-SIM+'
   unsw_sim_seg_score: 0.809
 
   # > DKFZ-GE
@@ -264,21 +266,27 @@ inference:
   dkfz_sim_data_dir: '/home/sidorov/projects/QANetV2/data/inference/SIM+/DKFZ-GE-Fluo-N2DH-SIM+'
   dkfz_sim_seg_score: 0.832
 
+
   # - GWOT1
   # > BGU-IL(4)
   infer_bgu_4_gowt1: False  # v
-  bgu_4_gowt1_data_dir: '/home/sidorov/projects/QANetV2/data/inference/GWOT1/BGU-IL-Fluo-N2DH-GOWT1(4)'
+  bgu_4_gowt1_data_dir: '/home/sidorov/projects/QANetV2/data/inference/GOWT1/BGU-IL-Fluo-N2DH-GOWT1(4)'
   bgu_4_gowt1_seg_score: 0.874
 
   # > BGU-IL(5)
   infer_bgu_5_gowt1: False  # v
-  bgu_5_gowt1_data_dir: '/home/sidorov/projects/QANetV2/data/inference/GWOT1/BGU-IL-Fluo-N2DH-GOWT1(5)'
+  bgu_5_gowt1_data_dir: '/home/sidorov/projects/QANetV2/data/inference/GOWT1/BGU-IL-Fluo-N2DH-GOWT1(5)'
   bgu_5_gowt1_seg_score: 0.920
 
   # > UNSW-AU
   infer_unsw_gowt1: False   # v
-  unsw_gowt1_data_dir: '/home/sidorov/projects/QANetV2/data/inference/GWOT1/UNSW-AU-Fluo-N2DH-GOWT1'
+  unsw_gowt1_data_dir: '/home/sidorov/projects/QANetV2/data/inference/GOWT1/UNSW-AU-Fluo-N2DH-GOWT1'
   unsw_gowt1_seg_score: 0.933
+
+  # > KTH-SE
+  infer_kth_gowt1: False   # v
+  kth_gowt1_data_dir: '/home/sidorov/projects/QANetV2/data/inference/GOWT1/KTH-SE-Fluo-N2DH-GOWT1'
+  kth_gowt1_seg_score: 0.927
 
 
 #  data_dir: '../data/inference/UNSW-AU-Fluo-N2DH-SIM+'

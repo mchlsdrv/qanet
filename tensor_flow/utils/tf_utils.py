@@ -321,7 +321,12 @@ def load_checkpoint(model, checkpoint_file: str or pathlib.Path):
     try:
         model.load_weights(checkpoint_file)
         weights_loaded = True
+        print_pretty_message(message=f'> Checkpoint was loaded from \'{checkpoint_file}\'')
     except Exception as err:
+        print_pretty_message(
+            message=f'<!> Could not load checkpoint from \'{checkpoint_file}\'',
+            delimiter_symbol='!'
+        )
         print(err)
 
     return weights_loaded
@@ -356,7 +361,9 @@ def get_model(mode: str, hyper_parameters: dict, output_dir: pathlib.Path or str
         )
     )
     model = RibCage(model_configs=model_configs, output_dir=output_dir, logger=logger)
-    weights_loaded = load_checkpoint(model=model, checkpoint_file=hyper_parameters.get(mode)['checkpoint_file'])
+    ckpt_file = hyper_parameters.get(mode)['checkpoint_file']
+    weights_loaded = load_checkpoint(model=model, checkpoint_file=ckpt_file)
+
     if isinstance(logger, logging.Logger):
         info_log(logger=logger, message=model.summary())
 
@@ -646,64 +653,7 @@ def infer_data(model, hyper_parameters: dict, output_dir: pathlib.Path or str, l
         delimiter_symbol='='
     )
 
-    # # MODEL
-    # # -1- Build the model and optionally load the weights
-    # model, weights_loaded = get_model(
-    #     mode='inference',
-    #     hyper_parameters=hyper_parameters,
-    #     output_dir=output_dir,
-    #     logger=logger
-    # )
-    #
-    # # - Compile the model
-    # model.compile(
-    #     loss=tf.keras.losses.MeanSquaredError(),
-    #     optimizer=get_optimizer(args=hyper_parameters),
-    #     run_eagerly=True,
-    #     metrics=hyper_parameters.get('training')['metrics']
-    # )
-
-    # chkpt_fl = hyper_parameters.get("inference")["checkpoint_file"]
-    # assert weights_loaded, f'Could not load weights from {chkpt_fl}!'
-
     # - Infer
     prediction = model.infer(data_loader=inf_dl)
 
     return prediction
-# def infer_model(model, hyper_parameters: dict, output_dir: pathlib.Path or str, logger: logging.Logger = None):
-#
-#     # - Construct the data dictionary containing the image files, images, mask files and masks
-#     data_dict = get_data_dict(data_file_tuples=data_file_tuples)
-#
-#     test_dl = DataLoader(
-#         mode='test',
-#         data_dict=data_dict,
-#         file_keys=list(data_dict.keys()),
-#         crop_height=hyper_parameters.get('augmentations')['crop_height'],
-#         crop_width=hyper_parameters.get('augmentations')['crop_width'],
-#         batch_size=1,
-#         logger=logger
-#     )
-#
-#     # MODEL
-#     # -1- Build the model and optionally load the weights
-#     if model is None:
-#         model, weights_loaded = get_model(
-#             mode='test',
-#             hyper_parameters=hyper_parameters,
-#             output_dir=output_dir, logger=logger)
-#
-#         chkpt_dir = hyper_parameters.get("test")["checkpoint_dir"]
-#         assert weights_loaded, f'Could not load weights from {pathlib.Path(chkpt_dir)}!'
-#
-#     # - Infer
-#     pred_df = model.test(data_loader=test_dl)
-#
-#     test_res_df.loc[test_res_df.loc[:, 'image_file'].isin(pred_df.loc[:, 'image_file']), 'pred_seg_score'] = \
-#         pred_df.loc[:, 'seg_score']
-#
-#     print_pretty_message(
-#         message=f'Testing {len(data_dict)} images'
-#     )
-#
-#     return test_res_df

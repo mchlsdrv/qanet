@@ -1,7 +1,8 @@
+import datetime
 import os
 import pandas as pd
 from patchify import patchify
-
+import matplotlib.pyplot as plt
 from tqdm import tqdm
 import logging
 import time
@@ -12,6 +13,7 @@ from tensorflow import keras
 from keras_cv.layers import DropBlock2D
 
 from global_configs.general_configs import COLUMN_NAMES
+from utils.aux_funcs import get_objects
 from .tf_activations import (
     Swish
 )
@@ -328,14 +330,16 @@ class RibCage(keras.Model):
         pbar = tqdm(data_loader)
         ptch_pred_mean_seg_scrs = np.array([])
         for idx, (img, msk, img_fl) in enumerate(pbar):
+            img_ptchs, msk_ptchs = get_objects(image=img, mask=msk, crop_height=crp_h, crop_width=crp_w)
             # - Get the predictions
-            img_ptchs, msk_ptchs = \
-                patchify(img, (crp_h, crp_w), step=crp_w).reshape(-1, crp_h, crp_w), \
-                patchify(msk, (crp_h, crp_w), step=crp_w).reshape(-1, crp_h, crp_w)
+            # img_ptchs, msk_ptchs = \
+            #     patchify(img, (crp_h, crp_w), step=crp_w).reshape(-1, crp_h, crp_w), \
+            #     patchify(msk, (crp_h, crp_w), step=crp_w).reshape(-1, crp_h, crp_w)
 
             img_ptchs, msk_ptchs = \
                 tf.convert_to_tensor(img_ptchs, dtype=tf.float32), \
                 tf.convert_to_tensor(msk_ptchs, dtype=tf.float32)
+
 
             ptch_pred_mean_seg_scr = self.get_preds(img_ptchs, msk_ptchs).numpy().flatten().mean()
 

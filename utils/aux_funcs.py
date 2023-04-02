@@ -14,6 +14,7 @@ import yaml
 import logging
 import matplotlib.pyplot as plt
 from scipy.ndimage import grey_erosion
+from scipy.stats import pearsonr
 from tqdm import tqdm
 
 from global_configs.general_configs import (
@@ -27,6 +28,8 @@ import warnings
 
 warnings.simplefilter("ignore", UserWarning)
 warnings.simplefilter("ignore", RuntimeWarning)
+
+MIN_OBJ_PCT = 10
 
 
 def get_range(value, ranges: np.ndarray):
@@ -152,26 +155,24 @@ def adjust_contrast_(image, factor):
     return out_img
 
 
-def transform_image(image: np.ndarray):
+def transform_image(image: np.ndarray, augment: bool = False):
     # - Make sure the image is in the right range
     # img = image_clip_values(image=image, max_val=255)
 
     # - Convert the image to float dividing by it by 255
     img = image.astype(np.float32)
-    # img = image / image.max()
-    # img = image_2_float(image=img, max_val=255)
 
     # - Standardize the image by (I - E[I]) / std(I)
-    img = standardize_image(image=img)
+    # img = standardize_image(image=img)
 
-    # # - Random contrast plus/minus 50%
-    # random_contrast_factor = np.random.rand() + 0.5
-    # img = adjust_contrast_(img, random_contrast_factor)
-    #
-    # # - Random brightness delta plus/minus 10% of maximum value
-    # random_brightness_delta = (np.random.rand() - 0.5) * 0.2 * img.max()
-    # img = adjust_brightness_(img, random_brightness_delta)
-    #
+    if augment:
+        # - Random contrast plus/minus 50%
+        random_contrast_factor = np.random.rand() + 0.5
+        img = adjust_contrast_(img, random_contrast_factor)
+
+        # - Random brightness delta plus/minus 10% of maximum value
+        random_brightness_delta = (np.random.rand() - 0.5) * 0.2 * img.max()
+        img = adjust_brightness_(img, random_brightness_delta)
     return img
 
 
@@ -455,8 +456,8 @@ def get_model_configs(configs_file: pathlib.Path, logger: logging.Logger):
     return model_configs
 
 
-def scan_files(root_dir: pathlib.Path or str, seg_dir_postfix: str,
-               image_prefix: str, seg_prefix: str, seg_sub_dir: str = None):
+def get_image_mask_file_tuples(root_dir: pathlib.Path or str, seg_dir_postfix: str,
+                               image_prefix: str, seg_prefix: str, seg_sub_dir: str = None):
     file_tuples = list()
     for root, dirs, _ in os.walk(root_dir):
         root = pathlib.Path(root)
@@ -497,12 +498,12 @@ def rename_string_column(dataframe: pd.DataFrame, column_name: str, old_str: str
         dataframe.to_csv(save_file, index=False)
 
 
-def get_data_dict(data_file_tuples: list):
+def get_data_dict(image_mask_file_tuples: list):
     print_pretty_message(
         message='Loading images and corresponding segmentations')
 
     data_dict = dict()
-    files_pbar = tqdm(data_file_tuples)
+    files_pbar = tqdm(image_mask_file_tuples)
     for img_fl, msk_fl in files_pbar:
         img = load_image(image_file=img_fl, add_channels=True)
 
@@ -598,6 +599,47 @@ def get_runtime(seconds: float):
         sec_str = '0' + sec_str
 
     return hrs_str + ':' + min_str + ':' + sec_str + '[H:M:S]'
+
+
+def pad_image(image: np.ndarray, shape: tuple, pad_value: int = 0):
+    h, w = image.shape
+    img_padded = np.zeros(shape) * pad_value
+    img_padded[:h, :w] = image
+
+    return img_padded
+
+
+def get_objects(image: np.ndarray, mask: np.ndarray, crop_height: int, crop_width: int):
+    # - Find all the objects in the mask
+    (_, msk_cntd, stats, centroids) = cv2.connectedComponentsWithStats(mask.astype(np.uint8), cv2.CV_16U)
+
+    # - Convert centroids to int16 to be able to represent pixel locations
+    cntrs = centroids.astype(np.int16)
+    # print(f'Number of centroids: {len(cntrs)}')
+
+    # - Create lists to store the crops
+    img_objcts, msk_objcts = [], []
+
+    for (x, y) in cntrs:
+        img_crp, msk_crp = image[y:y+crop_height, x:x+crop_width], mask[y:y+crop_height, x:x+crop_width]
+        if msk_crp.sum() > (MIN_OBJ_PCT * crop_height * crop_width) // 100:
+            if img_crp.shape[0] != crop_height or img_crp.shape[1] != crop_width:
+                img_crp = pad_image(img_crp, (crop_height, crop_width), pad_value=0)
+                msk_crp = pad_image(msk_crp, (crop_height, crop_width), pad_value=0)
+
+            # save_dir = pathlib.Path('/home/sidorov/projects/QANetV2/qanet/output/inference/patches/unsw_sim')
+            # os.makedirs(save_dir, exist_ok=True)
+            # ts = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+            # fig, ax = plt.subplots(1, 2, figsize=(20, 10))
+            # ax[0].imshow(img_crp, cmap='gray')
+            # ax[1].imshow(msk_crp, cmap='gray')
+            # fig.savefig(save_dir / f'{ts}.png')
+            # plt.close(fig)
+
+            img_objcts.append(img_crp)
+            msk_objcts.append(msk_crp)
+
+    return np.array(img_objcts, np.float32), np.array(msk_objcts, np.float32)
 
 
 def repaint_instance_segmentation(mask: np.ndarray):
@@ -766,66 +808,23 @@ def update_hyper_parameters(hyper_parameters: dict, arguments: argparse.Namespac
     args = vars(arguments)
     arg_names = list(args.keys())
 
+    if args.get('arch1'):
+        hyper_parameters.get('model')['architecture'] = hyper_parameters.get('model')['architecture1']
+
+    elif args.get('arch2'):
+        hyper_parameters.get('model')['architecture'] = hyper_parameters.get('model')['architecture2']
+
+    elif args.get('arch3'):
+        hyper_parameters.get('model')['architecture'] = hyper_parameters.get('model')['architecture3']
+
     # - For each argument
     for arg_name in arg_names:
         for hyp_param_cat in hyp_param_categories:
             # - Get the hyperparameter names fo the category
             hyp_param_names = hyper_parameters.get(hyp_param_cat)
 
-            # - If the argument name is in hyperparameter names for the current
-            # category
-            if arg_name in hyp_param_names and args.get(arg_name) is not None:
-                # - Special cases
-                if arg_name == 'architecture':
-                    arch = args.get('architecture')
-                    if arch == 'arch2':
-                        hyper_parameters.get('model')['architecture'] = hyper_parameters.get('model')['architecture2']
-                    elif arch == 'arch3':
-                        hyper_parameters.get('model')['architecture'] = hyper_parameters.get('model')['architecture3']
-                elif arg_name == 'test_data':
-                    test_dt = args.get('test_data')
-                    if test_dt == 'sim+':
-                        hyper_parameters.get('test')['test_data'] = 'sim+'
-                        hyper_parameters.get('test')['dataframe_file'] = \
-                            hyper_parameters.get('test')['dataframe_file_sim+']
-                        hyper_parameters.get('test')['checkpoint_dir'] = \
-                            hyper_parameters.get('test')['checkpoint_dir_sim+']
-                    if test_dt == 'gowt1':
-                        hyper_parameters.get('test')['test_data'] = 'gowt1'
-                        hyper_parameters.get('test')['dataframe_file'] = \
-                            hyper_parameters.get('test')['dataframe_file_gowt1']
-                        hyper_parameters.get('test')['checkpoint_dir'] = \
-                            hyper_parameters.get(
-                                'test')['checkpoint_dir_gowt1']
-                    if test_dt == 'hela':
-                        hyper_parameters.get('test')['test_data'] = 'hela'
-                        hyper_parameters.get('test')['dataframe_file'] = \
-                            hyper_parameters.get('test')['dataframe_file_hela']
-                        hyper_parameters.get('test')['checkpoint_dir'] = \
-                            hyper_parameters.get('test')['checkpoint_dir_hela']
-                elif arg_name == 'inference_data':
-                    inf_dt = args.get('inference_data')
-                    if inf_dt == 'sim+':
-                        hyper_parameters.get(
-                            'inference')['inference_data'] = 'sim+'
-                        hyper_parameters.get('inference')['checkpoint_dir'] = \
-                            hyper_parameters.get(
-                                'inference')['checkpoint_dir_sim+']
-                    if inf_dt == 'gowt1':
-                        hyper_parameters.get(
-                            'inference')['inference_data'] = 'gowt1'
-                        hyper_parameters.get('inference')['checkpoint_dir'] = \
-                            hyper_parameters.get(
-                                'inference')['checkpoint_dir_gowt1']
-                    if inf_dt == 'hela':
-                        hyper_parameters.get(
-                            'inference')['inference_data'] = 'hela'
-                        hyper_parameters.get('inference')['checkpoint_dir'] = \
-                            hyper_parameters.get(
-                                'inference')['checkpoint_dir_hela']
-                else:
-                    # - Hyper-parameter update with the parameter in args
-                    hyper_parameters.get(hyp_param_cat)[arg_name] = args.get(arg_name)
+            # - Hyper-parameter update with the parameter in args
+            hyper_parameters.get(hyp_param_cat)[arg_name] = args.get(arg_name)
 
 
 def normalize(image: np.ndarray):
@@ -936,6 +935,17 @@ def print_pretty_message(message: str, delimiter_symbol: str = '='):
     print('')
 
 
+def get_metrics(x: np.ndarray, y: np.ndarray):
+
+    # - Calculate pearson correlation
+    rho, p = pearsonr(x, y)
+
+    # - Calculate mean squared error
+    mse = np.mean(np.square(x - y))
+
+    return rho, p, mse
+
+
 def get_data(mode: str, hyper_parameters: dict, logger: logging.Logger = None):
     data_dict = dict()
 
@@ -944,7 +954,7 @@ def get_data(mode: str, hyper_parameters: dict, logger: logging.Logger = None):
         data_dict = from_pickle(data_file=dt_fl, logger=logger)
     else:
         dt_dir = str_2_path(path=hyper_parameters.get(mode)['data_dir'])
-        fl_tupls = scan_files(
+        img_msk_fl_tpls = get_image_mask_file_tuples(
             root_dir=dt_dir,
             seg_dir_postfix=hyper_parameters.get(mode)['seg_dir_postfix'],
             image_prefix=hyper_parameters.get(mode)['image_prefix'],
@@ -954,8 +964,8 @@ def get_data(mode: str, hyper_parameters: dict, logger: logging.Logger = None):
 
         # - Load images and their masks
         if mode == 'training':
-            np.random.shuffle(fl_tupls)
-            data_dict = get_data_dict(data_file_tuples=fl_tupls)
+            np.random.shuffle(img_msk_fl_tpls)
+            data_dict = get_data_dict(image_mask_file_tuples=img_msk_fl_tpls)
 
             # - Clean data items with no objects in them
             data_dict = clean_items_with_empty_masks(
@@ -969,7 +979,7 @@ def get_data(mode: str, hyper_parameters: dict, logger: logging.Logger = None):
             #     save_file=hyper_parameters.get(mode)['temp_data_file'],
             #     logger=logger)
         else:
-            data_dict = get_data_dict(data_file_tuples=fl_tupls)
+            data_dict = get_data_dict(image_mask_file_tuples=img_msk_fl_tpls)
 
     return data_dict
 
@@ -1007,7 +1017,7 @@ def get_arg_parser():
     parser.add_argument('--name', type=str, help='The name of the experiment')
     parser.add_argument('--queue_name', type=str, help='The name of the queue to assign the task to')
     parser.add_argument('--local_execution', default=False, action='store_true', help=f'If to execute the task locally')
-    parser.add_argument('--architecture', type=str, choices=['arch1', 'arch2', 'arch3'], help=f'''
+    parser.add_argument('--arch1', default=False, action='store_true', help=f'''
     > arch1: 
         conv2d_blocks:
           out_channels: [64, 128, 256, 256]
@@ -1018,7 +1028,9 @@ def get_arg_parser():
         fc_blocks:
           out_features: [512, 1024]
           drop_rate: 0.2
-          
+    ''')
+
+    parser.add_argument('--arch2', default=False, action='store_true', help=f'''
     > arch2: 
         conv2d_blocks:
           out_channels: [64, 128, 256, 256]
@@ -1029,8 +1041,10 @@ def get_arg_parser():
         fc_blocks:
           out_features: [128, 128]
           drop_rate: 0.5
-          
-    > arch3: 
+    ''')
+
+    parser.add_argument('--arch3', default=False, action='store_true', help=f'''
+    > arch3:
         conv2d_blocks:
           out_channels: [32, 64, 128, 256]
           kernel_sizes: [5, 5, 5, 5]
@@ -1040,7 +1054,42 @@ def get_arg_parser():
         fc_blocks:
           out_features: [512, 1024]
           drop_rate: 0.2
-                        ''')
+    ''')
+
+    # parser.add_argument('--architecture', type=str, choices=['arch1', 'arch2', 'arch3'], help=f'''
+    # > arch1:
+    #     conv2d_blocks:
+    #       out_channels: [64, 128, 256, 256]
+    #       kernel_sizes: [5, 5, 5, 5]
+    #       dropblock_rate: 0.1
+    #       dropblock_size: 7
+    #
+    #     fc_blocks:
+    #       out_features: [512, 1024]
+    #       drop_rate: 0.2
+    #
+    # > arch2:
+    #     conv2d_blocks:
+    #       out_channels: [64, 128, 256, 256]
+    #       kernel_sizes: [3, 3, 3, 3]
+    #       dropblock_rate: 0.1
+    #       dropblock_size: 7
+    #
+    #     fc_blocks:
+    #       out_features: [128, 128]
+    #       drop_rate: 0.5
+    #
+    # > arch3:
+    #     conv2d_blocks:
+    #       out_channels: [32, 64, 128, 256]
+    #       kernel_sizes: [5, 5, 5, 5]
+    #       dropblock_rate: 0.1
+    #       dropblock_size: 7
+    #
+    #     fc_blocks:
+    #       out_features: [512, 1024]
+    #       drop_rate: 0.2
+    #                     ''')
 
     parser.add_argument('--output_dir', type=str, help='The path to the directory where the outputs will be placed')
     parser.add_argument('--hyper_params_file', type=str, default=HYPER_PARAMS_FILE,
@@ -1094,6 +1143,8 @@ def get_arg_parser():
     # - Inference
     parser.add_argument('--inference_data_dir', type=str, help='The path to the inference data dir')
 
+    parser.add_argument('--infer_all', default=False, action='store_true',
+                        help=f'Run inference on all the test data sets')
     # > SIM+ Data
     parser.add_argument('--infer_bgu_3_sim', default=False, action='store_true',
                         help=f'Run inference on the SIM+ data by BGU-IL(3) model')

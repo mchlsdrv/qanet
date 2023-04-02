@@ -14,7 +14,7 @@ from utils.aux_funcs import (
     check_pathable,
     str_2_path,
     info_log,
-    print_pretty_message
+    print_pretty_message, get_metrics
 )
 
 plt.style.use('seaborn')  # <= using the seaborn plot style
@@ -135,6 +135,7 @@ def get_simple_scatter_plot_figure(x: np.ndarray, y: np.ndarray, xlabel: str, yl
         alpha=.3,
         s=150,
     )
+
     ax.set(
         xlim=xlim,
         xlabel=xlabel,
@@ -144,6 +145,9 @@ def get_simple_scatter_plot_figure(x: np.ndarray, y: np.ndarray, xlabel: str, yl
         yticks=yticks
     )
 
+    # - Plot the perfect match line
+    ax.plot((0, 0), (1, 1), 'g--', linewidth=1)
+
     if check_pathable(path=save_file):
         save_file = str_2_path(path=save_file)
         fig.savefig(save_file)
@@ -151,7 +155,7 @@ def get_simple_scatter_plot_figure(x: np.ndarray, y: np.ndarray, xlabel: str, yl
     return fig, ax
 
 
-def get_scatter_plot_figure(x: np.ndarray, y: np.ndarray, plot_type: str, logger: logging.Logger = None):
+def get_scatter_plot_figure(x: np.ndarray, y: np.ndarray, plot_type: str = 'scatter', logger: logging.Logger = None):
     D = pd.DataFrame({'GT Quality Value': x, 'Estimated Quality Value': y})
     g = sns.jointplot(
         x='GT Quality Value',
@@ -171,14 +175,10 @@ def get_scatter_plot_figure(x: np.ndarray, y: np.ndarray, plot_type: str, logger
         kind='reg'
     )
 
-    # - Calculate pearson correlation
-    rho, p = pearsonr(x, y)
-
-    # - Calculate mean squared error
-    mse = np.mean(np.square(x - y))
+    rho, p, mse = get_metrics(x=x, y=y)
 
     g.ax_joint.annotate(
-        f'$\\rho = {rho:.3f}, MSE = {mse:.3f}$',
+        f'$\\rho = {rho:.3f} (p = {p:.4f}), MSE = {mse:.3f}$',
         xy=(0.1, 0.9),
         xycoords='axes fraction',
         ha='left',

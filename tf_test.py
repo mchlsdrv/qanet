@@ -16,13 +16,16 @@ from utils.aux_funcs import (
     get_runtime,
     get_logger,
     update_hyper_parameters, print_pretty_message,
-    print_results, check_pathable, str_2_path,
+    print_results, check_pathable, str_2_path, get_metrics,
 )
 
 from utils.visual_funcs import (
-    get_scatter_plot_figure,
+    get_scatter_plot_figure, get_simple_scatter_plot_figure,
 )
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
+
+
+plt.style.use('seaborn')  # <= using the seaborn plot style
 
 
 def run_test(model, hyper_parameters: dict):
@@ -94,11 +97,16 @@ def run_test(model, hyper_parameters: dict):
         x = test_res_df.loc[:, 'seg_score'].values
         y = test_res_df.loc[:, 'pred_seg_score'].values
 
-        fig, rho, p, mse = get_scatter_plot_figure(
-            x=x,
-            y=y,
-            plot_type='test',
-            logger=logger)
+        rho, p, mse = get_metrics(x=x, y=y)
+
+        fig, ax = get_simple_scatter_plot_figure(
+            x=x, y=y,
+            xlabel='True', ylabel='Predicted',
+            xticks=(0.0, 0.2, 0.4, 0.6, 0.8, 1.0), xlim=(0.0, 1.0),
+            yticks=(0.0, 0.2, 0.4, 0.6, 0.8, 1.0), ylim=(0.0, 1.0),
+            figsize=(20, 20),
+            save_file=current_run_dir / f"{hyper_parameters.get('test')['data_name']}_scatter.png"
+        )
 
         # - Create the train file writer
         file_writer = tf.summary.create_file_writer(
@@ -106,7 +114,7 @@ def run_test(model, hyper_parameters: dict):
 
         write_figure_to_tensorboard(writer=file_writer, figure=fig, tag=f'{data_name}_test', step=0)
 
-        fig.savefig(current_run_dir / f"{hyper_parameters.get('test')['data_name']}_scatter.png")
+        # fig.savefig(current_run_dir / f"{hyper_parameters.get('test')['data_name']}_scatter.png")
         plt.close(fig)
 
         # - Save the results
