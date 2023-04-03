@@ -12,8 +12,12 @@ from utils.aux_funcs import (
     instance_2_categorical,
     err_log,
     calc_seg_score,
-    repaint_instance_segmentation, transform_image
+    transform_image,
+    connect_cells
 )
+
+P_ELASTIC = 0.25
+P_CONNECT_CELLS = 0.5
 
 
 def get_data_loaders(mode: str, data_dict: dict, hyper_parameters: dict, logger: logging.Logger = None):
@@ -158,9 +162,14 @@ class DataLoader(tf.keras.utils.Sequence):
             # <3> Change the GT mask to simulate the imperfect segmentation
             aug_res = self.train_mask_augs(image=img, mask=msk_gt)
             msk = aug_res.get('mask')
-            if np.random.rand() > 0.25:
+
+            # - Randomly apply elastic transform
+            if np.random.rand() > P_ELASTIC:
                 msk = self.apply_elastic(msk)
-            msk = repaint_instance_segmentation(mask=msk)
+
+            # - Randomly connect cells
+            if np.random.rand() > P_CONNECT_CELLS:
+                msk = connect_cells(mask=msk)
 
             # <4> Calculate the seg score of the corrupt mask with the GT
             seg_scr = calc_seg_score(msk_gt, msk)

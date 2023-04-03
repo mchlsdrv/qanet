@@ -14,6 +14,7 @@ MIN_CELL_PIXELS = 1000
 
 # ========= MAIN MODULE =========
 # TOGGLES
+DEBUG = False
 DEBUG_LEVEL = 0
 PROFILE = False
 

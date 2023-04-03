@@ -21,7 +21,8 @@ from global_configs.general_configs import (
     MIN_CELL_PIXELS,
     HYPER_PARAMS_FILE,
     EPSILON,
-    COLUMN_NAMES
+    COLUMN_NAMES,
+    DEBUG
 )
 
 import warnings
@@ -499,8 +500,7 @@ def rename_string_column(dataframe: pd.DataFrame, column_name: str, old_str: str
 
 
 def get_data_dict(image_mask_file_tuples: list):
-    print_pretty_message(
-        message='Loading images and corresponding segmentations')
+    print('\t\t- Loading images and corresponding segmentations')
 
     data_dict = dict()
     files_pbar = tqdm(image_mask_file_tuples)
@@ -511,11 +511,7 @@ def get_data_dict(image_mask_file_tuples: list):
 
         data_dict[str(img_fl)] = (img, str(msk_fl), msk)
 
-    print_pretty_message(message='Stats')
-
-    print(f'''
-    - Total data items: {len(data_dict)}
-    ''')
+    print(f'\t\t\t* Total data items: {len(data_dict)}')
 
     return data_dict
 
@@ -627,14 +623,15 @@ def get_objects(image: np.ndarray, mask: np.ndarray, crop_height: int, crop_widt
                 img_crp = pad_image(img_crp, (crop_height, crop_width), pad_value=0)
                 msk_crp = pad_image(msk_crp, (crop_height, crop_width), pad_value=0)
 
-            # save_dir = pathlib.Path('/home/sidorov/projects/QANetV2/qanet/output/inference/patches/unsw_sim')
-            # os.makedirs(save_dir, exist_ok=True)
-            # ts = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-            # fig, ax = plt.subplots(1, 2, figsize=(20, 10))
-            # ax[0].imshow(img_crp, cmap='gray')
-            # ax[1].imshow(msk_crp, cmap='gray')
-            # fig.savefig(save_dir / f'{ts}.png')
-            # plt.close(fig)
+            if DEBUG:
+                save_dir = pathlib.Path('/home/sidorov/projects/QANetV2/qanet/output/inference/patches/unsw_sim')
+                os.makedirs(save_dir, exist_ok=True)
+                ts = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+                fig, ax = plt.subplots(1, 2, figsize=(20, 10))
+                ax[0].imshow(img_crp, cmap='gray')
+                ax[1].imshow(msk_crp, cmap='gray')
+                fig.savefig(save_dir / f'{ts}.png')
+                plt.close(fig)
 
             img_objcts.append(img_crp)
             msk_objcts.append(msk_crp)
@@ -642,7 +639,7 @@ def get_objects(image: np.ndarray, mask: np.ndarray, crop_height: int, crop_widt
     return np.array(img_objcts, np.float32), np.array(msk_objcts, np.float32)
 
 
-def repaint_instance_segmentation(mask: np.ndarray):
+def connect_cells(mask: np.ndarray):
     # - Get the initial labels excluding the background
     lbls, lbl_px = np.unique(mask.astype(np.int8), return_counts=True)
 
@@ -801,8 +798,9 @@ def calc_seg_score(gt_mask: np.ndarray, pred_mask: np.ndarray):
 
 
 def update_hyper_parameters(hyper_parameters: dict, arguments: argparse.Namespace):
-    # - Get hyper-parameter names
-    hyp_param_categories = list(hyper_parameters.keys())
+
+    # - Get hyper-parameter categories
+    hyp_param_ctgrs = list(hyper_parameters.keys())
 
     # - Get the argument names
     args = vars(arguments)
@@ -819,12 +817,14 @@ def update_hyper_parameters(hyper_parameters: dict, arguments: argparse.Namespac
 
     # - For each argument
     for arg_name in arg_names:
-        for hyp_param_cat in hyp_param_categories:
-            # - Get the hyperparameter names fo the category
-            hyp_param_names = hyper_parameters.get(hyp_param_cat)
+        hyp_param = args.get(arg_name)
+        if hyp_param is not None:
+            for hyp_param_ctgr in hyp_param_ctgrs:
+                # - Get the hyperparameter names fo the category
+                hyp_param_names = hyper_parameters.get(hyp_param_ctgr)
 
-            # - Hyper-parameter update with the parameter in args
-            hyper_parameters.get(hyp_param_cat)[arg_name] = args.get(arg_name)
+                # - Hyper-parameter update with the parameter in args
+                hyper_parameters.get(hyp_param_ctgr)[arg_name] = hyp_param
 
 
 def normalize(image: np.ndarray):
@@ -1164,6 +1164,8 @@ def get_arg_parser():
                         help=f'Run inference on the GWOT1 data by BGU-IL(5) model')
     parser.add_argument('--infer_unsw_gowt1', default=False, action='store_true',
                         help=f'Run inference on the GWOT1 data by UNSW-AU model')
+    parser.add_argument('--infer_kth_gowt1', default=False, action='store_true',
+                        help=f'Run inference on the GWOT1 data by KTH-SE model')
 
     return parser
 
@@ -1188,6 +1190,22 @@ def instance_2_categorical(masks: np.ndarray or list):
 
         return msk
 
+    # def _get_categorical_mask(binary_mask: np.ndarray):
+    #     # Shrinks the labels
+    #     inner_msk = grey_erosion(binary_mask, size=3)
+    #
+    #     # # Create the contur of the cells
+    #     # contur_msk = binary_mask - inner_msk
+    #     # contur_msk[contur_msk > 0] = 2
+    #
+    #     # - Create the inner part of the cell
+    #     inner_msk[inner_msk > 0] = 1
+    #
+    #     # - Combine the inner and the contur masks to create the categorical mask
+    #     # with three classes, i.e., background 0, inner 1 and contur 2
+    #     # cat_msk = inner_msk + contur_msk
+    #
+    #     return inner_msk
     def _get_categorical_mask(binary_mask: np.ndarray):
         # Shrinks the labels
         inner_msk = grey_erosion(binary_mask, size=3)

@@ -1,8 +1,5 @@
-import datetime
 import os
 import pandas as pd
-from patchify import patchify
-import matplotlib.pyplot as plt
 from tqdm import tqdm
 import logging
 import time
@@ -339,7 +336,6 @@ class RibCage(keras.Model):
             img_ptchs, msk_ptchs = \
                 tf.convert_to_tensor(img_ptchs, dtype=tf.float32), \
                 tf.convert_to_tensor(msk_ptchs, dtype=tf.float32)
-
 
             ptch_pred_mean_seg_scr = self.get_preds(img_ptchs, msk_ptchs).numpy().flatten().mean()
 

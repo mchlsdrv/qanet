@@ -165,8 +165,8 @@ training:
   learning_rate_max: 0.005
 
   # - LR Reduction Scheduler
-  learning_rate_scheduler: 'None'
-#  learning_rate_scheduler: 'cosine'
+#  learning_rate_scheduler: 'None'
+  learning_rate_scheduler: 'cosine'
 #  learning_rate_scheduler: 'cyclical'
   learning_rate_scheduler_cyclical_init_lr: 0.001
   learning_rate_scheduler_cyclical_max_lr: 0.005
@@ -188,8 +188,8 @@ training:
   optimizer_centered: False
 
 test:
+  name: 'test'
   output_dir: ''
-  name: ''
   data_name: ''
   gpu_id: -1
 
@@ -197,22 +197,12 @@ test:
   test_gowt1: False
   test_hela: False
 
-#  test_data: 'sim+'
-
   checkpoint_file: '/home/sidorov/projects/QANetV2/qanet/output/train/tensorflow/128x128/adam_cyclical_001_05_l2_001_fixed_augs_2023-03-24_00-49-25/checkpoints/best_model.ckpt'
-#  checkpoint_file: '/home/sidorov/projects/QANetV2/qanet/output/train/tensorflow/128x128/adam_no_drop_block_no_drop_out_cyclical_001_05_2023-03-17_09-20-44/checkpoints/last_model.ckpt'
-#  checkpoint_file: '/home/sidorov/projects/QANetV2/qanet/output/train/tensorflow/128x128/adam_no_drop_block_no_drop_out_cyclical_001_05_2023-03-17_09-20-44/checkpoints/best_model.ckpt'
-#  checkpoint_file: '/home/sidorov/projects/QANetV2/qanet/output/train/tensorflow/128x128/adam_001_no_drop_block_arch3_2023-03-17_23-51-35/checkpoints/last_model.ckpt'
-#  checkpoint_file: '/home/sidorov/projects/QANetV2/qanet/output/train/tensorflow/128x128/adam_001_no_drop_block_arch3_2023-03-17_23-51-35/checkpoints/best_model.ckpt'
-#  checkpoint_file: '/home/sidorov/projects/QANetV2/qanet/output/train/tensorflow/128x128/DEBUG_2023-03-11_18-42-34/checkpoints/last_model.ckpt'
 
   checkpoint_dir: ''
   # - SIM+
   dataframe_file_sim+: '/home/sidorov/projects/QANetV2/RefModels/Results/Fluo-N2DH-SIM+/seg_scores.csv'
   checkpoint_dir_sim+: '/home/sidorov/projects/QANetV2/qanet/output/train/tensorflow/128x128/dropblock_last_dropout_last_l2_001_arch_2/checkpoints'  # <= error of -4.7%
-#  checkpoint_dir_sim+: '/home/sidorov/projects/QANetV2/qanet/output/train/tensorflow/128x128/no_dropblock_dropout_last_l2_001_arch_2/checkpoints'  # <= XXX
-#  checkpoint_dir_sim+: '/home/sidorov/projects/QANetV2/qanet/output/train/tensorflow/128x128/dropblock_last_no_dropout_l2_001_arch_2/checkpoints'  # <= XXX
-#  checkpoint_dir_sim+: '/home/sidorov/projects/QANetV2/qanet/output/train/tensorflow/128x128/dropblock_last_dropout_last_no_l2_arch_2/checkpoints'  # <= XXX
 
   # - GOWT1
   dataframe_file_gowt1:  '/home/sidorov/projects/QANetV2/RefModels/Results/Fluo-N2DH-GOWT1/seg_scores.csv'
@@ -231,6 +221,14 @@ inference:
 
 
   checkpoint_file: '/home/sidorov/projects/QANetV2/qanet/output/train/tensorflow/128x128/adam_001_l2_001_no_special_image_augs_2023-03-26_16-39-36/checkpoints/best_model.ckpt'
+  checkpoint_files: [
+    '/home/sidorov/projects/QANetV2/qanet/output/train/tensorflow/128x128/cosine_2023-04-01_01-05-45/checkpoints/last_model.ckpt',
+    '/home/sidorov/projects/QANetV2/qanet/output/train/tensorflow/128x128/cosine_2023-04-01_01-05-45/checkpoints/best_model.ckpt',
+    '/home/sidorov/projects/QANetV2/qanet/output/train/tensorflow/128x128/cyclical_001_005_2023-04-01_01-05-06/checkpoints/last_model.ckpt',
+    '/home/sidorov/projects/QANetV2/qanet/output/train/tensorflow/128x128/cyclical_001_005_2023-04-01_01-05-06/checkpoints/best_model.ckpt',
+    '/home/sidorov/projects/QANetV2/qanet/output/train/tensorflow/128x128/no_scheduler_lr_001_2023-04-03_01-23-28/checkpoints/last_model.ckpt',
+    '/home/sidorov/projects/QANetV2/qanet/output/train/tensorflow/128x128/no_scheduler_lr_001_2023-04-03_01-23-28/checkpoints/best_model.ckpt',
+  ]
   temp_data_file: ''
   output_dir: ''
   name: 'inference'
@@ -278,15 +276,16 @@ inference:
   bgu_5_gowt1_data_dir: '/home/sidorov/projects/QANetV2/data/inference/GOWT1/BGU-IL-Fluo-N2DH-GOWT1(5)'
   bgu_5_gowt1_seg_score: 0.920
 
+  # > KTH-SE
+  infer_kth_gowt1: False   # v
+  kth_gowt1_data_dir: '/home/sidorov/projects/QANetV2/data/inference/GOWT1/KTH-SE-Fluo-N2DH-GOWT1'
+  kth_gowt1_seg_score: 0.927
+
   # > UNSW-AU
   infer_unsw_gowt1: False   # v
   unsw_gowt1_data_dir: '/home/sidorov/projects/QANetV2/data/inference/GOWT1/UNSW-AU-Fluo-N2DH-GOWT1'
   unsw_gowt1_seg_score: 0.933
 
-  # > KTH-SE
-  infer_kth_gowt1: False   # v
-  kth_gowt1_data_dir: '/home/sidorov/projects/QANetV2/data/inference/GOWT1/KTH-SE-Fluo-N2DH-GOWT1'
-  kth_gowt1_seg_score: 0.927
 
 
 #  data_dir: '../data/inference/UNSW-AU-Fluo-N2DH-SIM+'

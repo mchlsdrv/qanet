@@ -597,7 +597,7 @@ def test_model(model, hyper_parameters: dict, output_dir: pathlib.Path or str, l
                             img_fl, _, pred_msk_fl, _ in test_res_df.values]
 
         # - Construct the data dictionary containing the image files, images, mask files and masks
-        data_dict = get_data_dict(data_file_tuples=data_file_tuples)
+        data_dict = get_data_dict(image_mask_file_tuples=data_file_tuples)
 
         test_dl = DataLoader(
             mode='test',
