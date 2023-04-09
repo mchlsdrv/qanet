@@ -16,8 +16,8 @@ from utils.aux_funcs import (
     connect_cells
 )
 
-P_ELASTIC = 0.25
-P_CONNECT_CELLS = 0.5
+P_ELASTIC = 0.1
+P_CONNECT_CELLS = 0.4
 
 
 def get_data_loaders(mode: str, data_dict: dict, hyper_parameters: dict, logger: logging.Logger = None):

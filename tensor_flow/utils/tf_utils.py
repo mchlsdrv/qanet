@@ -210,7 +210,7 @@ def get_callbacks(callback_type: str, hyper_parameters: dict, output_dir: pathli
     # Built-in  callbacks
     # -------------------
     tb_prc = None
-    if hyper_parameters.get('callbacks')['tensorboard']:
+    if not hyper_parameters.get('callbacks')['no_tensorboard']:
         callbacks.append(
             tf.keras.callbacks.TensorBoard(
                 log_dir=output_dir,
@@ -226,8 +226,7 @@ def get_callbacks(callback_type: str, hyper_parameters: dict, output_dir: pathli
             callbacks.append(
                 ProgressLogCallback(
                     log_dir=output_dir,
-                    tensorboard_logs=hyper_parameters.get('callbacks')[
-                        'tensorboard'],
+                    tensorboard_logs=not hyper_parameters.get('callbacks')['no_tensorboard'],
                     wandb_logs=hyper_parameters.get('callbacks')['wandb'],
                     logger=logger
                 )
@@ -366,6 +365,8 @@ def get_model(mode: str, hyper_parameters: dict, output_dir: pathlib.Path or str
 
     if isinstance(logger, logging.Logger):
         info_log(logger=logger, message=model.summary())
+    else:
+        print(model.summary())
 
     return model, weights_loaded
 
@@ -398,47 +399,48 @@ class LRScheduler(tf.keras.optimizers.schedules.LearningRateSchedule):
 
 def get_optimizer(args: dict):
     algorithm = args.get('training')['optimizer']
-    optimizer = None
+    opt = None
     if algorithm == 'adam':
-        optimizer = partial(
+        opt = partial(
             tf.keras.optimizers.Adam,
             beta_1=args.get('training')['optimizer_beta_1'],
             beta_2=args.get('training')['optimizer_beta_2'],
             amsgrad=args.get('training')['optimizer_amsgrad'],
         )
     elif algorithm == 'nadam':
-        optimizer = partial(
+        opt = partial(
             tf.keras.optimizers.Nadam,
             beta_1=args.get('training')['optimizer_beta_1'],
             beta_2=args.get('training')['optimizer_beta_2'],
         )
     elif algorithm == 'adamax':
-        optimizer = partial(
+        opt = partial(
             tf.keras.optimizers.Adamax,
             beta_1=args.get('training')['optimizer_beta_1'],
             beta_2=args.get('training')['optimizer_beta_2'],
         )
     elif algorithm == 'adagrad':
-        optimizer = tf.keras.optimizers.Adagrad
+        opt = tf.keras.optimizers.Adagrad
     elif algorithm == 'adadelta':
-        optimizer = partial(
+        opt = partial(
             tf.keras.optimizers.Adadelta,
             rho=args.get('training')['optimizer_rho'],
         )
     elif algorithm == 'sgd':
-        optimizer = partial(
+        opt = partial(
             tf.keras.optimizers.SGD,
             momentum=args.get('training')['optimizer_momentum'],
             nesterov=args.get('training')['optimizer_nesterov'],
         )
     elif algorithm == 'rms_prop':
-        optimizer = partial(
+        opt = partial(
             tf.keras.optimizers.RMSprop,
             rho=args.get('rho'),
             momentum=args.get('training')['optimizer_momentum'],
             centered=args.get('training')['optimizer_centered'],
         )
 
+    lr = args.get('training')['learning_rate']
     if args.get('training')['learning_rate_scheduler'] == 'cyclical':
         lr = tfa.optimizers.CyclicalLearningRate(
             initial_learning_rate=args.get('training')['learning_rate_scheduler_cyclical_init_lr'],
@@ -446,14 +448,20 @@ def get_optimizer(args: dict):
             scale_fn=lambda x: 1 / (2. ** (x - 1)),
             step_size=args.get('training')['learning_rate_scheduler_cyclical_step_size']
         )
+        print_pretty_message(message='Using Cyclical lr scheduler', delimiter_symbol='*')
     elif args.get('training')['learning_rate_scheduler'] == 'cosine':
         lr = tf.keras.optimizers.schedules.CosineDecay(
-            args.get('training')['learning_rate'],
+            initial_learning_rate=args.get('training')['learning_rate'],
             decay_steps=args.get('training')['learning_rate_scheduler_decay_steps']
         )
+        print_pretty_message(message='Using Cosine lr scheduler', delimiter_symbol='*')
     else:
-        lr = args.get('training')['learning_rate']
-    return optimizer(learning_rate=lr)
+        print_pretty_message(message='No lr scheduler was configured', delimiter_symbol='*')
+
+    # opt = opt(learning_rate=lr)
+    opt = opt(learning_rate=lr)
+
+    return opt
 
 
 def choose_gpu(gpu_id: int = 0, logger: logging.Logger = None):
@@ -540,8 +548,8 @@ def train_model(hyper_parameters: dict, output_dir: pathlib.Path or str, logger:
             opt_lr, _ = optimize_learning_rate(
                 model=model,
                 data_loader=train_dl,
-                learning_rate_min=hyper_parameters.get('training')['learning_rate_min'],
-                learning_rate_max=hyper_parameters.get('training')['learning_rate_max'],
+                learning_rate_min=hyper_parameters.get('training')['learning_rate_optimization_min'],
+                learning_rate_max=hyper_parameters.get('training')['learning_rate_optimization_max'],
                 epochs=hyper_parameters.get('training')['learning_rate_optimization_epochs'],
                 plot_file=output_dir / 'learning_rate_optimization_plot.png'
             )
@@ -554,10 +562,16 @@ def train_model(hyper_parameters: dict, output_dir: pathlib.Path or str, logger:
                 - Optimal learning rate: {opt_lr}')
             ''')
 
+    # - Get the optimizer
+    if hyper_parameters.get('training')['learning_rate_scheduler'] == 'cyclical':
+        hyper_parameters.get('training')['learning_rate_scheduler_cyclical_step_size'] = 2 * len(train_dl)
+
+    optimizer = get_optimizer(args=hyper_parameters)
+
     # - Compile the model
     model.compile(
         loss=tf.keras.losses.MeanSquaredError(),
-        optimizer=get_optimizer(args=hyper_parameters),
+        optimizer=optimizer,
         run_eagerly=True,
         metrics=hyper_parameters.get('training')['metrics']
     )
@@ -635,8 +649,7 @@ def test_model(model, hyper_parameters: dict, output_dir: pathlib.Path or str, l
 
 def infer_data(model, hyper_parameters: dict, output_dir: pathlib.Path or str, logger: logging.Logger = None):
     # - Load the data
-    data_dict = get_data(mode='inference', hyper_parameters=hyper_parameters,
-                         logger=logger)
+    data_dict = get_data(mode='inference', hyper_parameters=hyper_parameters, logger=logger)
 
     inf_dl = DataLoader(
         mode='inference',

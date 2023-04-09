@@ -24,12 +24,12 @@ model:
     conv2d_blocks:
       out_channels: [64, 128, 256, 256]
       kernel_sizes: [3, 3, 3, 3]
-      dropblock_rate: 0.0
+      dropblock_rate: 0.1
       dropblock_size: 7
 
     fc_blocks:
       out_features: [128, 128, 1]
-      drop_rate: 0.0
+      drop_rate: 0.2
 
   architecture2:
     conv2d_blocks:
@@ -74,7 +74,7 @@ callbacks:
   wandb: False
 
   # - Tensor Board
-  tensorboard: True
+  no_tensorboard: False
   tensorboard_launch: False
   tensorboard_write_images: True
   tensorboard_write_steps_per_second: True
@@ -126,7 +126,6 @@ callbacks:
 
 training:
   load_checkpoint: False
-  in_train_augmentation: False
 
   seg_dir_postfix: 'GT'
   image_prefix: 't'
@@ -152,25 +151,21 @@ training:
   pin_memory: True
   weighted_loss: False
 
-  optimizer_maximize: False
-  optimizer_foreach: None
-#  optimizer: 'sgd'
   optimizer: 'adam'
-  learning_rate_optimization_epochs: 0
-  learning_rate: 0.001
-  learning_rate_scheduler_reduction_points: [50, 100, 150, 250]
-  learning_rate_scheduler_reduction_factor: 0.3
+#  optimizer: 'sgd'
+  learning_rate: 0.01
   learning_rate_decay: 0.001
-  learning_rate_min: 0.0001
-  learning_rate_max: 0.005
+  learning_rate_optimization_epochs: 0
+  learning_rate_optimization_min: 0.0001
+  learning_rate_optimization_max: 0.005
 
   # - LR Reduction Scheduler
 #  learning_rate_scheduler: 'None'
-  learning_rate_scheduler: 'cosine'
-#  learning_rate_scheduler: 'cyclical'
+#  learning_rate_scheduler: 'cosine'
+  learning_rate_scheduler: 'cyclical'
   learning_rate_scheduler_cyclical_init_lr: 0.001
   learning_rate_scheduler_cyclical_max_lr: 0.005
-  learning_rate_scheduler_cyclical_step_size: 156 # 2 * 5011 // 64 = 156 # 2 * IMAGES / BATCH_SIZE
+  learning_rate_scheduler_cyclical_step_size: 173 # 2 * 5520 / 64 = 156 # 2 * IMAGES / BATCH_SIZE
   learning_rate_scheduler_decay_steps: 30
   learning_rate_scheduler_patience: [150, 300]
   learning_rate_scheduler_factor: 0.3
@@ -197,7 +192,8 @@ test:
   test_gowt1: False
   test_hela: False
 
-  checkpoint_file: '/home/sidorov/projects/QANetV2/qanet/output/train/tensorflow/128x128/adam_cyclical_001_05_l2_001_fixed_augs_2023-03-24_00-49-25/checkpoints/best_model.ckpt'
+  checkpoint_file: '/home/sidorov/projects/QANetV2/qanet/output/train/tensorflow/128x128/cyclical_binary_mask_2023-04-04_01-18-07/checkpoints/best_model.ckpt'
+#  checkpoint_file: '/home/sidorov/projects/QANetV2/qanet/output/train/tensorflow/128x128/adam_cyclical_001_05_l2_001_fixed_augs_2023-03-24_00-49-25/checkpoints/best_model.ckpt'
 
   checkpoint_dir: ''
   # - SIM+
@@ -220,7 +216,10 @@ inference:
   seg_sub_dir: ''
 
 
-  checkpoint_file: '/home/sidorov/projects/QANetV2/qanet/output/train/tensorflow/128x128/adam_001_l2_001_no_special_image_augs_2023-03-26_16-39-36/checkpoints/best_model.ckpt'
+  checkpoint_file: 'output/train/tensorflow/128x128/cyclical_2023-04-08_14-52-18/checkpoints/last_model.ckpt'
+#  checkpoint_file: 'output/train/tensorflow/128x128/drop_block_01_7_cyclical_001_005_2023-04-08_20-06-13/checkpoints/last_model.ckpt' X
+#  checkpoint_file: 'output/train/tensorflow/128x128/drop_block_01_7_cyclical_001_005_2023-04-08_20-06-13/checkpoints/best_model.ckpt'
+#  checkpoint_file: '/home/sidorov/projects/QANetV2/qanet/output/train/tensorflow/128x128/adam_001_l2_001_no_special_image_augs_2023-03-26_16-39-36/checkpoints/best_model.ckpt'
   checkpoint_files: [
     '/home/sidorov/projects/QANetV2/qanet/output/train/tensorflow/128x128/cosine_2023-04-01_01-05-45/checkpoints/last_model.ckpt',
     '/home/sidorov/projects/QANetV2/qanet/output/train/tensorflow/128x128/cosine_2023-04-01_01-05-45/checkpoints/best_model.ckpt',

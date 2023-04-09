@@ -41,6 +41,7 @@ class RibCage(keras.Model):
 
         # - Open the models' configurations file
         self.architecture = model_configs.get('architecture')
+        assert isinstance(self.architecture, dict), 'No architecture was chosen!'
 
         # - Build the model
         self.model = self.build_model()

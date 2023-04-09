@@ -56,7 +56,7 @@ def run_inference(model, hyper_parameters: dict, logger: logging.Logger = None):
     pred_seg_score = infer_data(
         model=model,
         hyper_parameters=hyper_parameters,
-        output_dir=current_run_dir,
+        output_dir=hyper_parameters.get("inference")["output_dir"],
         logger=logger
     )
 
@@ -69,7 +69,7 @@ def run_inference(model, hyper_parameters: dict, logger: logging.Logger = None):
     return true_seg_score, pred_seg_score, err_pct
 
 
-def update_inference_info(hyper_parameters: dict):
+def update_inference_hyper_parameters(hyper_parameters: dict):
     # - SIM+ Models
     if hyper_parameters.get('inference')['infer_bgu_3_sim']:
         hyper_parameters.get('inference')['model_name'] = 'BGU_3_SIM'
@@ -137,17 +137,17 @@ def print_results(results: dict, logger: logging.Logger = None):
         else:
             print(msg)
 
-    min_err_idx = np.nanargmin(errs)
-    max_err_idx = np.nanargmax(errs)
+    min_err_idx = np.nanargmin(np.abs(errs))
+    max_err_idx = np.nanargmax(np.abs(errs))
     final_res_msg = f'''
     @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
     @@@@@@@@@@@@@@@@@@@@@@@@@@@@@ FINAL RESULTS @@@@@@@@@@@@@@@@@@@@@@@@@@@@
     @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
     @@@
-    @@@   > Min error ({mdl_names[min_err_idx]}): {np.nanmin(errs):.3f}% 
+    @@@   > Min error ({mdl_names[min_err_idx]}): {errs[min_err_idx]:.3f}% 
     @@@        - true: {true_vals[min_err_idx]:.3f}
     @@@        - pred: {pred_vals[min_err_idx]:.3f} 
-    @@@   > Max error ({mdl_names[max_err_idx]}): {np.nanmax(errs):.3f}%
+    @@@   > Max error ({mdl_names[max_err_idx]}): {errs[max_err_idx]:.3f}%
     @@@        - true: {true_vals[max_err_idx]:.3f}
     @@@        - pred: {pred_vals[max_err_idx]:.3f} 
     @@@    
@@ -189,7 +189,7 @@ def infer_all(model, hyper_parameters: dict, logger: logging.Logger = None):
 
     print(f'\n\t> KTH-SE (SIM+)')
     hyper_parameters.get('inference')['infer_kth_sim'] = True
-    update_inference_info(hyper_parameters=hyper_parameters)
+    update_inference_hyper_parameters(hyper_parameters=hyper_parameters)
     true, pred, err_pct = run_inference(model=model, hyper_parameters=hyper_parameters)
     results_dict['KTH-SE (SIM+)'] = {
         'true': true,
@@ -200,7 +200,7 @@ def infer_all(model, hyper_parameters: dict, logger: logging.Logger = None):
 
     print(f'\n\t> UNSW-AU (SIM+)')
     hyper_parameters.get('inference')['infer_unsw_sim'] = True
-    update_inference_info(hyper_parameters=hyper_parameters)
+    update_inference_hyper_parameters(hyper_parameters=hyper_parameters)
     true, pred, err_pct = run_inference(model=model, hyper_parameters=hyper_parameters)
     results_dict['UNSW-AU (SIM+)'] = {
         'true': true,
@@ -211,7 +211,7 @@ def infer_all(model, hyper_parameters: dict, logger: logging.Logger = None):
 
     print(f'\n\t> DKFZ-DE (SIM+)')
     hyper_parameters.get('inference')['infer_dkfz_sim'] = True
-    update_inference_info(hyper_parameters=hyper_parameters)
+    update_inference_hyper_parameters(hyper_parameters=hyper_parameters)
     true, pred, err_pct = run_inference(model=model, hyper_parameters=hyper_parameters)
     results_dict['DKFZ-GE (SIM+)'] = {
         'true': true,
@@ -227,7 +227,7 @@ def infer_all(model, hyper_parameters: dict, logger: logging.Logger = None):
 
     print(f'\n\t> BGU-IL (4) (GOWT1)')
     hyper_parameters.get('inference')['infer_bgu_4_gowt1'] = True
-    update_inference_info(hyper_parameters=hyper_parameters)
+    update_inference_hyper_parameters(hyper_parameters=hyper_parameters)
     true, pred, err_pct = run_inference(model=model, hyper_parameters=hyper_parameters)
     results_dict['BGU-IL(4) (GOWT1)'] = {
         'true': true,
@@ -238,7 +238,7 @@ def infer_all(model, hyper_parameters: dict, logger: logging.Logger = None):
 
     print(f'\n\t> BGU-IL (5) (GOWT1)')
     hyper_parameters.get('inference')['infer_bgu_5_gowt1'] = True
-    update_inference_info(hyper_parameters=hyper_parameters)
+    update_inference_hyper_parameters(hyper_parameters=hyper_parameters)
     true, pred, err_pct = run_inference(model=model, hyper_parameters=hyper_parameters)
     results_dict['BGU-IL(5) (GOWT1)'] = {
         'true': true,
@@ -249,7 +249,7 @@ def infer_all(model, hyper_parameters: dict, logger: logging.Logger = None):
 
     print(f'\n\t> KTH-SE (GOWT1)')
     hyper_parameters.get('inference')['infer_kth_gowt1'] = True
-    update_inference_info(hyper_parameters=hyper_parameters)
+    update_inference_hyper_parameters(hyper_parameters=hyper_parameters)
     true, pred, err_pct = run_inference(model=model, hyper_parameters=hyper_parameters)
     results_dict['KTH-SE (GOWT1)'] = {
         'true': true,
@@ -260,7 +260,7 @@ def infer_all(model, hyper_parameters: dict, logger: logging.Logger = None):
 
     print(f'\n\t> UNSW-AU (GOWT1)')
     hyper_parameters.get('inference')['infer_unsw_gowt1'] = True
-    update_inference_info(hyper_parameters=hyper_parameters)
+    update_inference_hyper_parameters(hyper_parameters=hyper_parameters)
     true, pred, err_pct = run_inference(model=model, hyper_parameters=hyper_parameters)
     results_dict['UNSW-AU (GOWT1)'] = {
         'true': true,
@@ -268,8 +268,6 @@ def infer_all(model, hyper_parameters: dict, logger: logging.Logger = None):
         'error(%)': err_pct
     }
     hyper_parameters.get('inference')['infer_unsw_gowt1'] = False
-
-    # print_results(results=results_dict)
 
     return results_dict
 
@@ -292,6 +290,8 @@ if __name__ == '__main__':
         pathlib.Path(hyp_params_dict.get('general')['output_dir']) / f'inference/tensor_flow/{name}_{ts}'
     )
     os.makedirs(current_run_dir)
+
+    hyp_params_dict.get('inference')['output_dir'] = current_run_dir
 
     print_pretty_message(
         message=f'Current run dir was set to: {current_run_dir}',
@@ -362,8 +362,9 @@ if __name__ == '__main__':
         ckpt_fl = hyp_params_dict.get('inference')['checkpoint_file']
         ckpt_loaded = load_checkpoint(model=model, checkpoint_file=ckpt_fl)
         assert ckpt_loaded, f'Could not load weights from {ckpt_fl}!'
-        result = run_inference(
+        results = infer_all(
             model=model,
             hyper_parameters=hyp_params_dict,
             logger=logger
         )
+        final_res_msg = print_results(results=results, logger=logger)

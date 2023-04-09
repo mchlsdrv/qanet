@@ -1102,10 +1102,6 @@ def get_arg_parser():
     # - Train
     parser.add_argument('--learning_rate_optimization_epochs', type=int,
                         help=f'The number of optimization epochs for the learning rate')
-    parser.add_argument('--run_tests', default=False, action='store_true',
-                        help=f'If to run final tests on the trained model')
-    parser.add_argument('--run_inferences', default=False, action='store_true',
-                        help=f'If to infer the test set with the trained model')
     parser.add_argument('--reload_data', default=False, action='store_true', help=f'If to reload the data')
     parser.add_argument('--train_data_dir', type=str, help='The path to the train data file')
     parser.add_argument('--epochs', type=int, help='Number of epochs to train the model')
@@ -1131,7 +1127,7 @@ def get_arg_parser():
 
     # - Callbacks
     parser.add_argument('--wandb', default=False, action='store_true', help=f'If to use the wandb callback')
-    parser.add_argument('--tensorboard', default=False, action='store_true',
+    parser.add_argument('--no_tensorboard', default=False, action='store_true',
                         help=f'If to use the tensorboard callback')
 
     # - Test flags
@@ -1139,12 +1135,14 @@ def get_arg_parser():
     parser.add_argument('--test_sim', default=False, action='store_true', help=f'Run test on the SIM+ data')
     parser.add_argument('--test_gowt1', default=False, action='store_true', help=f'Run test on the GWOT1 data')
     parser.add_argument('--test_hela', default=False, action='store_true', help=f'Run test on the HELA data')
+    parser.add_argument('--test_all', default=False, action='store_true',
+                        help=f'Run test on all the test data sets')
 
     # - Inference
     parser.add_argument('--inference_data_dir', type=str, help='The path to the inference data dir')
-
     parser.add_argument('--infer_all', default=False, action='store_true',
                         help=f'Run inference on all the test data sets')
+
     # > SIM+ Data
     parser.add_argument('--infer_bgu_3_sim', default=False, action='store_true',
                         help=f'Run inference on the SIM+ data by BGU-IL(3) model')
@@ -1190,22 +1188,6 @@ def instance_2_categorical(masks: np.ndarray or list):
 
         return msk
 
-    # def _get_categorical_mask(binary_mask: np.ndarray):
-    #     # Shrinks the labels
-    #     inner_msk = grey_erosion(binary_mask, size=3)
-    #
-    #     # # Create the contur of the cells
-    #     # contur_msk = binary_mask - inner_msk
-    #     # contur_msk[contur_msk > 0] = 2
-    #
-    #     # - Create the inner part of the cell
-    #     inner_msk[inner_msk > 0] = 1
-    #
-    #     # - Combine the inner and the contur masks to create the categorical mask
-    #     # with three classes, i.e., background 0, inner 1 and contur 2
-    #     # cat_msk = inner_msk + contur_msk
-    #
-    #     return inner_msk
     def _get_categorical_mask(binary_mask: np.ndarray):
         # Shrinks the labels
         inner_msk = grey_erosion(binary_mask, size=3)

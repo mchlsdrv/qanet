@@ -14,9 +14,9 @@ from utils.aux_funcs import (
     get_runtime,
     get_logger,
     err_log,
-    update_hyper_parameters, print_pretty_message
+    update_hyper_parameters,
 )
-from tf_test import run_test
+from tf_test import test_all
 import wandb
 
 os.environ['TF_FORCE_GPU_ALLOW_GROWTH'] = 'true'
@@ -110,7 +110,7 @@ if __name__ == '__main__':
     > Total runtime: {get_runtime(seconds=time.time() - t_start)}
     ''')
 
-    if args.run_tests:
+    if args.test_all:
         hyp_params_dict.get('test')['name'] = hyp_params_dict.get('general')['name'] + '_test'
 
         ckpt_bst = current_run_dir / hyp_params_dict.get("callbacks")["checkpoint_file_best_model"]
@@ -123,55 +123,71 @@ if __name__ == '__main__':
 
         hyp_params_dict.get('test')['output_dir'] = current_run_dir
 
-        # - SIM+
-        test_hyp_params_dict = deepcopy(hyp_params_dict)
+        # # - SIM+
+        # test_hyp_params_dict = deepcopy(hyp_params_dict)
+        # ckpt_loaded = load_checkpoint(model=model, checkpoint_file=ckpt_bst)
+        # if ckpt_loaded:
+        #     print_pretty_message(message='Testing the SIM+ Data')
+        #     print(f'- Best Model:')
+        #     test_hyp_params_dict.get('test')['test_sim'] = True
+        #     test_hyp_params_dict.get('test')['type'] = 'best'
+        #     run_test(model=model, hyper_parameters=test_hyp_params_dict)
+        #
+        # ckpt_loaded = load_checkpoint(model=model, checkpoint_file=ckpt_lst)
+        # if ckpt_loaded:
+        #     print(f'- Last Model:')
+        #     test_hyp_params_dict.get('test')['type'] = 'last'
+        #     run_test(model=model, hyper_parameters=test_hyp_params_dict)
+        #
+        # # - GOWT1
+        # test_hyp_params_dict = deepcopy(hyp_params_dict)
+        # ckpt_loaded = load_checkpoint(model=model, checkpoint_file=ckpt_bst)
+        # if ckpt_loaded:
+        #     print_pretty_message(message='Testing the GOWT1 Data')
+        #     print(f'- Best Model:')
+        #     test_hyp_params_dict.get('test')['test_gowt1'] = True
+        #     test_hyp_params_dict.get('test')['type'] = 'best'
+        #     run_test(model=model, hyper_parameters=test_hyp_params_dict)
+        #
+        # ckpt_loaded = load_checkpoint(model=model, checkpoint_file=ckpt_lst)
+        # if ckpt_loaded:
+        #     print(f'- Last Model:')
+        #     test_hyp_params_dict.get('test')['type'] = 'last'
+        #     run_test(model=model, hyper_parameters=test_hyp_params_dict)
+        #
+        # # - HeLa
+        # test_hyp_params_dict = deepcopy(hyp_params_dict)
+        # ckpt_loaded = load_checkpoint(model=model, checkpoint_file=ckpt_bst)
+        # if ckpt_loaded:
+        #     print_pretty_message(message='Testing the HeLa Data')
+        #     print(f'- Best Model:')
+        #     test_hyp_params_dict.get('test')['test_hela'] = True
+        #     test_hyp_params_dict.get('test')['type'] = 'best'
+        #     run_test(model=model, hyper_parameters=test_hyp_params_dict)
+        #
+        # ckpt_loaded = load_checkpoint(model=model, checkpoint_file=ckpt_lst)
+        # if ckpt_loaded:
+        #     print(f'- Last Model:')
+        #     test_hyp_params_dict.get('test')['type'] = 'last'
+        #     run_test(model=model, hyper_parameters=test_hyp_params_dict)
+
+        # - Best checkpoint
         ckpt_loaded = load_checkpoint(model=model, checkpoint_file=ckpt_bst)
         if ckpt_loaded:
-            print_pretty_message(message='Testing the SIM+ Data')
-            print(f'- Best Model:')
-            test_hyp_params_dict.get('test')['test_sim'] = True
+            print(f'- Testing the best model:')
+            test_hyp_params_dict = deepcopy(hyp_params_dict)
             test_hyp_params_dict.get('test')['type'] = 'best'
-            run_test(model=model, hyper_parameters=test_hyp_params_dict)
+            test_all(model=model, hyper_parameters=test_hyp_params_dict)
 
+        # - Last checkpoint
         ckpt_loaded = load_checkpoint(model=model, checkpoint_file=ckpt_lst)
         if ckpt_loaded:
-            print(f'- Last Model:')
+            print(f'- Testing the best model:')
+            test_hyp_params_dict = deepcopy(hyp_params_dict)
             test_hyp_params_dict.get('test')['type'] = 'last'
-            run_test(model=model, hyper_parameters=test_hyp_params_dict)
+            test_all(model=model, hyper_parameters=test_hyp_params_dict)
 
-        # - GOWT1
-        test_hyp_params_dict = deepcopy(hyp_params_dict)
-        ckpt_loaded = load_checkpoint(model=model, checkpoint_file=ckpt_bst)
-        if ckpt_loaded:
-            print_pretty_message(message='Testing the GOWT1 Data')
-            print(f'- Best Model:')
-            test_hyp_params_dict.get('test')['test_gowt1'] = True
-            test_hyp_params_dict.get('test')['type'] = 'best'
-            run_test(model=model, hyper_parameters=test_hyp_params_dict)
-
-        ckpt_loaded = load_checkpoint(model=model, checkpoint_file=ckpt_lst)
-        if ckpt_loaded:
-            print(f'- Last Model:')
-            test_hyp_params_dict.get('test')['type'] = 'last'
-            run_test(model=model, hyper_parameters=test_hyp_params_dict)
-
-        # - HeLa
-        test_hyp_params_dict = deepcopy(hyp_params_dict)
-        ckpt_loaded = load_checkpoint(model=model, checkpoint_file=ckpt_bst)
-        if ckpt_loaded:
-            print_pretty_message(message='Testing the HeLa Data')
-            print(f'- Best Model:')
-            test_hyp_params_dict.get('test')['test_hela'] = True
-            test_hyp_params_dict.get('test')['type'] = 'best'
-            run_test(model=model, hyper_parameters=test_hyp_params_dict)
-
-        ckpt_loaded = load_checkpoint(model=model, checkpoint_file=ckpt_lst)
-        if ckpt_loaded:
-            print(f'- Last Model:')
-            test_hyp_params_dict.get('test')['type'] = 'last'
-            run_test(model=model, hyper_parameters=test_hyp_params_dict)
-
-    if args.run_inferences:
+    if args.infer_all:
         print('Inference')
         hyp_params_dict.get('inference')['name'] = \
             hyp_params_dict.get('general')['name'] + '_inference'
@@ -186,14 +202,14 @@ if __name__ == '__main__':
 
         hyp_params_dict.get('inference')['output_dir'] = current_run_dir
 
-        # - SIM+
-        test_hyp_params_dict = deepcopy(hyp_params_dict)
+        # - Best checkpoint
         ckpt_loaded = load_checkpoint(model=model, checkpoint_file=ckpt_bst)
         if ckpt_loaded:
-            print(f'- Best Model:')
+            print(f'- Inferring with the best model:')
             infer_all(model=model, hyper_parameters=hyp_params_dict)
 
+        # - Last checkpoint
         ckpt_loaded = load_checkpoint(model=model, checkpoint_file=ckpt_lst)
         if ckpt_loaded:
-            print(f'- Last Model:')
+            print(f'- Inferring with the last model:')
             infer_all(model=model, hyper_parameters=hyp_params_dict)
