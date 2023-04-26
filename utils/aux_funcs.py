@@ -22,7 +22,6 @@ from global_configs.general_configs import (
     HYPER_PARAMS_FILE,
     EPSILON,
     COLUMN_NAMES,
-    DEBUG
 )
 
 import warnings
@@ -30,7 +29,9 @@ import warnings
 warnings.simplefilter("ignore", UserWarning)
 warnings.simplefilter("ignore", RuntimeWarning)
 
-MIN_OBJ_PCT = 10
+MIN_OBJ_PCT = 1
+DEBUG_AUX_FUNCS = False
+# DEBUG_AUX_FUNCS = True
 
 
 def get_range(value, ranges: np.ndarray):
@@ -605,12 +606,23 @@ def pad_image(image: np.ndarray, shape: tuple, pad_value: int = 0):
     return img_padded
 
 
-def get_objects(image: np.ndarray, mask: np.ndarray, crop_height: int, crop_width: int):
+def get_objects(image: np.ndarray, mask: np.ndarray, crop_height: int, crop_width: int, output_dir: pathlib.Path = None):
     # - Find all the objects in the mask
     (_, msk_cntd, stats, centroids) = cv2.connectedComponentsWithStats(mask.astype(np.uint8), cv2.CV_16U)
 
     # - Convert centroids to int16 to be able to represent pixel locations
     cntrs = centroids.astype(np.int16)
+    if DEBUG_AUX_FUNCS:
+        print(f'cntrs: ', cntrs)
+        print(f'cntrs.shape[0]: ', cntrs.shape[0])
+        if not cntrs.shape[0] and isinstance(output_dir, pathlib.Path):
+            print(f'- Saving outlier image and mask to {output_dir}')
+            output_dir_no_ptchs = output_dir / 'no_patches'
+            os.makedirs(output_dir_no_ptchs, exist_ok=True)
+            ts = get_ts()
+            cv2.imwrite(str(output_dir_no_ptchs / f'img_{ts}.png'), image)
+            cv2.imwrite(str(output_dir_no_ptchs / f'msk_{ts}.png'), mask)
+
     # print(f'Number of centroids: {len(cntrs)}')
 
     # - Create lists to store the crops
@@ -618,23 +630,38 @@ def get_objects(image: np.ndarray, mask: np.ndarray, crop_height: int, crop_widt
 
     for (x, y) in cntrs:
         img_crp, msk_crp = image[y:y+crop_height, x:x+crop_width], mask[y:y+crop_height, x:x+crop_width]
-        if msk_crp.sum() > (MIN_OBJ_PCT * crop_height * crop_width) // 100:
+        crp_w, crp_h = img_crp.shape[1], img_crp.shape[0]
+        min_obj_pxls = (MIN_OBJ_PCT * crop_height * crop_width) // 100
+        if msk_crp.sum() >= min_obj_pxls:
+        # if (msk_crp.sum() >= min_obj_pxls) and (crp_w == crop_width and crp_h == crop_height):
             if img_crp.shape[0] != crop_height or img_crp.shape[1] != crop_width:
                 img_crp = pad_image(img_crp, (crop_height, crop_width), pad_value=0)
                 msk_crp = pad_image(msk_crp, (crop_height, crop_width), pad_value=0)
 
-            if DEBUG:
-                save_dir = pathlib.Path('/home/sidorov/projects/QANetV2/qanet/output/inference/patches/unsw_sim')
-                os.makedirs(save_dir, exist_ok=True)
-                ts = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+            if DEBUG_AUX_FUNCS and isinstance(output_dir, pathlib.Path):
+                output_dir_valid_crps = output_dir / 'valid_crops'
+                print(f'- Pixel count = {msk_crp.sum()} >= {min_obj_pxls}')
+                print(f'- Saving valid crops to {output_dir_valid_crps}')
+                os.makedirs(output_dir_valid_crps, exist_ok=True)
                 fig, ax = plt.subplots(1, 2, figsize=(20, 10))
                 ax[0].imshow(img_crp, cmap='gray')
                 ax[1].imshow(msk_crp, cmap='gray')
-                fig.savefig(save_dir / f'{ts}.png')
+                fig.savefig(output_dir_valid_crps / f'{get_ts()}.png')
                 plt.close(fig)
 
             img_objcts.append(img_crp)
             msk_objcts.append(msk_crp)
+
+        elif DEBUG_AUX_FUNCS and isinstance(output_dir, pathlib.Path):
+            output_dir_low_obj_pxls = output_dir / 'low_obj_pxls'
+            print(f'- Pixel count = {msk_crp.sum()} < {min_obj_pxls}')
+            print(f'- Saving outlier crops to {output_dir_low_obj_pxls}')
+            os.makedirs(output_dir_low_obj_pxls, exist_ok=True)
+            fig, ax = plt.subplots(1, 2, figsize=(20, 10))
+            ax[0].imshow(img_crp, cmap='gray')
+            ax[1].imshow(msk_crp, cmap='gray')
+            fig.savefig(output_dir_low_obj_pxls / f'{get_ts()}.png')
+            plt.close(fig)
 
     return np.array(img_objcts, np.float32), np.array(msk_objcts, np.float32)
 
@@ -744,7 +771,7 @@ def calc_seg_score(gt_mask: np.ndarray, pred_mask: np.ndarray):
     multi-class label
     :param: multi_class_mask - mask where integers represent different objects
     """
-    dice = 0.0
+    J = 0.0
 
     # - Ensure the multi-class label is populated with int values
     gt_mask = gt_mask.astype(np.int16)
@@ -781,20 +808,24 @@ def calc_seg_score(gt_mask: np.ndarray, pred_mask: np.ndarray):
         Is = (gt_one_hot_masks[:, np.newaxis, ...] * pred_one_hot_masks[np.newaxis, ...]).sum(axis=(-1, -2))
 
         # - Calculate the dice for each label for each mask
-        dice = (2 * Is / (A_gt + A_pred + EPSILON)).max(axis=1)
+        J = (Is / (A_gt + A_pred - Is + EPSILON)).max(axis=1)
+        # dice = (2 * Is / (A_gt + A_pred + EPSILON)).max(axis=1)
 
         # - Leave only the dice which are > 0.5 (may introduce np.inf in case all
-        non_zero_iou_sums = (dice > 0.5).sum(axis=0)
+        # non_zero_iou_sums = (dice > 0.5).sum(axis=0)
+        non_zero_iou_sums = (J > 0.5).sum(axis=0)
 
         # - Calculate the mean IoU for each mask
-        dice = dice.sum(axis=0) / non_zero_iou_sums
+        J = J.sum(axis=0) / non_zero_iou_sums
+        # dice = dice.sum(axis=0) / non_zero_iou_sums
 
         # - Replace all the dice which lower than 0.5 with 0
-        dice[(dice == np.inf) | (np.isnan(dice))] = .0
+        J[(J == np.inf) | (np.isnan(J))] = .0
+        # dice[(dice == np.inf) | (np.isnan(dice))] = .0
 
-        dice = np.nanmean(dice)
+        J = np.nanmean(J)
 
-    return dice
+    return J
 
 
 def update_hyper_parameters(hyper_parameters: dict, arguments: argparse.Namespace):

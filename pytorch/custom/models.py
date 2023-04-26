@@ -2,9 +2,9 @@ import pathlib
 
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 from torch.optim import Adam
 import pytorch_lightning as pl
-from ..configs.general_configs import LOSS
 
 __author__ = 'sidorov@post.bgu.ac.il'
 
@@ -38,7 +38,10 @@ class LitRibCage(pl.LightningModule):
         def forward(self, x):
             return self.lyr(x)
 
-    def __init__(self, in_channels, out_channels, input_image_shape: tuple, conv2d_out_channels: tuple = (32, 64, 128, 256), conv2d_kernel_sizes: tuple = (5, 5, 5, 5), fc_out_features: tuple = (512, 1024), optimizer=Adam, output_dir: pathlib.Path = pathlib.Path('./output')):
+    def __init__(self, in_channels, out_channels, input_image_shape: tuple,
+                 conv2d_out_channels: tuple = (32, 64, 128, 256), conv2d_kernel_sizes: tuple = (5, 5, 5, 5),
+                 fc_out_features: tuple = (512, 1024), optimizer=Adam,
+                 output_dir: pathlib.Path = pathlib.Path('./output')):
         super().__init__()
         self.in_channels = in_channels
         self.input_image_shape = input_image_shape
@@ -75,7 +78,13 @@ class LitRibCage(pl.LightningModule):
 
             self.right_rib_convs.append(self.Conv2DBlk(in_channels=in_chnls, out_channels=out_chnls, kernel_size=k_sz))
 
-            self.spine_convs.append(self.Conv2DBlk(in_channels=2*in_chnls if idx == 0 else 3 * in_chnls, out_channels=out_chnls, kernel_size=k_sz))
+            self.spine_convs.append(
+                self.Conv2DBlk(
+                    in_channels=2*in_chnls if idx == 0 else 3 * in_chnls,
+                    out_channels=out_chnls,
+                    kernel_size=k_sz
+                )
+            )
 
             in_chnls = out_chnls
 
@@ -138,7 +147,7 @@ class LitRibCage(pl.LightningModule):
 
         preds = self(imgs, aug_segs)
 
-        loss = LOSS(preds, seg_msrs)
+        loss = F.mse_loss(preds, seg_msrs)
 
         self.log('train_loss', loss)
 
@@ -149,7 +158,7 @@ class LitRibCage(pl.LightningModule):
 
         preds = self(imgs, aug_segs)
 
-        loss = LOSS(preds, seg_msrs)
+        loss = F.mse_loss(preds, seg_msrs)
 
         self.log('val_loss', loss)
 

@@ -316,7 +316,9 @@ class RibCage(keras.Model):
 
     def infer(self, data_loader) -> float:
         pred_seg_scr_df = self.test(data_loader=data_loader)
-        mean_pred = pred_seg_scr_df.loc[:, 'seg_score'].values.mean()
+        preds = pred_seg_scr_df.loc[:, 'seg_score'].values
+        preds = preds[preds >= 0.]
+        mean_pred = preds.mean()
         return mean_pred
 
     def test(self, data_loader) -> pd.DataFrame:
@@ -328,17 +330,23 @@ class RibCage(keras.Model):
         pbar = tqdm(data_loader)
         ptch_pred_mean_seg_scrs = np.array([])
         for idx, (img, msk, img_fl) in enumerate(pbar):
-            img_ptchs, msk_ptchs = get_objects(image=img, mask=msk, crop_height=crp_h, crop_width=crp_w)
+            img_ptchs, msk_ptchs = get_objects(
+                image=img, mask=msk, crop_height=crp_h, crop_width=crp_w, output_dir=self.output_dir)
+            if DEBUG:
+                print(f'img_ptchs.shape: ', img_ptchs.shape)
+                print(f'msk_ptchs.shape: ', msk_ptchs.shape)
             # - Get the predictions
             # img_ptchs, msk_ptchs = \
             #     patchify(img, (crp_h, crp_w), step=crp_w).reshape(-1, crp_h, crp_w), \
             #     patchify(msk, (crp_h, crp_w), step=crp_w).reshape(-1, crp_h, crp_w)
+            if img_ptchs.shape[0]:
+                img_ptchs, msk_ptchs = \
+                    tf.convert_to_tensor(img_ptchs, dtype=tf.float32), \
+                    tf.convert_to_tensor(msk_ptchs, dtype=tf.float32)
 
-            img_ptchs, msk_ptchs = \
-                tf.convert_to_tensor(img_ptchs, dtype=tf.float32), \
-                tf.convert_to_tensor(msk_ptchs, dtype=tf.float32)
-
-            ptch_pred_mean_seg_scr = self.get_preds(img_ptchs, msk_ptchs).numpy().flatten().mean()
+                ptch_pred_mean_seg_scr = self.get_preds(img_ptchs, msk_ptchs).numpy().flatten().mean()
+            else:
+                ptch_pred_mean_seg_scr = -1.0
 
             # - Append the predicted seg measures to the results
             results_df = results_df.append(

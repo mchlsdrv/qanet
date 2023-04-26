@@ -51,22 +51,12 @@ def update_test_hyper_parameters(hyper_parameters: dict):
 def run_test(model, hyper_parameters: dict):
     t_start = time.time()
     test_res_df = None
-    data_name = ''
-    # if hyper_parameters.get('test')['test_sim']:
-    #     hyper_parameters.get('test')['data_name'] = 'SIM'
-    #     hyper_parameters.get('test')['dataframe_file'] = hyper_parameters.get('test')['dataframe_file_sim+']
-    # elif hyper_parameters.get('test')['test_gowt1']:
-    #     hyper_parameters.get('test')['data_name'] = 'GOWT1'
-    #     hyper_parameters.get('test')['dataframe_file'] = hyper_parameters.get('test')['dataframe_file_gowt1']
-    # elif hyper_parameters.get('test')['test_hela']:
-    #     hyper_parameters.get('test')['data_name'] = 'HeLa'
-    #     hyper_parameters.get('test')['dataframe_file'] = hyper_parameters.get('test')['dataframe_file_hela']
-    #
-    # hyper_parameters.get('test')['data_name'] += hyper_parameters.get('test')['type']
+    data_name = hyper_parameters.get('test')['data_name']
 
     current_run_dir = hyper_parameters.get('test')['output_dir']
     if current_run_dir == '':
         ts = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+
         # - Create the directory for the current run
         exp_name = hyper_parameters.get('test')['name']
         current_run_dir = pathlib.Path(
@@ -92,8 +82,6 @@ def run_test(model, hyper_parameters: dict):
         configs_file=pathlib.Path(hyper_parameters.get('general')['configs_dir']) / 'logger_configs.yml',
         save_file=current_run_dir / f'logs.log'
     )
-
-    # assert hyper_parameters.get('test')['checkpoint_dir'] is not None, 'Have no checkpoint to test!'
 
     print_pretty_message(
         message=f'Running test with TensorFlow model from {hyper_parameters.get("test")["checkpoint_dir"]}',
@@ -122,12 +110,6 @@ def run_test(model, hyper_parameters: dict):
         figsize=(20, 20),
         save_file=current_run_dir / f"{hyper_parameters.get('test')['data_name']}_scatter.png"
     )
-
-    # - Create the train file writer
-    # file_writer = tf.summary.create_file_writer(
-    #     str(current_run_dir / f"test - {hyper_parameters.get('test')['type']}"))
-    #
-    # write_figure_to_tensorboard(writer=file_writer, figure=fig, tag=f'{data_name}_test', step=0)
 
     plt.close(fig)
 
@@ -176,18 +158,21 @@ def test_all(model, hyper_parameters: dict, logger: logging.Logger = None):
     hyper_parameters.get('test')['test_sim'] = True
     update_test_hyper_parameters(hyper_parameters=hyper_parameters)
     sim_test_res_dict = run_test(model=model, hyper_parameters=hyper_parameters)
+    hyper_parameters.get('test')['test_sim'] = False
 
     # - GOWT1
     print_pretty_message(message='Testing the GOWT1 Data')
     hyper_parameters.get('test')['test_gowt1'] = True
     update_test_hyper_parameters(hyper_parameters=hyper_parameters)
     gowt1_test_res_dict = run_test(model=model, hyper_parameters=hyper_parameters)
+    hyper_parameters.get('test')['test_gowt1'] = False
 
     # - HeLa
     print_pretty_message(message='Testing the HeLa Data')
     hyper_parameters.get('test')['test_hela'] = True
     update_test_hyper_parameters(hyper_parameters=hyper_parameters)
     hela_test_res_dict = run_test(model=model, hyper_parameters=hyper_parameters)
+    hyper_parameters.get('test')['test_hela'] = False
 
     return sim_test_res_dict, gowt1_test_res_dict, hela_test_res_dict
 
@@ -201,6 +186,14 @@ if __name__ == '__main__':
     # - Get hyperparameters
     hyp_params_fl = pathlib.Path(args.hyper_params_file)
     hyp_params_dict = yaml.safe_load(hyp_params_fl.open(mode='r').read())
+
+    ts = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+    # - Create the directory for the current run
+    exp_name = hyp_params_dict.get('test')['name']
+    current_run_dir = pathlib.Path(
+        pathlib.Path(hyp_params_dict.get('general')['output_dir']) / f'test/tensor_flow/{exp_name}_{ts}')
+    os.makedirs(current_run_dir)
+    hyp_params_dict.get('test')['output_dir'] = str(current_run_dir)
 
     # - Update the hyperparameters with the parsed arguments
     update_hyper_parameters(hyper_parameters=hyp_params_dict, arguments=args)

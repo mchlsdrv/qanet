@@ -11,8 +11,8 @@ data:
   image_width: 419
 
 augmentations:
-  crop_height: 128
-  crop_width: 128
+  crop_height: 256
+  crop_width: 256
 
 model:
   in_channels: 1
@@ -24,12 +24,12 @@ model:
     conv2d_blocks:
       out_channels: [64, 128, 256, 256]
       kernel_sizes: [3, 3, 3, 3]
-      dropblock_rate: 0.1
+      dropblock_rate: 0.0
       dropblock_size: 7
 
     fc_blocks:
       out_features: [128, 128, 1]
-      drop_rate: 0.2
+      drop_rate: 0.0
 
   architecture2:
     conv2d_blocks:
@@ -53,8 +53,6 @@ model:
       out_features: [512, 1024, 1]
       drop_rate: 0.0
 
-#  activation: 'leaky_relu'
-#  activation: 'relu'
   activation: 'swish'
   activation_relu_max_value: None
   activation_relu_negative_slope: 0.0
@@ -153,7 +151,7 @@ training:
 
   optimizer: 'adam'
 #  optimizer: 'sgd'
-  learning_rate: 0.01
+  learning_rate: 0.001
   learning_rate_decay: 0.001
   learning_rate_optimization_epochs: 0
   learning_rate_optimization_min: 0.0001
@@ -192,7 +190,8 @@ test:
   test_gowt1: False
   test_hela: False
 
-  checkpoint_file: '/home/sidorov/projects/QANetV2/qanet/output/train/tensorflow/128x128/cyclical_binary_mask_2023-04-04_01-18-07/checkpoints/best_model.ckpt'
+  checkpoint_file: /home/sidorov/projects/QANetV2/qanet/output/train/tensorflow/256x256/cyclical_2023-04-19_01-49-06/checkpoints/best_model.ckpt
+#  checkpoint_file: '/home/sidorov/projects/QANetV2/qanet/output/train/tensorflow/128x128/cyclical_binary_mask_2023-04-04_01-18-07/checkpoints/best_model.ckpt'
 #  checkpoint_file: '/home/sidorov/projects/QANetV2/qanet/output/train/tensorflow/128x128/adam_cyclical_001_05_l2_001_fixed_augs_2023-03-24_00-49-25/checkpoints/best_model.ckpt'
 
   checkpoint_dir: ''
@@ -216,7 +215,11 @@ inference:
   seg_sub_dir: ''
 
 
-  checkpoint_file: 'output/train/tensorflow/128x128/cyclical_2023-04-08_14-52-18/checkpoints/last_model.ckpt'
+
+
+#  checkpoint_file: 'output/train/tensorflow/128x128/cyclical_2023-04-08_14-52-18/checkpoints/last_model.ckpt'
+  checkpoint_file: output/train/tensorflow/256x256/cyclical_2023-04-19_01-49-06/checkpoints/best_model.ckpt
+#  checkpoint_file: 'output/train/tensorflow/64x64/drop_block_01_7_dropout_02_cyclical_001_005_2023-04-09_15-30-02/checkpoints/last_model.ckpt'
 #  checkpoint_file: 'output/train/tensorflow/128x128/drop_block_01_7_cyclical_001_005_2023-04-08_20-06-13/checkpoints/last_model.ckpt' X
 #  checkpoint_file: 'output/train/tensorflow/128x128/drop_block_01_7_cyclical_001_005_2023-04-08_20-06-13/checkpoints/best_model.ckpt'
 #  checkpoint_file: '/home/sidorov/projects/QANetV2/qanet/output/train/tensorflow/128x128/adam_001_l2_001_no_special_image_augs_2023-03-26_16-39-36/checkpoints/best_model.ckpt'
@@ -296,4 +299,3 @@ inference:
 
   # - HeLa
   checkpoint_dir_hela: '/home/sidorov/projects/QANetV2/qanet/output/train/tensor_flow_arch_1_float64_cyclic_HeLa_3.5_pct/checkpoints'
-

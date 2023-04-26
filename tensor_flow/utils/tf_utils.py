@@ -450,11 +450,12 @@ def get_optimizer(args: dict):
         )
         print_pretty_message(message='Using Cyclical lr scheduler', delimiter_symbol='*')
     elif args.get('training')['learning_rate_scheduler'] == 'cosine':
+        lr_init = args.get('training')['learning_rate']
         lr = tf.keras.optimizers.schedules.CosineDecay(
-            initial_learning_rate=args.get('training')['learning_rate'],
+            initial_learning_rate=lr_init,
             decay_steps=args.get('training')['learning_rate_scheduler_decay_steps']
         )
-        print_pretty_message(message='Using Cosine lr scheduler', delimiter_symbol='*')
+        print_pretty_message(message=f'Using Cosine lr scheduler with initial lr = {lr_init}', delimiter_symbol='*')
     else:
         print_pretty_message(message='No lr scheduler was configured', delimiter_symbol='*')
 
