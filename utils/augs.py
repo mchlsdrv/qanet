@@ -15,7 +15,7 @@ from scipy.ndimage.filters import gaussian_filter
 
 __author__ = 'sidorov@post.bgu.ac.il'
 
-from global_configs.general_configs import EPSILON
+from configs.general_configs import EPSILON
 
 # from global_configs.general_configs import CROP_HEIGHT, CROP_WIDTH
 
@@ -57,6 +57,7 @@ def elastic_transform(image, alpha, sigma, random_state=None):
     return distorted_image.reshape(image.shape)
 
 
+# noinspection PyUnusedLocal
 def random_erosion(mask, **kwargs):
     # Shrinks the labels
     krnl = np.random.choice(EROSION_SIZES)
@@ -64,6 +65,7 @@ def random_erosion(mask, **kwargs):
     return mask
 
 
+# noinspection PyUnusedLocal
 def random_dilation(mask, **kwargs):
     # "Fattens" the cell label
     krnl = np.random.choice(DILATION_SIZES)
@@ -71,6 +73,7 @@ def random_dilation(mask, **kwargs):
     return mask
 
 
+# noinspection PyUnusedLocal
 def random_opening(mask, **kwargs):
     # Disconnects labels
     krnl = np.random.choice(EROSION_SIZES)
@@ -78,6 +81,7 @@ def random_opening(mask, **kwargs):
     return mask
 
 
+# noinspection PyUnusedLocal
 def random_closing(mask, **kwargs):
     # Disconnected labels are brought together
     krnl = np.random.choice(DILATION_SIZES)

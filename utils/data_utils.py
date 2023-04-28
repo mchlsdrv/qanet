@@ -5,7 +5,7 @@ import torch
 from torch.utils.data import Dataset, DataLoader
 import logging
 
-from global_configs.general_configs import (
+from configs.general_configs import (
     VAL_PROP,
     TRAIN_BATCH_SIZE,
     VAL_BATCH_SIZE,

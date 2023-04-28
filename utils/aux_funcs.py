@@ -11,13 +11,12 @@ import pandas as pd
 import cv2
 import yaml
 
-import logging
 import matplotlib.pyplot as plt
 from scipy.ndimage import grey_erosion
 from scipy.stats import pearsonr
 from tqdm import tqdm
 
-from global_configs.general_configs import (
+from configs.general_configs import (
     MIN_CELL_PIXELS,
     HYPER_PARAMS_FILE,
     EPSILON,
@@ -26,12 +25,136 @@ from global_configs.general_configs import (
 
 import warnings
 
+import logging
+import logging.config
+from functools import partial
+
+import torch
+
+from configs.general_configs import OPTIMIZER_EPS
+from models import LitRibCage
+
 warnings.simplefilter("ignore", UserWarning)
 warnings.simplefilter("ignore", RuntimeWarning)
 
 MIN_OBJ_PCT = 1
 DEBUG_AUX_FUNCS = False
 # DEBUG_AUX_FUNCS = True
+
+
+def save_checkpoint(state, filename='my_checkpoint.pth.tar'):
+    print('=> Saving checkpoint')
+    torch.save(state, filename)
+
+
+def load_checkpoint(checkpoint, model):
+    print('=> Loading checkpoint')
+    model.load_state_dict(checkpoint['state_dict'])
+
+
+def get_device(gpu_id: int = 0, logger: logging.Logger = None):
+    n_gpus = torch.cuda.device_count()
+
+    print('> Available GPUs:')
+    print(f'\t- Number of GPUs: {n_gpus}\n')
+    device = 'cpu'
+    if n_gpus > 0:
+        try:
+            if -1 < gpu_id < n_gpus - 1:
+                print(f'> Setting GPU to: {gpu_id}\n')
+
+                device = f'cuda:{gpu_id}'
+
+                print(f'''
+    ========================
+    == Running on {device}  ==
+    ========================
+                ''')
+            elif gpu_id < 0:
+                device = 'cpu'
+                print(f'''
+    ====================
+    == Running on CPU ==
+    ====================
+                        ''')
+
+        except RuntimeError as err:
+            if isinstance(logger, logging.Logger):
+                logger.exception(err)
+
+    return device
+
+
+def get_optimizer(algorithm: str, args: dict):
+    optimizer = None
+    if algorithm == 'sgd':
+        optimizer = partial(
+            torch.optim.SGD,
+            lr=args.get('lr'),
+            momentum=args.get('momentum'),
+            weight_decay=args.get('weight_decay'),
+            nesterov=args.get('nesterov'),
+            eps=OPTIMIZER_EPS,
+        )
+    elif algorithm == 'adam':
+        optimizer = partial(
+            torch.optim.Adam,
+            lr=args.get('lr'),
+            betas=args.get('betas'),
+            weight_decay=args.get('weight_decay'),
+            amsgrad=args.get('amsgrad'),
+            eps=OPTIMIZER_EPS,
+        )
+    elif algorithm == 'adamw':
+        optimizer = partial(
+            torch.optim.AdamW,
+            lr=args.get('lr'),
+            betas=args.get('betas'),
+            weight_decay=args.get('weight_decay'),
+            amsgrad=args.get('amsgrad'),
+            eps=OPTIMIZER_EPS,
+        )
+    elif algorithm == 'sparse_adam':
+        optimizer = partial(
+            torch.optim.SparseAdam,
+            lr=args.get('lr'),
+            betas=args.get('betas'),
+            eps=OPTIMIZER_EPS,
+        )
+    elif algorithm == 'nadam':
+        optimizer = partial(
+            torch.optim.NAdam,
+            lr=args.get('lr'),
+            betas=args.get('betas'),
+            weight_decay=args.get('weight_decay'),
+            momentum_decay=args.get('momentum_decay'),
+            eps=OPTIMIZER_EPS,
+        )
+    elif algorithm == 'adamax':
+        optimizer = partial(
+            torch.optim.Adamax,
+            lr=args.get('lr'),
+            betas=args.get('betas'),
+            weight_decay=args.get('weight_decay'),
+            eps=OPTIMIZER_EPS,
+        )
+    elif algorithm == 'adadelta':
+        optimizer = partial(
+            torch.optim.Adadelta,
+            lr=args.get('lr'),
+            rho=args.get('rho'),
+            weight_decay=args.get('weight_decay'),
+            eps=OPTIMIZER_EPS,
+        )
+    elif algorithm == 'adagrad':
+        optimizer = partial(
+            torch.optim.Adadelta,
+            lr=args.get('lr'),
+            lr_decay=args.get('lr_decay'),
+            weight_decay=args.get('weight_decay'),
+            eps=OPTIMIZER_EPS,
+        )
+    return optimizer
 
 
 def get_range(value, ranges: np.ndarray):
@@ -133,7 +256,8 @@ def standardize_image(image: np.ndarray):
     return (image - image.mean()) / (image.std() + EPSILON)
 
 
-def normalize_image(image: np.ndarray):
+# noinspection PyArgumentList
+def min_max_normalize_image(image: np.ndarray):
     return (image - image.min()) / (image.max() - image.min() + EPSILON)
 
 
@@ -377,15 +501,15 @@ def build_metadata(data_dir: str or pathlib.Path, shape: tuple,
     ** X - may be anything
     """
     file_dict = {}
-    for root, dirs, _ in os.walk(data_dir):
-        for dir in dirs:
-            for sub_root, _, files in os.walk(f'{root}/{dir}'):
+    for root, folders, _ in os.walk(data_dir):
+        for fldr in folders:
+            for sub_root, _, files in os.walk(f'{root}/{fldr}'):
                 for file in files:
                     # dir_name = pathlib.Path(root).name
-                    if file_dict.get(dir[:2]) is None:
-                        file_dict[dir[:2]] = [f'{dir}/{file}']
+                    if file_dict.get(fldr[:2]) is None:
+                        file_dict[fldr[:2]] = [f'{fldr}/{file}']
                     else:
-                        file_dict.get(dir[:2]).append(f'{dir}/{file}')
+                        file_dict.get(fldr[:2]).append(f'{fldr}/{file}')
 
     for dir_name in file_dict:
         # - Get the files in the current dir
@@ -407,7 +531,7 @@ def build_metadata(data_dir: str or pathlib.Path, shape: tuple,
                      f'{data_dir}/metadata_{dir_name}.pkl').open(mode='wb'))
 
 
-def get_files_from_metadata(root_dir: str or pathlib.Path, metadata_files_regex, logger: logging.Logger = None):
+def get_files_from_metadata(root_dir: str or pathlib.Path, metadata_files_regex):
     img_seg_fls = []
     for root, dirs, files in os.walk(root_dir):
         for file in files:
@@ -431,7 +555,6 @@ def get_data_files(data_dir: str, metadata_configs: dict, val_prop: float = .2, 
         data_list=get_files_from_metadata(
             root_dir=data_dir,
             metadata_files_regex=metadata_configs.get('regex'),
-            logger=logger
         ),
         val_prop=val_prop,
         logger=logger
@@ -439,6 +562,33 @@ def get_data_files(data_dir: str, metadata_configs: dict, val_prop: float = .2, 
     return train_fls, val_fls
 
 
+def get_model(hyper_parameters: dict):
+    model = LitRibCage(
+        in_channels=hyper_parameters.get('model')['in_channels'],
+        out_channels=hyper_parameters.get('model')['out_channels'],
+        input_image_shape=(hyper_parameters.get('data')['image_height'],hyper_parameters.get('data')['image_width']),
+        conv2d_out_channels=hyper_parameters.get('model')['architecture']['conv2d_blocks']['out_channels'],
+        conv2d_kernel_sizes=hyper_parameters.get('model')['architecture']['conv2d_blocks']['kernel_sizes'],
+        fc_out_features=hyper_parameters.get('model')['architecture']['fc_blocks']['out_features'],
+        optimizer=get_optimizer(
+            algorithm=hyper_parameters.get('training')['optimizer'],
+            args=dict(
+                lr=hyper_parameters.get('training')['optimizer_lr'],
+                lr_decay=hyper_parameters.get('training')['optimizer_lr_decay'],
+                betas=(hyper_parameters.get('training')['optimizer_beta_1'], hyper_parameters.get('training')['optimizer_beta_2']),
+                weight_decay=hyper_parameters.get('training')['optimizer_weight_decay'],
+                momentum=hyper_parameters.get('training')['optimizer_momentum'],
+                momentum_decay=hyper_parameters.get('training')['optimizer_momentum_decay'],
+                dampening=hyper_parameters.get('training')['optimizer_dampening'],
+                rho=hyper_parameters.get('training')['optimizer_rho'],
+                nesterov=hyper_parameters.get('training')['optimizer_nesterov'],
+                amsgrad=hyper_parameters.get('training')['optimizer_amsgrad']
+            )
+        ),
+        output_dir=hyper_parameters.get('general')['output_dir'],
+    )
+
+    return model
 def get_model_configs(configs_file: pathlib.Path, logger: logging.Logger):
     model_configs = None
     if configs_file.is_file():
@@ -461,12 +611,12 @@ def get_model_configs(configs_file: pathlib.Path, logger: logging.Logger):
 def get_image_mask_file_tuples(root_dir: pathlib.Path or str, seg_dir_postfix: str,
                                image_prefix: str, seg_prefix: str, seg_sub_dir: str = None):
     file_tuples = list()
-    for root, dirs, _ in os.walk(root_dir):
+    for root, folders, _ in os.walk(root_dir):
         root = pathlib.Path(root)
-        for dir in dirs:
-            seg_dir = root / f'{dir}_{seg_dir_postfix}'
+        for fldr in folders:
+            seg_dir = root / f'{fldr}_{seg_dir_postfix}'
             if seg_dir.is_dir():
-                for sub_root, _, files in os.walk(root / dir):
+                for sub_root, _, files in os.walk(root / fldr):
                     for file in files:
                         img_fl = pathlib.Path(f'{sub_root}/{file}')
 
@@ -630,7 +780,7 @@ def get_objects(image: np.ndarray, mask: np.ndarray, crop_height: int, crop_widt
 
     for (x, y) in cntrs:
         img_crp, msk_crp = image[y:y+crop_height, x:x+crop_width], mask[y:y+crop_height, x:x+crop_width]
-        crp_w, crp_h = img_crp.shape[1], img_crp.shape[0]
+        # crp_w, crp_h = img_crp.shape[1], img_crp.shape[0]
         min_obj_pxls = (MIN_OBJ_PCT * crop_height * crop_width) // 100
         if msk_crp.sum() >= min_obj_pxls:
         # if (msk_crp.sum() >= min_obj_pxls) and (crp_w == crop_width and crp_h == crop_height):
@@ -851,16 +1001,12 @@ def update_hyper_parameters(hyper_parameters: dict, arguments: argparse.Namespac
         hyp_param = args.get(arg_name)
         if hyp_param is not None:
             for hyp_param_ctgr in hyp_param_ctgrs:
-                # - Get the hyperparameter names fo the category
-                hyp_param_names = hyper_parameters.get(hyp_param_ctgr)
-
                 # - Hyper-parameter update with the parameter in args
                 hyper_parameters.get(hyp_param_ctgr)[arg_name] = hyp_param
 
 
-def normalize(image: np.ndarray):
-    return (image - image.mean() * np.max(image)) / \
-        (image.std() * np.max(image))
+def normalize_image(image: np.ndarray):
+    return (image - image.mean() * np.max(image)) / (image.std() * np.max(image))
 
 
 def calc_histogram(data: np.ndarray or list, bins: np.ndarray, normalize: bool = False):
@@ -978,8 +1124,6 @@ def get_metrics(x: np.ndarray, y: np.ndarray):
 
 
 def get_data(mode: str, hyper_parameters: dict, logger: logging.Logger = None):
-    data_dict = dict()
-
     dt_fl = str_2_path(path=hyper_parameters.get(mode)['temp_data_file'])
     if not hyper_parameters.get('data')['reload_data'] and dt_fl.is_file():
         data_dict = from_pickle(data_file=dt_fl, logger=logger)
@@ -1199,7 +1343,7 @@ def get_arg_parser():
     return parser
 
 
-def instance_2_categorical(masks: np.ndarray or list):
+def instance_2_categorical(instance_masks: np.ndarray or list):
     """
     Converts an instance masks (i.e., where each cell is represented by a
     different color, to a mask with 3 classes, i.e.,
@@ -1237,19 +1381,19 @@ def instance_2_categorical(masks: np.ndarray or list):
         return cat_msk
 
     btch_cat_msks = []
-    for msk in masks:
+    for mask in instance_masks:
         # - Split the mask into binary masks of separate cells
-        bin_msks = split_instance_mask(instance_mask=msk)
+        bin_msks = split_instance_mask(instance_mask=mask)
 
         # - For each binary cell - get a categorical mask
-        cat_msks = [np.zeros_like(msk)]
+        categorical_masks = [np.zeros_like(mask)]
         for bin_msk in bin_msks:
-            cat_msk = _get_categorical_mask(binary_mask=bin_msk)
-            cat_msks.append(cat_msk)
+            categorical_msk = _get_categorical_mask(binary_mask=bin_msk)
+            categorical_masks.append(categorical_msk)
 
         # - Merge the categorical masks for each cell into a single
         # categorical mask
-        mrgd_cat_msk = _merge_categorical_masks(masks=np.array(cat_msks))
+        mrgd_cat_msk = _merge_categorical_masks(masks=np.array(categorical_masks))
 
         # - Add the categorical mask to the batch masks
         btch_cat_msks.append(mrgd_cat_msk)
@@ -1265,7 +1409,7 @@ def test_instance_2_categorical_single():
 
     msk_57_inst = load_image(msk_57_fl)
 
-    msk_57_cat = instance_2_categorical(masks=[msk_57_inst])[0]
+    msk_57_cat = instance_2_categorical(instance_masks=[msk_57_inst])[0]
     msk_57_cat = categorical_2_rgb(msk_57_cat)
 
     plt.imshow(msk_57_inst)
@@ -1283,7 +1427,7 @@ def test_instance_2_categorical_batch():
     msk_77_inst = load_image(msk_77_fl)
     msk_91_inst = load_image(msk_91_fl)
 
-    msk_57_cat, msk_77_cat, msk_91_cat = instance_2_categorical(masks=[msk_57_inst, msk_77_inst, msk_91_inst])
+    msk_57_cat, msk_77_cat, msk_91_cat = instance_2_categorical(instance_masks=[msk_57_inst, msk_77_inst, msk_91_inst])
 
     fig, ax = plt.subplots(2, 3, figsize=(60, 20))
     ax[0, 0].imshow(msk_57_inst)

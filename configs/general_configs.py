@@ -21,6 +21,7 @@ PROFILE = False
 
 # CONSTANTS
 EPSILON = 1e-9
+OPTIMIZER_EPS = 1e-9
 
 # - Scatter Plot
 N_OUTLIERS = 5

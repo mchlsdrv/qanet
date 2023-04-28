@@ -3,7 +3,7 @@ general:
   name: ''
   debug: False
   configs_dir: './global_configs'
-  output_dir: './output'
+  output_dir: '/media/rrtammyfs/Users/sidorov/QANet/output'
 
 data:
   reload_data: False
@@ -90,7 +90,6 @@ callbacks:
   terminate_on_nan: True
 
   # - Checkpoint
-#  checkpoint_file_best_model_file: 'best_model.ckpt'  # <- overwrites the second-best model weights in case MODEL_CHECKPOINT_SAVE_BEST_ONLY = True
   checkpoint_file_template: 'checkpoints/cp-{epoch:04d}.ckpt'  # <- may be used in case we want to save all teh check points, and not only the best
   checkpoint_file_best_model: 'checkpoints/best_model.ckpt'  # <- overwrites the second-best model weights in case MODEL_CHECKPOINT_SAVE_BEST_ONLY = True
   checkpoint_file_last_model: 'checkpoints/last_model.ckpt'  # <- overwrites the second-best model weights in case MODEL_CHECKPOINT_SAVE_BEST_ONLY = True
@@ -134,9 +133,6 @@ training:
   temp_data_file: '../data/train/temp/CytoPack/clean_data.pkl'
 
   checkpoint_file: ''
-  checkpoint_dir: '/home/sidorov/projects/QANetV2/qanet/output/train/tensor_flow_2022-11-24_13-15-16/checkpoints'
-  tr_checkpoint_file: '/home/sidorov/projects/QANetV2/qanet/output/train/pytorch_2022-08-08_17-28-30/checkpoints/best_val_loss_chkpt.pth.tar'
-  tf_checkpoint_file: 'checkpoints/best_model.ckpt'
 
   loss: 'mse'
   metrics: []

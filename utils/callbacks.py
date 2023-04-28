@@ -1,6 +1,6 @@
 import pathlib
 
-from global_configs.general_configs import (
+from configs.general_configs import (
     REDUCE_LR_ON_PLATEAU_MIN,
     REDUCE_LR_ON_PLATEAU,
     EARLY_STOPPING,
@@ -13,17 +13,17 @@ from global_configs.general_configs import (
     LR_REDUCTION_SCHEDULER_FACTOR,
     LR_REDUCTION_SCHEDULER_MIN
 )
-from pytorch.utils.aux_funcs import save_checkpoint
+from utils.aux_funcs import save_checkpoint
 
 
 # - CALLBACKS
 # > Save Checkpoint on Improvement
 def save_checkpoint_on_improvement(model, optimizer, output_dir: pathlib.Path):
-    chckpnt = dict(
+    ckpt = dict(
         state_dict=model.state_dict(),
         optimizer=optimizer.state_dict(),
     )
-    save_checkpoint(state=chckpnt, filename=str(output_dir / f'best_val_loss_chkpt.pth.tar'))
+    save_checkpoint(state=ckpt, filename=str(output_dir / f'best_val_loss_chkpt.pth.tar'))
 
 
 # > Early Stopping
