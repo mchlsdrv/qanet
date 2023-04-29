@@ -7,10 +7,11 @@ import yaml
 import matplotlib as mpl
 
 from configs.general_configs import CONFIGS_DIR
-from utils.aux_funcs import get_arg_parser, get_runtime, get_logger, update_hyper_parameters, get_model
+from utils.aux_funcs import get_arg_parser, get_runtime, get_logger, update_hyper_parameters, get_model, \
+    print_pretty_message
 
 import pytorch_lightning as pl
-from pytorch_lightning.plugins import DDPPlugin
+from pytorch_lightning.strategies import DDPStrategy
 
 from utils.augs import (
     train_augs, val_augs
@@ -47,14 +48,14 @@ if __name__ == '__main__':
 
     # - Create the directory for the current run
     if hyp_params_dict.get('training')['load_checkpoint']:
-        current_run_dir = pathlib.Path(hyp_params_dict.get('training')['tf_checkpoint_dir']).parent
+        current_run_dir = pathlib.Path(hyp_params_dict.get('training')['checkpoint_file']).parent
         dir_name = current_run_dir.name
     else:
         crp_w = hyp_params_dict.get('augmentations')['crop_width']
         crp_h = hyp_params_dict.get('augmentations')['crop_height']
         dir_name = f'{hyp_params_dict.get("general")["name"]}_{ts}'
         current_run_dir = pathlib.Path(
-            hyp_params_dict.get('general')['output_dir']) / f'train/tensorflow/{crp_h}x{crp_w}/{dir_name}'
+            hyp_params_dict.get('general')['output_dir']) / f'pytorch/train/{crp_h}x{crp_w}/{dir_name}'
         os.makedirs(current_run_dir)
 
     # - Configure the logger
@@ -63,13 +64,11 @@ if __name__ == '__main__':
         save_file=current_run_dir / f'logs.log'
     )
 
-    print(f'''
-    ======================================
-    == Running train with PyTorch model ==
-    ======================================
-    ''')
+    print_pretty_message(message=f'Running train with PyTorch model')
+
     # - Build the model
     model = get_model(hyper_parameters=hyp_params_dict)
+
     # - Load the data
     train_dl, val_dl = get_data_loaders(
         data_file=args.train_data_file,
@@ -86,7 +85,7 @@ if __name__ == '__main__':
         auto_select_gpus=True,
         auto_scale_batch_size=True,
         precision=16,
-        plugins=DDPPlugin(find_unused_parameters=False),
+        plugins=DDPStrategy(find_unused_parameters=False),
     )
 
     # - Train model

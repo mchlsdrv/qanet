@@ -2,7 +2,7 @@ import pathlib
 
 __author__ = 'sidorov@post.bgu.ac.il'
 
-
+CONFIGS_DIR = pathlib.Path('./configs')
 HYPER_PARAMS_FILE = pathlib.Path('./train_configs/hyper_parameters.yml')
 
 # ========= DATA GEN MODULE =========
