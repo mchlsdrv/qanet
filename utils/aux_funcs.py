@@ -744,7 +744,7 @@ def calc_seg_score(gt_mask: np.ndarray, pred_mask: np.ndarray):
     multi-class label
     :param: multi_class_mask - mask where integers represent different objects
     """
-    dice = 0.0
+    J = 0.0
 
     # - Ensure the multi-class label is populated with int values
     gt_mask = gt_mask.astype(np.int16)
@@ -759,7 +759,7 @@ def calc_seg_score(gt_mask: np.ndarray, pred_mask: np.ndarray):
         # - Convert the ground truth mask to one-hot class masks
         gt_one_hot_masks = split_instance_mask(instance_mask=gt_mask, labels=lbls)
         gt_one_hot_masks = np.array(gt_one_hot_masks, dtype=np.float32)
-        # print('gt.shape: ', {gt_one_hot_masks.shape})
+
         # - Calculate the ground truth object area
         A_gt = gt_one_hot_masks.sum(axis=(-2, -1))
 
@@ -770,7 +770,6 @@ def calc_seg_score(gt_mask: np.ndarray, pred_mask: np.ndarray):
         pred_one_hot_masks = split_instance_mask(instance_mask=pred_mask, labels=lbls)
         pred_one_hot_masks = np.array(pred_one_hot_masks, dtype=np.float32)
 
-        # print('pred.shape: ', {gt_one_hot_masks.shape})
         # - Calculate the ground truth object area
         A_pred = pred_one_hot_masks.sum(axis=(-2, -1))
 
@@ -781,20 +780,22 @@ def calc_seg_score(gt_mask: np.ndarray, pred_mask: np.ndarray):
         Is = (gt_one_hot_masks[:, np.newaxis, ...] * pred_one_hot_masks[np.newaxis, ...]).sum(axis=(-1, -2))
 
         # - Calculate the dice for each label for each mask
-        dice = (2 * Is / (A_gt + A_pred + EPSILON)).max(axis=1)
+        J = (Is / (A_gt + A_pred - Is + EPSILON)).max(axis=1)
 
         # - Leave only the dice which are > 0.5 (may introduce np.inf in case all
-        non_zero_iou_sums = (dice > 0.5).sum(axis=0)
+        # non_zero_iou_sums = (dice > 0.5).sum(axis=0)
+        non_zero_iou_sums = (J > 0.5).sum(axis=0)
 
         # - Calculate the mean IoU for each mask
-        dice = dice.sum(axis=0) / non_zero_iou_sums
+        J = J.sum(axis=0) / non_zero_iou_sums
 
         # - Replace all the dice which lower than 0.5 with 0
-        dice[(dice == np.inf) | (np.isnan(dice))] = .0
+        J[(J == np.inf) | (np.isnan(J))] = .0
 
-        dice = np.nanmean(dice)
+        J = np.nanmean(J)
 
-    return dice
+    return J
+
 
 
 def update_hyper_parameters(hyper_parameters: dict, arguments: argparse.Namespace):
