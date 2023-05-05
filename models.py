@@ -1,3 +1,4 @@
+import logging
 import pathlib
 
 import torch
@@ -17,7 +18,8 @@ class RibCage(nn.Module):
             super().__init__()
 
             self.lyr = nn.Sequential(
-                nn.Conv2d(in_channels=in_channels, out_channels=out_channels, kernel_size=kernel_size, stride=(1, 1), padding=1, bias=False),
+                nn.Conv2d(in_channels=in_channels, out_channels=out_channels, kernel_size=kernel_size, stride=(1, 1),
+                          padding=1, bias=False),
                 nn.BatchNorm2d(out_channels),
                 nn.LeakyReLU(0.1, inplace=True),
                 nn.MaxPool2d(kernel_size=2, stride=2, padding=1)
@@ -38,7 +40,10 @@ class RibCage(nn.Module):
         def forward(self, x):
             return self.lyr(x)
 
-    def __init__(self, in_channels, out_channels, input_image_shape: tuple, conv2d_out_channels: tuple = (32, 64, 128, 256), conv2d_kernel_sizes: tuple = (5, 5, 5, 5), fc_out_features: tuple = (512, 1024), output_dir: pathlib.Path = pathlib.Path('./output'), logger: logging.Logger = None):
+    def __init__(self, in_channels, out_channels, input_image_shape: tuple,
+                 conv2d_out_channels: tuple = (32, 64, 128, 256), conv2d_kernel_sizes: tuple = (5, 5, 5, 5),
+                 fc_out_features: tuple = (512, 1024), output_dir: pathlib.Path = pathlib.Path('./output'),
+                 logger: logging.Logger = None):
         super().__init__()
         self.in_channels = in_channels
         self.input_image_shape = input_image_shape
@@ -74,7 +79,8 @@ class RibCage(nn.Module):
 
             self.right_rib_convs.append(self.Conv2DBlk(in_channels=in_chnls, out_channels=out_chnls, kernel_size=k_sz))
 
-            self.spine_convs.append(self.Conv2DBlk(in_channels=2*in_chnls if idx == 0 else 3 * in_chnls, out_channels=out_chnls, kernel_size=k_sz))
+            self.spine_convs.append(self.Conv2DBlk(in_channels=2*in_chnls if idx == 0 else 3 * in_chnls,
+                                                   out_channels=out_chnls, kernel_size=k_sz))
 
             in_chnls = out_chnls
 
@@ -99,9 +105,11 @@ class RibCage(nn.Module):
     def convs(self, image, mask):
         x_l = image
         x_r = mask
-        for idx, (left_rib, right_rib, spine) in enumerate(zip(self.left_rib_convs, self.right_rib_convs, self.spine_convs)):
+        spn = self.spine_convs[0](torch.cat((x_l, x_r), dim=1))
+        for idx, (left_rib, right_rib, spine) in enumerate(zip(self.left_rib_convs, self.right_rib_convs,
+                                                               self.spine_convs)):
             # print(f'x_l.shape: {x_l.shape}, x_r.shape: {x_r.shape}')
-            if idx == 0:
+            if idx > 0:
                 spn = spine(torch.cat((x_l, x_r), dim=1))
             else:
                 spn = spine(torch.cat((x_l, x_r, spn), dim=1))
@@ -136,7 +144,8 @@ class LitRibCage(pl.LightningModule):
             super().__init__()
 
             self.lyr = nn.Sequential(
-                nn.Conv2d(in_channels=in_channels, out_channels=out_channels, kernel_size=kernel_size, stride=(1, 1), padding=1, bias=False),
+                nn.Conv2d(in_channels=in_channels, out_channels=out_channels, kernel_size=kernel_size,
+                          stride=(1, 1), padding=1, bias=False),
                 nn.BatchNorm2d(out_channels),
                 nn.LeakyReLU(0.1, inplace=True),
                 nn.MaxPool2d(kernel_size=2, stride=2, padding=1)
@@ -228,9 +237,11 @@ class LitRibCage(pl.LightningModule):
     def convs(self, image, mask):
         x_l = image
         x_r = mask
-        for idx, (left_rib, right_rib, spine) in enumerate(zip(self.left_rib_convs, self.right_rib_convs, self.spine_convs)):
+        spn = self.spine_convs[0](torch.cat((x_l, x_r), dim=1))
+        for idx, (left_rib, right_rib, spine) in enumerate(zip(self.left_rib_convs, self.right_rib_convs,
+                                                               self.spine_convs)):
             # print(f'x_l.shape: {x_l.shape}, x_r.shape: {x_r.shape}')
-            if idx == 0:
+            if idx > 0:
                 spn = spine(torch.cat((x_l, x_r), dim=1))
             else:
                 spn = spine(torch.cat((x_l, x_r, spn), dim=1))
@@ -283,7 +294,8 @@ class LitRibCage(pl.LightningModule):
 
         return {'val_loss': loss}
 
-    def validation_epoch_end(self, outputs):
+    @staticmethod
+    def validation_epoch_end(outputs):
         avg_loss = torch.stack([x['val_loss'] for x in outputs]).mean()
         tensorboard_logs = {'val_loss': avg_loss}
         return {'val_loss': avg_loss, 'log': tensorboard_logs}

@@ -422,10 +422,11 @@ def read_yaml(data_file: pathlib.Path):
     return data
 
 
-def get_train_val_split(data_list: list or np.ndarray, val_prop: float = .2, logger: logging.Logger = None):
+def get_train_val_split(data_list: list or np.ndarray, validation_proportion: float = .2,
+                        logger: logging.Logger = None):
     n_items = len(data_list)
     item_idxs = np.arange(n_items)
-    n_val_items = int(n_items * val_prop)
+    n_val_items = int(n_items * validation_proportion)
 
     # - Randomly pick the validation items' indices
     val_idxs = np.random.choice(item_idxs, n_val_items, replace=False)
@@ -566,7 +567,7 @@ def get_model(hyper_parameters: dict):
     model = LitRibCage(
         in_channels=hyper_parameters.get('model')['in_channels'],
         out_channels=hyper_parameters.get('model')['out_channels'],
-        input_image_shape=(hyper_parameters.get('data')['image_height'],hyper_parameters.get('data')['image_width']),
+        input_image_shape=(hyper_parameters.get('data')['image_height'], hyper_parameters.get('data')['image_width']),
         conv2d_out_channels=hyper_parameters.get('model')['architecture']['conv2d_blocks']['out_channels'],
         conv2d_kernel_sizes=hyper_parameters.get('model')['architecture']['conv2d_blocks']['kernel_sizes'],
         fc_out_features=hyper_parameters.get('model')['architecture']['fc_blocks']['out_features'],
@@ -575,7 +576,9 @@ def get_model(hyper_parameters: dict):
             args=dict(
                 lr=hyper_parameters.get('training')['optimizer_lr'],
                 lr_decay=hyper_parameters.get('training')['optimizer_lr_decay'],
-                betas=(hyper_parameters.get('training')['optimizer_beta_1'], hyper_parameters.get('training')['optimizer_beta_2']),
+                betas=(
+                    hyper_parameters.get('training')['optimizer_beta_1'],
+                    hyper_parameters.get('training')['optimizer_beta_2']),
                 weight_decay=hyper_parameters.get('training')['optimizer_weight_decay'],
                 momentum=hyper_parameters.get('training')['optimizer_momentum'],
                 momentum_decay=hyper_parameters.get('training')['optimizer_momentum_decay'],
@@ -589,6 +592,8 @@ def get_model(hyper_parameters: dict):
     )
 
     return model
+
+
 def get_model_configs(configs_file: pathlib.Path, logger: logging.Logger):
     model_configs = None
     if configs_file.is_file():
@@ -756,7 +761,8 @@ def pad_image(image: np.ndarray, shape: tuple, pad_value: int = 0):
     return img_padded
 
 
-def get_objects(image: np.ndarray, mask: np.ndarray, crop_height: int, crop_width: int, output_dir: pathlib.Path = None):
+def get_objects(image: np.ndarray, mask: np.ndarray, crop_height: int, crop_width: int,
+                output_dir: pathlib.Path = None):
     # - Find all the objects in the mask
     (_, msk_cntd, stats, centroids) = cv2.connectedComponentsWithStats(mask.astype(np.uint8), cv2.CV_16U)
 
@@ -783,7 +789,7 @@ def get_objects(image: np.ndarray, mask: np.ndarray, crop_height: int, crop_widt
         # crp_w, crp_h = img_crp.shape[1], img_crp.shape[0]
         min_obj_pxls = (MIN_OBJ_PCT * crop_height * crop_width) // 100
         if msk_crp.sum() >= min_obj_pxls:
-        # if (msk_crp.sum() >= min_obj_pxls) and (crp_w == crop_width and crp_h == crop_height):
+            # if (msk_crp.sum() >= min_obj_pxls) and (crp_w == crop_width and crp_h == crop_height):
             if img_crp.shape[0] != crop_height or img_crp.shape[1] != crop_width:
                 img_crp = pad_image(img_crp, (crop_height, crop_width), pad_value=0)
                 msk_crp = pad_image(msk_crp, (crop_height, crop_width), pad_value=0)
@@ -936,21 +942,26 @@ def calc_seg_score(gt_mask: np.ndarray, pred_mask: np.ndarray):
         # - Convert the ground truth mask to one-hot class masks
         gt_one_hot_masks = split_instance_mask(instance_mask=gt_mask, labels=lbls)
         gt_one_hot_masks = np.array(gt_one_hot_masks, dtype=np.float32)
-        # print('gt.shape: ', {gt_one_hot_masks.shape})
+
         # - Calculate the ground truth object area
         A_gt = gt_one_hot_masks.sum(axis=(-2, -1))
 
+        # - Add another dimension for broadcasting
         if len(gt_one_hot_masks.shape) < 4:
             gt_one_hot_masks = np.expand_dims(gt_one_hot_masks, axis=0)
+
+        # - Find the matching labels in the predicted label, as the number representing them may differ
+        lbls = np.unique(gt_one_hot_masks * pred_mask)
+        lbls = lbls[lbls > 0]
 
         # - Convert the predicted mask to one-hot class masks
         pred_one_hot_masks = split_instance_mask(instance_mask=pred_mask, labels=lbls)
         pred_one_hot_masks = np.array(pred_one_hot_masks, dtype=np.float32)
 
-        # print('pred.shape: ', {gt_one_hot_masks.shape})
         # - Calculate the ground truth object area
         A_pred = pred_one_hot_masks.sum(axis=(-2, -1))
 
+        # - Add another dimension for broadcasting
         if len(pred_one_hot_masks.shape) < 4:
             pred_one_hot_masks = np.expand_dims(pred_one_hot_masks, axis=0)
 
@@ -959,20 +970,17 @@ def calc_seg_score(gt_mask: np.ndarray, pred_mask: np.ndarray):
 
         # - Calculate the dice for each label for each mask
         J = (Is / (A_gt + A_pred - Is + EPSILON)).max(axis=1)
-        # dice = (2 * Is / (A_gt + A_pred + EPSILON)).max(axis=1)
 
         # - Leave only the dice which are > 0.5 (may introduce np.inf in case all
-        # non_zero_iou_sums = (dice > 0.5).sum(axis=0)
         non_zero_iou_sums = (J > 0.5).sum(axis=0)
 
         # - Calculate the mean IoU for each mask
         J = J.sum(axis=0) / non_zero_iou_sums
-        # dice = dice.sum(axis=0) / non_zero_iou_sums
 
         # - Replace all the dice which lower than 0.5 with 0
         J[(J == np.inf) | (np.isnan(J))] = .0
-        # dice[(dice == np.inf) | (np.isnan(dice))] = .0
 
+        # - Calculate the mean of the jaccards
         J = np.nanmean(J)
 
     return J

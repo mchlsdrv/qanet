@@ -3,7 +3,7 @@ import pathlib
 __author__ = 'sidorov@post.bgu.ac.il'
 
 CONFIGS_DIR = pathlib.Path('./configs')
-HYPER_PARAMS_FILE = pathlib.Path('./train_configs/hyper_parameters.yml')
+HYPER_PARAMS_FILE = pathlib.Path('./configs/hyper_parameters.yml')
 
 # ========= DATA GEN MODULE =========
 N_SAMPLES = 10000
@@ -36,3 +36,7 @@ PLOT_TRAIN_DATA_BATCHES = False
 PLOT_VALIDATION_DATA_BATCHES = True
 
 COLUMN_NAMES = ['image_file', 'gt_mask_file', 'pred_mask_file', 'seg_score']
+
+NUM_TRAIN_WORKERS = 4
+NUM_VAL_WORKERS = 4
+PIN_MEMORY = True

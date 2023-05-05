@@ -14,7 +14,7 @@ import pytorch_lightning as pl
 from pytorch_lightning.strategies import DDPStrategy
 
 from utils.augs import (
-    train_augs, val_augs
+    train_augs,
 )
 import warnings
 from utils.data_utils import (
@@ -41,7 +41,7 @@ if __name__ == '__main__':
     hyp_params_fl = pathlib.Path(args.hyper_params_file)
     hyp_params_dict = yaml.safe_load(hyp_params_fl.open(mode='r').read())
 
-    # - Update the hyper-parameters with the parsed arguments
+    # - Update the hyperparameters with the parsed arguments
     update_hyper_parameters(hyper_parameters=hyp_params_dict, arguments=args)
     if not hyp_params_dict.get('general')['debug']:
         mpl.use('Agg')  # <= avoiding the "Tcl_AsyncDelete: async handler deleted by the wrong thread" exception
@@ -73,7 +73,7 @@ if __name__ == '__main__':
     train_dl, val_dl = get_data_loaders(
         data_file=args.train_data_file,
         train_augs=train_augs,
-        val_augs=val_augs,
+        val_augs=train_augs,
         logger=logger
     )
 
