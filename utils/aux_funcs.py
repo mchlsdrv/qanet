@@ -32,7 +32,7 @@ from functools import partial
 import torch
 
 from configs.general_configs import OPTIMIZER_EPS
-from models import LitRibCage
+from utils.model_utils import LitRibCage
 
 warnings.simplefilter("ignore", UserWarning)
 warnings.simplefilter("ignore", RuntimeWarning)

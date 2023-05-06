@@ -42,7 +42,7 @@ class RibCage(nn.Module):
 
     def __init__(self, in_channels, out_channels, input_image_shape: tuple,
                  conv2d_out_channels: tuple = (32, 64, 128, 256), conv2d_kernel_sizes: tuple = (5, 5, 5, 5),
-                 fc_out_features: tuple = (512, 1024), output_dir: pathlib.Path = pathlib.Path('./output'),
+                 fc_out_features: tuple = (512, 1024), output_dir: pathlib.Path = pathlib.Path('../output'),
                  logger: logging.Logger = None):
         super().__init__()
         self.in_channels = in_channels
@@ -169,7 +169,7 @@ class LitRibCage(pl.LightningModule):
     def __init__(self, in_channels, out_channels, input_image_shape: tuple,
                  conv2d_out_channels: tuple = (32, 64, 128, 256), conv2d_kernel_sizes: tuple = (5, 5, 5, 5),
                  fc_out_features: tuple = (512, 1024), optimizer=Adam,
-                 output_dir: pathlib.Path = pathlib.Path('./output')):
+                 output_dir: pathlib.Path = pathlib.Path('../output')):
         super().__init__()
         self.in_channels = in_channels
         self.input_image_shape = input_image_shape
@@ -299,3 +299,7 @@ class LitRibCage(pl.LightningModule):
         avg_loss = torch.stack([x['val_loss'] for x in outputs]).mean()
         tensorboard_logs = {'val_loss': avg_loss}
         return {'val_loss': avg_loss, 'log': tensorboard_logs}
+
+
+def test_model( model, data_file, args, device, output_dir: pathlib.Path or str, logger: logging.Logger = None):
+    pass

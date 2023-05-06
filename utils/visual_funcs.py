@@ -5,7 +5,6 @@ import pandas as pd
 import logging
 import matplotlib.pyplot as plt
 import seaborn as sns
-from scipy.stats import pearsonr
 
 import warnings
 
