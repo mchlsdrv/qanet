@@ -4,8 +4,8 @@ import numpy as np
 import tensorflow as tf
 import logging
 
-from utils import augs
-from utils.augs import elastic_transform
+from utils import augmentations
+from utils.augmentations import elastic_transform
 
 from utils.aux_funcs import (
     get_train_val_split,
@@ -103,10 +103,10 @@ class DataLoader(tf.keras.utils.Sequence):
         # - Ensure the batch_size is positive
         self.batch_size = batch_size if batch_size > 0 else 1
 
-        self.train_augs = augs.train_augs(crop_height=crop_height, crop_width=crop_width)
-        self.train_image_augs = augs.train_image_augs()
-        self.train_mask_augs = augs.train_mask_augs()
-        self.image_transforms = augs.image_transforms()
+        self.train_augs = augmentations.train_augs(crop_height=crop_height, crop_width=crop_width)
+        self.train_image_augs = augmentations.train_image_augs()
+        self.train_mask_augs = augmentations.train_mask_augs()
+        self.image_transforms = augmentations.image_transforms()
         self.apply_elastic = partial(elastic_transform, alpha=crop_width * 2, sigma=crop_width * 0.15)
 
         self.n_images = len(self.file_keys)

@@ -10,9 +10,9 @@ class Swish(Layer):
     f(x) = x*sigmoid(x)
   ```
   Usage:
-  >>> layer = tf.keras.layers.Swish()
-  >>> output = layer([-3.0, -1.0, 0.0, 2.0])
-  >>> list(output.numpy())
+  # >>> layer = tf.keras.layers.Swish()
+  # >>> output = layer([-3.0, -1.0, 0.0, 2.0])
+  # >>> list(output.numpy())
   [-0.9, -0.3, 0.0, 2.0]
   Input shape:
     Arbitrary. Use the keyword argument `input_shape`
