@@ -3,7 +3,7 @@ general:
   name: ''
   debug: False
   configs_dir: './global_configs'
-  output_dir: './output'
+  output_dir: '/media/rrtammyfs/Users/sidorov/QANet/output/'
 
 data:
   reload_data: False
@@ -11,8 +11,10 @@ data:
   image_width: 419
 
 augmentations:
-  crop_height: 128
-  crop_width: 128
+  crop_height: 256
+  crop_width: 256
+#  crop_height: 128
+#  crop_width: 128
 
 model:
   in_channels: 1
@@ -24,7 +26,7 @@ model:
     conv2d_blocks:
       out_channels: [64, 128, 256, 256]
       kernel_sizes: [3, 3, 3, 3]
-      dropblock_rate: 0.1
+      dropblock_rate: 0.0
       dropblock_size: 7
 
     fc_blocks:
@@ -33,20 +35,9 @@ model:
 
   architecture2:
     conv2d_blocks:
-      out_channels: [64, 128, 256, 256]
-      kernel_sizes: [3, 3, 3, 3]
-      dropblock_rate: 0.0
-      dropblock_size: 7
-
-    fc_blocks:
-      out_features: [128, 128, 1]
-      drop_rate: 0.0
-
-  architecture3:
-    conv2d_blocks:
       out_channels: [32, 64, 128, 256]
       kernel_sizes: [5, 5, 5, 5]
-      dropblock_rate: 0.0
+      dropblock_rate: 0.1
       dropblock_size: 7
 
     fc_blocks:
@@ -62,8 +53,8 @@ model:
   activation_leaky_relu_alpha: 0.3
 
 regularization:
-#  kernel_regularizer_type: None
-  kernel_regularizer_type: 'l2'
+  kernel_regularizer_type: None
+#  kernel_regularizer_type: 'l2'
   kernel_regularizer_l1: 0.01
   kernel_regularizer_l2: 0.001
   kernel_regularizer_factor: 0.01
@@ -153,16 +144,16 @@ training:
 
   optimizer: 'adam'
 #  optimizer: 'sgd'
-  learning_rate: 0.01
+  learning_rate: 0.001
   learning_rate_decay: 0.001
   learning_rate_optimization_epochs: 0
   learning_rate_optimization_min: 0.0001
   learning_rate_optimization_max: 0.005
 
   # - LR Reduction Scheduler
-#  learning_rate_scheduler: 'None'
+  learning_rate_scheduler: 'None'
 #  learning_rate_scheduler: 'cosine'
-  learning_rate_scheduler: 'cyclical'
+#  learning_rate_scheduler: 'cyclical'
   learning_rate_scheduler_cyclical_init_lr: 0.001
   learning_rate_scheduler_cyclical_max_lr: 0.005
   learning_rate_scheduler_cyclical_step_size: 173 # 2 * 5520 / 64 = 156 # 2 * IMAGES / BATCH_SIZE

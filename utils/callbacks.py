@@ -1,17 +1,16 @@
-import os
 import io
-import pathlib
-
-import tensorflow as tf
-import numpy as np
 import logging
-
+import os
+import pathlib
+import multiprocessing as mlp
+import numpy as np
+import tensorflow as tf
 import wandb
 from matplotlib import pyplot as plt
 
 from utils.aux_funcs import (
     to_numpy,
-    err_log,
+    err_log, info_log,
 )
 from utils.visual_funcs import (
     save_figure,
@@ -511,3 +510,102 @@ class ProgressLogCallback(tf.keras.callbacks.Callback):
 
         self.model.val_epch_gt_seg_msrs = np.array([])
         self.model.val_epch_pred_seg_msrs = np.array([])
+
+def get_callbacks(callback_type: str, hyper_parameters: dict, output_dir: pathlib.Path, logger: logging.Logger = None):
+    callbacks = []
+    # -------------------
+    # Built-in  callbacks
+    # -------------------
+    tb_prc = None
+    if not hyper_parameters.get('callbacks')['no_tensorboard']:
+        callbacks.append(
+            tf.keras.callbacks.TensorBoard(
+                log_dir=output_dir,
+                write_images=hyper_parameters.get('callbacks')[
+                    'tensorboard_write_images'],
+                write_steps_per_second=hyper_parameters.get('callbacks')[
+                    'tensorboard_write_steps_per_second'],
+                update_freq=hyper_parameters.get('callbacks')[
+                    'tensorboard_update_freq'],
+            )
+        )
+        if hyper_parameters.get('callbacks')['progress_log']:
+            callbacks.append(
+                ProgressLogCallback(
+                    log_dir=output_dir,
+                    tensorboard_logs=not hyper_parameters.get('callbacks')['no_tensorboard'],
+                    wandb_logs=hyper_parameters.get('callbacks')['wandb'],
+                    logger=logger
+                )
+            )
+        # - Launch the tensorboard in a thread
+        if hyper_parameters.get('callbacks')['tensorboard_launch']:
+            info_log(logger=logger,
+                     message=f'Launching a Tensor Board thread on logdir: '
+                             f'\'{output_dir}\'...')
+            tb_prc = mlp.Process(
+                target=lambda: os.system(f'tensorboard --logdir={output_dir}'),
+            )
+
+    if hyper_parameters.get('callbacks')['early_stopping']:
+        callbacks.append(
+            tf.keras.callbacks.EarlyStopping(
+                monitor=hyper_parameters.get('callbacks')[
+                    'early_stopping_monitor'],
+                min_delta=hyper_parameters.get('callbacks')[
+                    'early_stopping_min_delta'],
+                patience=hyper_parameters.get('callbacks')[
+                    'early_stopping_patience'],
+                mode=hyper_parameters.get('callbacks')['early_stopping_mode'],
+                restore_best_weights=hyper_parameters.get('callbacks')[
+                    'early_stopping_restore_best_weights'],
+                verbose=hyper_parameters.get('callbacks')[
+                    'early_stopping_verbose'],
+            )
+        )
+
+    if hyper_parameters.get('callbacks')['terminate_on_nan']:
+        callbacks.append(
+            tf.keras.callbacks.TerminateOnNaN()
+        )
+
+    if hyper_parameters.get('callbacks')['reduce_lr_on_plateau']:
+        callbacks.append(
+            tf.keras.callbacks.ReduceLROnPlateau(
+                monitor=hyper_parameters.get('callbacks')['reduce_lr_on_plateau_monitor'],
+                factor=hyper_parameters.get('callbacks')['reduce_lr_on_plateau_factor'],
+                patience=hyper_parameters.get('callbacks')['reduce_lr_on_plateau_patience'],
+                min_delta=hyper_parameters.get('callbacks')['reduce_lr_on_plateau_min_delta'],
+                cooldown=hyper_parameters.get('callbacks')['reduce_lr_on_plateau_cooldown'],
+                min_lr=hyper_parameters.get('callbacks')['reduce_lr_on_plateau_min_lr'],
+                mode=hyper_parameters.get('callbacks')['reduce_lr_on_plateau_mode'],
+                verbose=hyper_parameters.get('callbacks')['reduce_lr_on_plateau_verbose'],
+            )
+        )
+
+    # - Best checkpoint
+    callbacks.append(
+        tf.keras.callbacks.ModelCheckpoint(
+            filepath=output_dir / hyper_parameters.get('callbacks')['checkpoint_file_best_model'],
+            monitor=hyper_parameters.get('callbacks')['checkpoint_monitor'],
+            verbose=hyper_parameters.get('callbacks')['checkpoint_verbose'],
+            save_best_only=True,
+            mode=hyper_parameters.get('callbacks')['checkpoint_mode'],
+            save_weights_only=hyper_parameters.get('callbacks')['checkpoint_save_weights_only'],
+            save_freq=hyper_parameters.get('callbacks')['checkpoint_save_freq']
+        )
+    )
+
+    # - Last checkpoint
+    callbacks.append(
+        tf.keras.callbacks.ModelCheckpoint(
+            filepath=output_dir / hyper_parameters.get('callbacks')['checkpoint_file_last_model'],
+            monitor=hyper_parameters.get('callbacks')['checkpoint_monitor'],
+            verbose=hyper_parameters.get('callbacks')['checkpoint_verbose'],
+            mode=hyper_parameters.get('callbacks')['checkpoint_mode'],
+            save_weights_only=hyper_parameters.get('callbacks')['checkpoint_save_weights_only'],
+            save_freq=hyper_parameters.get('callbacks')['checkpoint_save_freq'],
+        )
+    )
+
+    return callbacks, tb_prc

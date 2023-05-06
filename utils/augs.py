@@ -15,7 +15,7 @@ from scipy.ndimage.filters import gaussian_filter
 
 __author__ = 'sidorov@post.bgu.ac.il'
 
-from global_configs.general_configs import EPSILON
+from configs.general_configs import EPSILON
 
 # from global_configs.general_configs import CROP_HEIGHT, CROP_WIDTH
 

@@ -1,23 +1,17 @@
 import datetime
 import os
-import pathlib
 import argparse
 import logging.config
 import pickle as pkl
 import re
 from copy import deepcopy
-import numpy as np
-import pandas as pd
 import cv2
 import yaml
 
-import logging
-import matplotlib.pyplot as plt
 from scipy.ndimage import grey_erosion
 from scipy.stats import pearsonr
-from tqdm import tqdm
 
-from global_configs.general_configs import (
+from configs.general_configs import (
     MIN_CELL_PIXELS,
     HYPER_PARAMS_FILE,
     EPSILON,
@@ -25,12 +19,389 @@ from global_configs.general_configs import (
     DEBUG
 )
 
+import matplotlib.pyplot as plt
+import numpy as np
+from functools import partial
+import logging
+import logging.config
+import threading
+import pathlib
+import pandas as pd
+import tensorflow as tf
+import tensorflow_addons as tfa
+from keras import backend as K
+from tqdm import tqdm
+
 import warnings
 
 warnings.simplefilter("ignore", UserWarning)
 warnings.simplefilter("ignore", RuntimeWarning)
 
 MIN_OBJ_PCT = 10
+
+
+tf.config.run_functions_eagerly(False)
+plt.style.use('seaborn')
+
+
+P_ELASTIC = 0.1
+P_CONNECT_CELLS = 0.4
+
+
+def optimize_learning_rate(model, data_loader, epochs: int = 10,
+                           learning_rate_min: float = 0.0001, learning_rate_max: float = 0.1,
+                           plot_file: pathlib.Path or str = None) -> (float, float):
+    # - The optimal learning rate is set to infinity in case of an error
+    opt_lr = np.inf
+
+    # - Make a list of learning rates for testing inside the bounds
+    lrs = np.linspace(learning_rate_min, learning_rate_max, epochs)
+
+    # - Place the mean losses here
+    mean_epch_losses = np.array([])
+
+    # - Save the weights of the initial model
+    init_weights = model.get_weights()
+
+    print_pretty_message(message='Searching for the optimal learning rate')
+    for epch, lr in zip(range(epochs), lrs):
+        print(f'- Optimization Epoch: {epch+1}/{epochs} ({100 * epch / epochs:.2f}% done)')
+
+        # - Initialize model's weights
+        model.set_weights(init_weights)
+
+        # - Place the epoch losses here
+        epch_losses = np.array([])
+        pbar = tqdm(data_loader)
+        for idx, ((imgs, msks), seg_scrs) in enumerate(pbar):
+            model.optimizer.lr.assign(lr)
+
+            # - Compute the loss according to the predictions
+            with tf.GradientTape() as tape:
+                preds = model([imgs, msks], training=True)
+                loss = model.compiled_loss(seg_scrs, preds)
+
+            # - Get the weights to adjust according to the loss calculated
+            trainable_vars = model.trainable_variables
+
+            # - Calculate gradients
+            gradients = tape.gradient(loss, trainable_vars)
+
+            # - Update weights
+            model.optimizer.apply_gradients(zip(gradients, trainable_vars))
+
+            # - Append the current loss to the past losses
+            epch_losses = np.append(epch_losses, loss.numpy())
+
+        mean_epch_losses = np.append(mean_epch_losses, epch_losses.mean())
+        print(f'''
+        Stats for Epoch {epch}:
+            - lr: {lr}
+            - mean loss: {mean_epch_losses[-1]:.4f}
+            '''
+              )
+
+    # - The optimal learning rate is the one with the lowest loss
+    opt_lr_min = lrs[np.argmin(mean_epch_losses)]
+    opt_lr_max = lrs[np.argmax(mean_epch_losses)]
+    if check_pathable(path=plot_file):
+        plt.plot(lrs, mean_epch_losses)
+        plt.scatter(opt_lr_min, mean_epch_losses.min(), edgecolors='b')
+        plt.scatter(opt_lr_max, mean_epch_losses.max(), edgecolors='r')
+        plt.legend()
+        plt.savefig(plot_file)
+
+    # - Return the initial model's weights
+    model.set_weights(init_weights)
+    if opt_lr_max < opt_lr_min:
+        opt_lr_max = 5 * opt_lr_min
+    return opt_lr_min, opt_lr_max
+
+
+class WeightedMSE:
+    def __init__(self, weighted=False):
+        self.weighted = weighted
+        self.mse = tf.keras.losses.MeanSquaredError()
+
+    @staticmethod
+    def calc_loss_weights(x):
+        # - Compute the histogram of the GT seg measures
+        x_hist = tf.histogram_fixed_width(x, value_range=[0.0, 1.0], nbins=10)
+
+        # - Replace the places with 0 occurrences with 1 to avoid division by 0
+        x_hist = tf.where(tf.equal(x_hist, 0), tf.ones_like(x_hist), x_hist)
+
+        # - Get the weights for each seg measure region based on its occurrence
+        x_weights = tf.divide(1, x_hist)
+
+        # - Convert the weights to float32
+        x_weights = tf.cast(x_weights, dtype=tf.float32)
+
+        # - Construct the specific weights to multiply the loss by in each range
+        loss_weights = tf.ones_like(x, dtype=tf.float32)
+
+        tf.where(tf.greater_equal(x, 0.0) & tf.less(x, 0.1), x_weights[0],
+                 loss_weights)
+        tf.where(tf.greater_equal(x, 0.1) & tf.less(x, 0.2), x_weights[1],
+                 loss_weights)
+        tf.where(tf.greater_equal(x, 0.2) & tf.less(x, 0.3), x_weights[2],
+                 loss_weights)
+        tf.where(tf.greater_equal(x, 0.3) & tf.less(x, 0.4), x_weights[3],
+                 loss_weights)
+        tf.where(tf.greater_equal(x, 0.4) & tf.less(x, 0.5), x_weights[4],
+                 loss_weights)
+        tf.where(tf.greater_equal(x, 0.5) & tf.less(x, 0.6), x_weights[5],
+                 loss_weights)
+        tf.where(tf.greater_equal(x, 0.6) & tf.less(x, 0.7), x_weights[6],
+                 loss_weights)
+        tf.where(tf.greater_equal(x, 0.7) & tf.less(x, 0.8), x_weights[7],
+                 loss_weights)
+        tf.where(tf.greater_equal(x, 0.8) & tf.less(x, 0.9), x_weights[8],
+                 loss_weights)
+        tf.where(tf.greater_equal(x, 0.9) & tf.less(x, 1.0), x_weights[9],
+                 loss_weights)
+
+        return loss_weights
+
+    def __call__(self, y_true, y_pred):
+        return self.mse(y_true=y_true, y_pred=y_pred,
+                        sample_weight=self.calc_loss_weights(
+                            x=y_true) if self.weighted else None)
+
+
+def weighted_mse(true, pred):
+    # - Compute the histogram of the GT seg measures
+    true_seg_measure_hist = tf.histogram_fixed_width(true,
+                                                     value_range=[0.0, 1.0],
+                                                     nbins=10)
+
+    # - Replace the places with 0 occurrences with 1 to avoid division by 0
+    true_seg_measure_hist = tf.where(tf.equal(true_seg_measure_hist, 0),
+                                     tf.ones_like(true_seg_measure_hist),
+                                     true_seg_measure_hist)
+
+    # - Get the weights for each seg measure region based on its occurrence
+    seg_measure_weights = tf.divide(1, true_seg_measure_hist)
+
+    # - Convert the weights to float32
+    seg_measure_weights = tf.cast(seg_measure_weights, dtype=tf.float32)
+
+    # - Construct the specific weights to multiply the loss by in each range
+    btch_weights = tf.ones_like(true, dtype=tf.float32)
+
+    tf.where(tf.greater_equal(true, 0.0) & tf.less(true, 0.1),
+             seg_measure_weights[0], btch_weights)
+    tf.where(tf.greater_equal(true, 0.1) & tf.less(true, 0.2),
+             seg_measure_weights[1], btch_weights)
+    tf.where(tf.greater_equal(true, 0.2) & tf.less(true, 0.3),
+             seg_measure_weights[2], btch_weights)
+    tf.where(tf.greater_equal(true, 0.3) & tf.less(true, 0.4),
+             seg_measure_weights[3], btch_weights)
+    tf.where(tf.greater_equal(true, 0.4) & tf.less(true, 0.5),
+             seg_measure_weights[4], btch_weights)
+    tf.where(tf.greater_equal(true, 0.5) & tf.less(true, 0.6),
+             seg_measure_weights[5], btch_weights)
+    tf.where(tf.greater_equal(true, 0.6) & tf.less(true, 0.7),
+             seg_measure_weights[6], btch_weights)
+    tf.where(tf.greater_equal(true, 0.7) & tf.less(true, 0.8),
+             seg_measure_weights[7], btch_weights)
+    tf.where(tf.greater_equal(true, 0.8) & tf.less(true, 0.9),
+             seg_measure_weights[8], btch_weights)
+    tf.where(tf.greater_equal(true, 0.9) & tf.less(true, 1.0),
+             seg_measure_weights[9], btch_weights)
+
+    return K.mean(K.sum(btch_weights * K.square(true - pred)))
+
+
+
+
+def launch_tensorboard(logdir):
+    tensorboard_th = threading.Thread(
+        target=lambda: os.system(f'tensorboard --logdir={logdir}'),
+        daemon=True
+    )
+    tensorboard_th.start()
+    return tensorboard_th
+
+
+def load_checkpoint(model, checkpoint_file: str or pathlib.Path):
+    # ckpt_fl = str_2_path(path=checkpoint_file)
+
+    weights_loaded = False
+    try:
+        model.load_weights(checkpoint_file)
+        weights_loaded = True
+        print_pretty_message(message=f'> Checkpoint was loaded from \'{checkpoint_file}\'')
+    except Exception as err:
+        print_pretty_message(
+            message=f'<!> Could not load checkpoint from \'{checkpoint_file}\'',
+            delimiter_symbol='!'
+        )
+        print(err)
+
+    return weights_loaded
+
+
+# def get_model(mode: str, hyper_parameters: dict, output_dir: pathlib.Path or str, logger: logging.Logger = None):
+#     weights_loaded = False
+#
+#     model_configs = dict(
+#         input_image_dims=(hyper_parameters.get('augmentations')['crop_height'],
+#                           hyper_parameters.get('augmentations')['crop_width']),
+#         architecture=hyper_parameters.get('model')['architecture'],
+#         kernel_regularizer=dict(
+#             type=hyper_parameters.get('regularization')[
+#                 'kernel_regularizer_type'],
+#             l1=hyper_parameters.get('regularization')['kernel_regularizer_l1'],
+#             l2=hyper_parameters.get('regularization')['kernel_regularizer_l2'],
+#             factor=hyper_parameters.get('regularization')[
+#                 'kernel_regularizer_factor'],
+#             mode=hyper_parameters.get('regularization')[
+#                 'kernel_regularizer_mode']
+#         ),
+#         activation=dict(
+#             type=hyper_parameters.get('model')['activation'],
+#             max_value=hyper_parameters.get('model')[
+#                 'activation_relu_max_value'],
+#             negative_slope=hyper_parameters.get('model')[
+#                 'activation_relu_negative_slope'],
+#             threshold=hyper_parameters.get('model')[
+#                 'activation_relu_threshold'],
+#             alpha=hyper_parameters.get('model')['activation_leaky_relu_alpha']
+#         )
+#     )
+#     model = RibCage(model_configs=model_configs, output_dir=output_dir, logger=logger)
+#     ckpt_file = hyper_parameters.get(mode)['checkpoint_file']
+#     weights_loaded = load_checkpoint(model=model, checkpoint_file=ckpt_file)
+#
+#     if isinstance(logger, logging.Logger):
+#         info_log(logger=logger, message=model.summary())
+#     else:
+#         print(model.summary())
+#
+#     return model, weights_loaded
+#
+
+class LRScheduler(tf.keras.optimizers.schedules.LearningRateSchedule):
+    def __init__(self, initial_learning_rate, lr_reduction_points: list, lr_reduction_factor: float = 0.3):
+        self.lr = initial_learning_rate
+        self.lr_rdctn_pts = np.array(lr_reduction_points, dtype=np.int16)
+        self.lr_rdctn_fctr = lr_reduction_factor
+
+    def __call__(self, step):
+        # - If there are points at which we want to reduce the learning rate, and the current step is greater than the
+        # next number of epochs
+        if self.lr_rdctn_pts.any() and step > self.lr_rdctn_pts[0]:
+
+            # - Reduce the learning rate by the factor
+            self.lr *= self.lr_rdctn_fctr
+
+            # - Update the reduction point array by discarding the last reduction point
+            if len(self.lr_rdctn_pts) > 1:
+                self.lr_rdctn_pts = self.lr_rdctn_pts[1:]
+            else:
+                self.lr_rdctn_pts = np.array([])
+
+        return self.lr
+
+    def get_config(self):
+        pass
+
+
+def get_optimizer(args: dict):
+    algorithm = args.get('training')['optimizer']
+    opt = None
+    if algorithm == 'adam':
+        opt = partial(
+            tf.keras.optimizers.Adam,
+            beta_1=args.get('training')['optimizer_beta_1'],
+            beta_2=args.get('training')['optimizer_beta_2'],
+            amsgrad=args.get('training')['optimizer_amsgrad'],
+        )
+    elif algorithm == 'nadam':
+        opt = partial(
+            tf.keras.optimizers.Nadam,
+            beta_1=args.get('training')['optimizer_beta_1'],
+            beta_2=args.get('training')['optimizer_beta_2'],
+        )
+    elif algorithm == 'adamax':
+        opt = partial(
+            tf.keras.optimizers.Adamax,
+            beta_1=args.get('training')['optimizer_beta_1'],
+            beta_2=args.get('training')['optimizer_beta_2'],
+        )
+    elif algorithm == 'adagrad':
+        opt = tf.keras.optimizers.Adagrad
+    elif algorithm == 'adadelta':
+        opt = partial(
+            tf.keras.optimizers.Adadelta,
+            rho=args.get('training')['optimizer_rho'],
+        )
+    elif algorithm == 'sgd':
+        opt = partial(
+            tf.keras.optimizers.SGD,
+            momentum=args.get('training')['optimizer_momentum'],
+            nesterov=args.get('training')['optimizer_nesterov'],
+        )
+    elif algorithm == 'rms_prop':
+        opt = partial(
+            tf.keras.optimizers.RMSprop,
+            rho=args.get('rho'),
+            momentum=args.get('training')['optimizer_momentum'],
+            centered=args.get('training')['optimizer_centered'],
+        )
+
+    lr = args.get('training')['learning_rate']
+    if args.get('training')['learning_rate_scheduler'] == 'cyclical':
+        lr = tfa.optimizers.CyclicalLearningRate(
+            initial_learning_rate=args.get('training')['learning_rate_scheduler_cyclical_init_lr'],
+            maximal_learning_rate=args.get('training')['learning_rate_scheduler_cyclical_max_lr'],
+            scale_fn=lambda x: 1 / (2. ** (x - 1)),
+            step_size=args.get('training')['learning_rate_scheduler_cyclical_step_size']
+        )
+        print_pretty_message(message='Using Cyclical lr scheduler', delimiter_symbol='*')
+    elif args.get('training')['learning_rate_scheduler'] == 'cosine':
+        lr = tf.keras.optimizers.schedules.CosineDecay(
+            initial_learning_rate=args.get('training')['learning_rate'],
+            decay_steps=args.get('training')['learning_rate_scheduler_decay_steps']
+        )
+        print_pretty_message(message='Using Cosine lr scheduler', delimiter_symbol='*')
+    else:
+        print_pretty_message(message='No lr scheduler was configured', delimiter_symbol='*')
+
+    # opt = opt(learning_rate=lr)
+    opt = opt(learning_rate=lr)
+
+    return opt
+
+
+def choose_gpu(gpu_id: int = 0, logger: logging.Logger = None):
+    gpus = tf.config.list_physical_devices('GPU')
+    if gpus:
+        try:
+            if -1 < gpu_id < len(gpus):
+                tf.config.set_visible_devices([gpus[gpu_id]], 'GPU')
+                physical_gpus = tf.config.list_physical_devices('GPU')
+                logical_gpus = tf.config.list_logical_devices('GPU')
+                print_pretty_message(
+                    message=f'Running on: {logical_gpus} (GPU #{gpu_id})',
+                    delimiter_symbol='='
+                )
+            elif gpu_id > len(gpus) - 1:
+                print_pretty_message(
+                    message=f'Running on all GPUs',
+                    delimiter_symbol='='
+                )
+            elif gpu_id < 0:
+                os.environ['CUDA_VISIBLE_DEVICES'] = ''
+                print_pretty_message(
+                    message=f'Running on CPU',
+                    delimiter_symbol='='
+                )
+        except RuntimeError as err:
+            if isinstance(logger, logging.Logger):
+                logger.exception(err)
+
 
 
 def get_range(value, ranges: np.ndarray):
@@ -766,6 +1137,10 @@ def calc_seg_score(gt_mask: np.ndarray, pred_mask: np.ndarray):
         if len(gt_one_hot_masks.shape) < 4:
             gt_one_hot_masks = np.expand_dims(gt_one_hot_masks, axis=0)
 
+        # - Find the relevant labels, as the same object may be represented by different number in separate masks
+        # lbls = np.unique(gt_one_hot_masks * pred_mask)
+        # lbls = lbls[lbls > 0]
+
         # - Convert the predicted mask to one-hot class masks
         pred_one_hot_masks = split_instance_mask(instance_mask=pred_mask, labels=lbls)
         pred_one_hot_masks = np.array(pred_one_hot_masks, dtype=np.float32)
@@ -783,7 +1158,6 @@ def calc_seg_score(gt_mask: np.ndarray, pred_mask: np.ndarray):
         J = (Is / (A_gt + A_pred - Is + EPSILON)).max(axis=1)
 
         # - Leave only the dice which are > 0.5 (may introduce np.inf in case all
-        # non_zero_iou_sums = (dice > 0.5).sum(axis=0)
         non_zero_iou_sums = (J > 0.5).sum(axis=0)
 
         # - Calculate the mean IoU for each mask
